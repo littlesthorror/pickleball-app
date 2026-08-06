@@ -42,10 +42,16 @@ body {
 }
 
 /* ── Header / branding ─────────────────────────────────────────────── */
+/* flex-wrap lets the account block (avatar/email/links) drop to its own
+   row on narrow screens rather than squashing everything into one line —
+   matters whenever the brand name is longer than a short word like
+   "Picklr" (e.g. the current "GhostShot" test name). */
 .app-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
   margin-bottom: 20px;
 }
 
@@ -53,6 +59,7 @@ body {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
 }
 
 .brand img {
@@ -60,6 +67,7 @@ body {
   width: 64px;
   object-fit: contain;
   border-radius: 12px;
+  flex-shrink: 0;
 }
 
 .brand-name {
@@ -67,12 +75,30 @@ body {
   font-size: 1.6rem;
   color: var(--navy-900);
   letter-spacing: -0.03em;
+  white-space: nowrap;
 }
 
 .account {
   text-align: right;
   color: var(--text-muted);
-  font-size: 0.8rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+@media (max-width: 480px) {
+  .brand img {
+    height: 44px;
+    width: 44px;
+  }
+
+  .brand-name {
+    font-size: 1.2rem;
+  }
+
+  .account {
+    width: 100%;
+    text-align: left;
+  }
 }
 
 .app-footer {
@@ -216,6 +242,11 @@ label {
 .badge-provisional {
   background: #eef1f6;
   color: var(--text-muted);
+}
+
+.badge-role {
+  background: #e6f1fb;
+  color: var(--sky-600);
 }
 
 /* ── Player name tag (dashboard hero card) ─────────────────────────── */
