@@ -11,6 +11,9 @@ export interface Player {
   date_of_birth_visible: boolean;
   profile_completed: boolean;
   profile_visible: boolean;
+  // Optional honorary title an admin can set (e.g. "Club Coach", "Club
+  // Secretary") — purely a display label, no bearing on actual permissions.
+  role_title: string | null;
 }
 
 export interface PlayerStatus extends Player {
@@ -85,6 +88,9 @@ export interface NoticeRow {
   id: string;
   title: string;
   body: string | null;
+  // Legacy single-attachment fields — superseded by `attachments` below,
+  // kept only so old rows aren't missing data. New code should read/write
+  // `attachments` instead.
   file_path: string | null;
   file_name: string | null;
   attachments: NoticeAttachment[];

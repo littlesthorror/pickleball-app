@@ -25,6 +25,10 @@ export default function AdminManagement({ currentUserId }: { currentUserId: stri
   const [savingCode, setSavingCode] = useState(false);
   const [codeSaved, setCodeSaved] = useState(false);
 
+  // Draft text for each player's role title, keyed by player id — lets
+  // each card have its own editable field without a form per player.
+  const [roleDrafts, setRoleDrafts] = useState<Record<string, string>>({});
+
   function load() {
     setLoading(true);
     supabase
@@ -32,8 +36,13 @@ export default function AdminManagement({ currentUserId }: { currentUserId: stri
       .select("*")
       .order("display_name")
       .then(({ data, error }) => {
-        if (error) setError(error.message);
-        else setPlayers((data ?? []) as PlayerStatus[]);
+        if (error) {
+          setError(error.message);
+        } else {
+          const rows = (data ?? []) as PlayerStatus[];
+          setPlayers(rows);
+          setRoleDrafts(Object.fromEntries(rows.map((p) => [p.id, p.role_title ?? ""])));
+        }
         setLoading(false);
       });
   }
@@ -73,6 +82,21 @@ export default function AdminManagement({ currentUserId }: { currentUserId: stri
     const random = Math.random().toString(36).slice(2, 10).toUpperCase();
     setInviteCodeInput(random);
     setCodeSaved(false);
+  }
+
+  async function saveRole(player: PlayerStatus) {
+    const value = (roleDrafts[player.id] ?? "").trim();
+    setBusyId(player.id);
+    const { error } = await supabase
+      .from("players")
+      .update({ role_title: value || null })
+      .eq("id", player.id);
+    setBusyId(null);
+    if (error) {
+      alert(`Couldn't update role: ${error.message}`);
+      return;
+    }
+    load();
   }
 
   async function toggleAdmin(player: PlayerStatus) {
@@ -208,8 +232,32 @@ export default function AdminManagement({ currentUserId }: { currentUserId: stri
                 {p.games_played} games played
                 {!p.is_active && " · deactivated"}
                 {p.is_admin && " · admin"}
+                {p.role_title && ` · ${p.role_title}`}
               </div>
             </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+            <input
+              type="text"
+              value={roleDrafts[p.id] ?? ""}
+              onChange={(e) => setRoleDrafts((prev) => ({ ...prev, [p.id]: e.target.value }))}
+              placeholder="Role (optional) — e.g. Club Coach"
+              style={{
+                flex: 1,
+                padding: "8px 10px",
+                borderRadius: 8,
+                border: "1px solid var(--border)",
+                fontSize: "0.85rem",
+              }}
+            />
+            <button
+              disabled={busyId === p.id || (roleDrafts[p.id] ?? "") === (p.role_title ?? "")}
+              onClick={() => saveRole(p)}
+              style={{ flex: "0 0 auto", width: "auto", marginTop: 0, padding: "8px 14px", fontSize: "0.85rem" }}
+            >
+              Save
+            </button>
           </div>
 
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>

@@ -198,7 +198,7 @@ export default function Dashboard({
     <div>
       <div className="card">
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <Avatar name={player.display_name} url={player.avatar_url} size={48} />
+          <Avatar name={player.display_name} url={player.avatar_url} size={44} />
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             <span className="player-name-tag">
               {player.display_name}
