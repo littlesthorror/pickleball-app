@@ -96,8 +96,8 @@ body {
   }
 
   .account {
-    width: 100%;
     text-align: right;
+    white-space: nowrap;
   }
 }
 
@@ -247,6 +247,52 @@ label {
 .badge-role {
   background: #e6f1fb;
   color: var(--sky-600);
+}
+
+/* ── Games-played progression ladder (dashboard hero card) ─────────── */
+.badge-tier-rookie {
+  background: #eef1f6;
+  color: var(--text-muted);
+}
+
+.badge-tier-regular {
+  background: var(--orange-100);
+  color: var(--orange-600);
+}
+
+.badge-tier-veteran {
+  background: #e6f1fb;
+  color: var(--sky-600);
+}
+
+.badge-tier-legend {
+  background: var(--navy-900);
+  color: #fff;
+}
+
+.badge-tier-court-marshall {
+  background: #e6f7f4;
+  color: #0f766e;
+}
+
+.badge-tier-kitchen-witch {
+  background: #f3e8ff;
+  color: #7e22ce;
+}
+
+.badge-tier-lob-lord {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.badge-tier-sultan-of-spin {
+  background: #fde8e8;
+  color: #b91c1c;
+}
+
+.badge-tier-dinktator {
+  background: linear-gradient(135deg, var(--navy-900), #000);
+  color: #ffd700;
 }
 
 /* ── Player name tag (dashboard hero card) ─────────────────────────── */
