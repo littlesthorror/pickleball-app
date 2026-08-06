@@ -198,7 +198,7 @@ export default function Dashboard({
     <div>
       <div className="card">
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <Avatar name={player.display_name} url={player.avatar_url} size={44} />
+          <Avatar name={player.display_name} url={player.avatar_url} size={48} />
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             <span className="player-name-tag">
               {player.display_name}
@@ -208,9 +208,12 @@ export default function Dashboard({
                 </span>
               )}
             </span>
-            <span className={`badge ${player.is_provisional ? "badge-provisional" : "badge-established"}`}>
-              {player.is_provisional ? "Provisional" : "Established"}
-            </span>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+              <span className={`badge ${player.is_provisional ? "badge-provisional" : "badge-established"}`}>
+                {player.is_provisional ? "Provisional" : "Established"}
+              </span>
+              {player.role_title && <span className="badge badge-role">{player.role_title}</span>}
+            </div>
           </div>
         </div>
         <div className="stat-hero">

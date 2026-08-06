@@ -14,7 +14,6 @@ import ClubStats from "./pages/ClubStats";
 import Events from "./pages/Events";
 import FAQ from "./pages/FAQ";
 import Notices from "./pages/Notices";
-import Avatar from "./components/Avatar";
 import type { PlayerStatus } from "./types";
 
 type Tab =
@@ -114,42 +113,18 @@ export default function App() {
               <img src="/logo.png" alt="" onError={(e) => (e.currentTarget.style.display = "none")} />
               <span className="brand-name">GhostShot</span>
             </div>
-            <div className="account" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              {player && (
-                <button
-                  onClick={() => changeTab("profile")}
-                  style={{ margin: 0, padding: 0, background: "none", border: "none", cursor: "pointer" }}
-                  title="Edit your profile"
-                >
-                  <Avatar name={player.display_name} url={player.avatar_url} size={32} />
-                </button>
-              )}
-              <span>
-                {session.user.email}
-                <br />
+            {player && (
+              <div className="account">
                 <span
                   className="link-action"
                   role="button"
                   tabIndex={0}
-                  onClick={() => supabase.auth.signOut()}
+                  onClick={() => changeTab("profile")}
                 >
-                  sign out
+                  My account
                 </span>
-                {player?.is_admin && (
-                  <>
-                    {" · "}
-                    <span
-                      className="link-action"
-                      role="button"
-                      tabIndex={0}
-                      onClick={togglePreview}
-                    >
-                      {previewAsPlayer ? "exit preview" : "preview as player"}
-                    </span>
-                  </>
-                )}
-              </span>
-            </div>
+              </div>
+            )}
           </div>
 
           {previewAsPlayer && (
@@ -227,7 +202,16 @@ export default function App() {
                   {tab === "manage-admins" && effectiveIsAdmin && (
                     <AdminManagement currentUserId={session.user.id} />
                   )}
-                  {tab === "profile" && <Profile player={player} isFirstTime={false} onSaved={setPlayer} />}
+                  {tab === "profile" && (
+                    <Profile
+                      player={player}
+                      isFirstTime={false}
+                      onSaved={setPlayer}
+                      isAdmin={!!player.is_admin}
+                      previewAsPlayer={previewAsPlayer}
+                      onTogglePreview={togglePreview}
+                    />
+                  )}
                 </>
               )}
             </>

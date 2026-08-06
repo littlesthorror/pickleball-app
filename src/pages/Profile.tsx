@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { ChangeEvent } from "react";
 import { supabase } from "../supabaseClient";
 import Avatar from "../components/Avatar";
 import type { PlayerStatus } from "../types";
@@ -13,10 +14,20 @@ export default function Profile({
   player,
   isFirstTime,
   onSaved,
+  isAdmin = false,
+  previewAsPlayer = false,
+  onTogglePreview,
 }: {
   player: PlayerStatus;
   isFirstTime: boolean;
   onSaved: (updated: PlayerStatus) => void;
+  // Sign out and (for admins) the preview-as-player toggle used to live in
+  // the app header — moved here now that the header's been simplified down
+  // to just the logo and a "My account" link. Only relevant once the
+  // account already exists, so unused during first-time setup.
+  isAdmin?: boolean;
+  previewAsPlayer?: boolean;
+  onTogglePreview?: () => void;
 }) {
   const [displayName, setDisplayName] = useState(player.display_name);
   const [dob, setDob] = useState(player.date_of_birth ?? "");
@@ -27,7 +38,7 @@ export default function Profile({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handlePhotoChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
@@ -96,7 +107,7 @@ export default function Profile({
           </p>
         </>
       ) : (
-        <h1>Your profile</h1>
+        <h1>My account</h1>
       )}
 
       <div className="card">
@@ -181,6 +192,35 @@ export default function Profile({
           {saving ? "Saving…" : isFirstTime ? "Finish setup" : "Save changes"}
         </button>
       </div>
+
+      {!isFirstTime && (
+        <div className="card" style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+          {isAdmin && onTogglePreview && (
+            <button
+              onClick={onTogglePreview}
+              style={{
+                marginTop: 0,
+                background: "transparent",
+                color: "var(--navy-500)",
+                border: "1px solid var(--border)",
+              }}
+            >
+              {previewAsPlayer ? "Exit preview mode" : "Preview as a regular player"}
+            </button>
+          )}
+          <button
+            onClick={() => supabase.auth.signOut()}
+            style={{
+              marginTop: 0,
+              background: "transparent",
+              color: "var(--danger)",
+              border: "1px solid var(--border)",
+            }}
+          >
+            Sign out
+          </button>
+        </div>
+      )}
     </div>
   );
 }
