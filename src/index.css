@@ -1,0 +1,690 @@
+/* ── Design tokens — Huntingdon Pickleball (navy / orange) ────────────── */
+:root {
+  --navy-900: #0a1a33;
+  --navy-800: #0f2547;
+  --navy-700: #163460;
+  --navy-500: #2c4d80;
+  --orange-600: #e05f00;
+  --orange-500: #ff7a1a;
+  --orange-100: #ffe7d1;
+  --sky-500: #3c92f2;
+  --sky-600: #2b78d1;
+  --bg: #f6f7fb;
+  --card: #ffffff;
+  --border: #e6e9f0;
+  --text: #101828;
+  --text-muted: #667085;
+  --success: #1a8f5e;
+  --danger: #d1293d;
+  --radius-lg: 18px;
+  --radius-md: 12px;
+  --radius-sm: 8px;
+  --shadow-card: 0 1px 2px rgba(16, 24, 40, 0.04), 0 8px 24px rgba(16, 24, 40, 0.06);
+  font-family: -apple-system, "SF Pro Text", system-ui, "Segoe UI", Roboto, sans-serif;
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+.page {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 20px 16px 72px;
+}
+
+/* ── Header / branding ─────────────────────────────────────────────── */
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brand img {
+  height: 64px;
+  width: 64px;
+  object-fit: contain;
+  border-radius: 12px;
+}
+
+.brand-name {
+  font-weight: 800;
+  font-size: 1.6rem;
+  color: var(--navy-900);
+  letter-spacing: -0.03em;
+}
+
+.account {
+  text-align: right;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.app-footer {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  letter-spacing: 0.03em;
+  margin-top: 36px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.account a {
+  color: var(--navy-500);
+  text-decoration: none;
+}
+
+.account a:hover {
+  text-decoration: underline;
+}
+
+/* Used for clickable text actions (sign out, preview toggle) instead of
+   real <a> tags, since these don't navigate anywhere. */
+.link-action {
+  color: var(--navy-500);
+  cursor: pointer;
+}
+
+.link-action:hover {
+  text-decoration: underline;
+}
+
+/* ── Nav (segmented control) ───────────────────────────────────────── */
+/* Stays a single row across the top, same as the original design — but
+   scrolls horizontally instead of wrapping onto extra rows or squashing
+   button text as more tabs get added. Swipe/scroll to see tabs that don't
+   fit; scrollbar is hidden for a cleaner look (same pattern as most native
+   app tab bars). */
+.nav {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  gap: 6px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 6px;
+  margin-bottom: 24px;
+  box-shadow: var(--shadow-card);
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.nav::-webkit-scrollbar {
+  display: none;
+}
+
+.nav button {
+  flex: 0 0 auto;
+  width: auto;
+  white-space: nowrap;
+  margin: 0;
+  padding: 9px 14px;
+  border-radius: calc(var(--radius-md) - 4px);
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.nav button:not(:disabled):hover {
+  background: var(--bg);
+}
+
+.nav button:disabled {
+  background: var(--navy-900);
+  color: #fff;
+  cursor: default;
+}
+
+/* ── Typography ─────────────────────────────────────────────────────── */
+h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--navy-900);
+  margin: 0 0 4px;
+}
+
+h2 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--navy-900);
+  margin: 0 0 12px;
+}
+
+p {
+  line-height: 1.5;
+}
+
+label {
+  display: block;
+  font-weight: 600;
+  margin-top: 16px;
+  margin-bottom: 4px;
+  font-size: 0.85rem;
+  color: var(--text);
+}
+
+/* ── Cards ──────────────────────────────────────────────────────────── */
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 20px;
+  margin-bottom: 16px;
+}
+
+/* ── Badges ─────────────────────────────────────────────────────────── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.badge-established {
+  background: var(--orange-100);
+  color: var(--orange-600);
+}
+
+.badge-provisional {
+  background: #eef1f6;
+  color: var(--text-muted);
+}
+
+/* ── Player name tag (dashboard hero card) ─────────────────────────── */
+.player-name-tag {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #001d51;
+}
+
+/* ── Stat display ───────────────────────────────────────────────────── */
+.stat-hero {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 4px 0 2px;
+}
+
+.stat-hero .value {
+  font-size: 2.6rem;
+  font-weight: 800;
+  color: var(--navy-900);
+  letter-spacing: -0.03em;
+}
+
+.delta-positive {
+  color: var(--success);
+  font-weight: 700;
+}
+
+.delta-negative {
+  color: var(--danger);
+  font-weight: 700;
+}
+
+.delta-neutral {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.stat-meta {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin-top: 2px;
+}
+
+/* ── Toggle group (chart x-axis, sort) ─────────────────────────────── */
+.toggle-group {
+  display: inline-flex;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px;
+}
+
+.toggle-group button {
+  margin: 0;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.toggle-group button:disabled {
+  background: var(--navy-900);
+  color: #fff;
+  cursor: default;
+}
+
+.toggle-group button:hover:not(:disabled) {
+  color: #fff;
+}
+
+/* ── Match / list rows ──────────────────────────────────────────────── */
+.match-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.match-row:last-child {
+  border-bottom: none;
+}
+
+.match-row .opponent {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.match-row .meta {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  margin-top: 2px;
+}
+
+.match-row .score {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: var(--navy-900);
+  margin-right: 12px;
+}
+
+/* ── Leaderboard ────────────────────────────────────────────────────── */
+.leaderboard-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.leaderboard-row:last-child {
+  border-bottom: none;
+}
+
+.rank {
+  width: 26px;
+  text-align: center;
+  font-weight: 700;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.rank.top3 {
+  color: var(--orange-600);
+}
+
+.leaderboard-row .name {
+  flex: 1;
+  font-weight: 600;
+}
+
+.leaderboard-row .rating {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--navy-900);
+}
+
+/* ── Form controls ──────────────────────────────────────────────────── */
+select,
+input[type="number"],
+input[type="text"],
+input[type="date"],
+input[type="time"],
+input[type="file"] {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  font-size: 1rem;
+  box-sizing: border-box;
+  background: var(--card);
+  color: var(--text);
+}
+
+select:focus,
+input:focus {
+  outline: 2px solid var(--orange-500);
+  outline-offset: 1px;
+}
+
+.score-row {
+  display: flex;
+  gap: 12px;
+}
+
+.score-row > div {
+  flex: 1;
+}
+
+.predicted {
+  margin-top: 20px;
+  padding: 12px 14px;
+  background: var(--navy-900);
+  color: #fff;
+  border-radius: var(--radius-md);
+  font-size: 0.85rem;
+}
+
+.predicted small {
+  color: rgba(255, 255, 255, 0.65);
+}
+
+button {
+  margin-top: 24px;
+  width: 100%;
+  padding: 12px;
+  background: var(--orange-500);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.05s ease;
+}
+
+button:hover:not(:disabled) {
+  background: var(--orange-600);
+}
+
+button:active:not(:disabled) {
+  transform: scale(0.99);
+}
+
+button:disabled {
+  background: #d0d5dd;
+  cursor: not-allowed;
+}
+
+.error {
+  color: var(--danger);
+  margin-top: 12px;
+  font-size: 0.9rem;
+}
+
+textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  font-size: 1rem;
+  background: var(--card);
+  color: var(--text);
+}
+
+/* ── Badges ─────────────────────────────────────────────────────────── */
+.badge-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.badge-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 14px 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  text-align: center;
+}
+
+.badge-tile-emoji {
+  font-size: 1.6rem;
+}
+
+.badge-tile-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* ── Shareable player card ──────────────────────────────────────────── */
+.share-card-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 26, 51, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 50;
+}
+
+.share-card-wrap {
+  width: 100%;
+  max-width: 320px;
+}
+
+.share-card {
+  background: linear-gradient(160deg, var(--navy-900), var(--navy-700));
+  border-radius: var(--radius-lg);
+  padding: 32px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: #fff;
+  box-shadow: var(--shadow-card);
+}
+
+.share-card-brand {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.6);
+  margin-bottom: 8px;
+}
+
+.share-card-name {
+  font-size: 1.2rem;
+  font-weight: 800;
+  margin-top: 8px;
+}
+
+.share-card-rating {
+  font-size: 3rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  margin-top: 4px;
+}
+
+.share-card-meta {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.85rem;
+}
+
+.share-card-badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.share-card-badge-pill {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.share-card-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.share-card-actions button {
+  margin-top: 0;
+}
+
+/* ── Next event teaser (dashboard) ─────────────────────────────────── */
+.next-event-card:hover {
+  border-color: var(--orange-500);
+}
+
+/* ── Notice title (bigger than the body text below it) ─────────────── */
+.notice-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--navy-900);
+}
+
+/* ── Lightbox (Notices image attachments) ──────────────────────────── */
+.lightbox-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 26, 51, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 60;
+  cursor: zoom-out;
+}
+
+.lightbox-image {
+  max-width: 92vw;
+  max-height: 92vh;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  cursor: default;
+}
+
+.lightbox-close {
+  position: fixed;
+  top: 16px;
+  right: 20px;
+  width: auto;
+  margin: 0;
+  padding: 4px 12px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  border: none;
+  border-radius: 999px;
+  font-size: 1.6rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.lightbox-close:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+/* ── Rich text (FAQ answers, notice bodies) ────────────────────────── */
+/* Deliberately smaller than the question/title above it, and wraps long
+   unbroken strings (like URLs) instead of letting them overflow the card. */
+.rich-text {
+  font-size: 0.88rem;
+  line-height: 1.6;
+  color: var(--text);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  /* Preserves the line/paragraph breaks admins type in the textarea —
+     browsers collapse plain newlines by default otherwise. */
+  white-space: pre-line;
+}
+
+.rich-text a {
+  color: var(--navy-500);
+  font-weight: 600;
+  word-break: break-all;
+}
+
+/* ── Admin "preview as player" banner ──────────────────────────────── */
+.preview-banner {
+  background: var(--orange-100);
+  color: var(--orange-600);
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: var(--radius-md);
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+.preview-banner .link-action {
+  color: var(--orange-600);
+  text-decoration: underline;
+  font-weight: 700;
+}
+
+/* ── Legal/ownership overlay ────────────────────────────────────────── */
+.legal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 26, 51, 0.6);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 40px 16px;
+  overflow-y: auto;
+  z-index: 55;
+}
+
+/* Deliberately understated — this is reference material, not something
+   that should compete for attention with the rest of the footer. */
+.app-footer .legal-link {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  opacity: 0.7;
+  cursor: pointer;
+}
+
+.app-footer .legal-link:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
+
+/* ── Sky-blue button variant ────────────────────────────────────────── */
+.btn-sky {
+  background: var(--sky-500);
+  color: #fff;
+  border: none;
+}
+
+.btn-sky:hover:not(:disabled) {
+  background: var(--sky-600);
+}
