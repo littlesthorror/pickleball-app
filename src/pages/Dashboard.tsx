@@ -14,6 +14,7 @@ import Avatar from "../components/Avatar";
 import ShareCard from "../components/ShareCard";
 import { computeBadges } from "../lib/badges";
 import { isBirthdayToday } from "../lib/birthday";
+import { getTier, getNextTier } from "../lib/tiers";
 import type { EventRow, PlayerMatchHistoryRow, PlayerStatus } from "../types";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Filler);
@@ -193,12 +194,14 @@ export default function Dashboard({
 
   const lastDelta = history.length > 0 ? history[history.length - 1].rating_delta : null;
   const recent = [...history].reverse().slice(0, 8);
+  const tier = getTier(player.games_played);
+  const nextTier = getNextTier(player.games_played);
 
   return (
     <div>
       <div className="card">
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <Avatar name={player.display_name} url={player.avatar_url} size={44} />
+          <Avatar name={player.display_name} url={player.avatar_url} size={55} />
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             <span className="player-name-tag">
               {player.display_name}
@@ -209,8 +212,8 @@ export default function Dashboard({
               )}
             </span>
             <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-              <span className={`badge ${player.is_provisional ? "badge-provisional" : "badge-established"}`}>
-                {player.is_provisional ? "Provisional" : "Established"}
+              <span className={`badge ${tier.className}`} title={`${player.games_played} games played`}>
+                {tier.label}
               </span>
               {player.role_title && <span className="badge badge-role">{player.role_title}</span>}
             </div>
@@ -226,7 +229,7 @@ export default function Dashboard({
         </div>
         <p className="stat-meta">
           {player.games_played} game{player.games_played === 1 ? "" : "s"} played
-          {player.is_provisional && ` · ${12 - player.games_played} more to become established`}
+          {nextTier && ` · ${nextTier.gamesToGo} more to become a ${nextTier.tier.label}`}
         </p>
         {isOwnProfile && (
           <button

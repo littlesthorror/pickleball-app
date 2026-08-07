@@ -1,7 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../supabaseClient";
 import Avatar from "../components/Avatar";
 import type { PlayerStatus } from "../types";
+
+const PAGE_SIZE = 20;
 
 // Full admin-management screen — replaces the earlier "hardcoded admin
 // emails" approach. Any existing admin can promote/demote other players,
@@ -11,11 +13,19 @@ import type { PlayerStatus } from "../types";
 // player outright, but only once they have zero games played (the delete
 // button is hidden otherwise, and the database's foreign-key constraints
 // are the real backstop if that's ever bypassed).
+//
+// Every registered player shows up here, not just admins — this is also
+// where roles/deactivation/reset live for anyone. With ~200 club members
+// potentially signed up, admins are pinned to the top (highest priority
+// to find quickly), then everyone else alphabetically, with a search box
+// and "show more" pagination so the list stays manageable.
 export default function AdminManagement({ currentUserId }: { currentUserId: string }) {
   const [players, setPlayers] = useState<PlayerStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   // The one shared code new members enter to join — see InviteGate.tsx and
   // the redeem_invite_code() function. Anyone who doesn't have this code
@@ -60,6 +70,24 @@ export default function AdminManagement({ currentUserId }: { currentUserId: stri
 
   useEffect(load, []);
   useEffect(loadInviteCode, []);
+
+  // Admins first (highest priority to find quickly), then everyone else
+  // alphabetically. Search filters by name before sorting/paginating.
+  const filteredSorted = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const filtered = q ? players.filter((p) => p.display_name.toLowerCase().includes(q)) : players;
+    return [...filtered].sort((a, b) => {
+      if (a.is_admin !== b.is_admin) return a.is_admin ? -1 : 1;
+      return a.display_name.localeCompare(b.display_name);
+    });
+  }, [players, search]);
+
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [search]);
+
+  const visiblePlayers = filteredSorted.slice(0, visibleCount);
+  const remaining = filteredSorted.length - visiblePlayers.length;
 
   async function saveInviteCode() {
     if (!inviteCodeInput.trim()) return;
@@ -222,7 +250,22 @@ export default function AdminManagement({ currentUserId }: { currentUserId: stri
         )}
       </div>
 
-      {players.map((p) => (
+      <div className="card">
+        <h2 style={{ marginTop: 0 }}>Members</h2>
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search by name…"
+          style={{ marginBottom: 0 }}
+        />
+        <p className="stat-meta">
+          {filteredSorted.length} member{filteredSorted.length === 1 ? "" : "s"}
+          {search && ` matching "${search}"`} · admins shown first
+        </p>
+      </div>
+
+      {visiblePlayers.map((p) => (
         <div className="card" key={p.id}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
             <Avatar name={p.display_name} url={p.avatar_url} size={40} />
@@ -296,6 +339,19 @@ export default function AdminManagement({ currentUserId }: { currentUserId: stri
           </div>
         </div>
       ))}
+
+      {filteredSorted.length === 0 && (
+        <p className="stat-meta">No members match "{search}".</p>
+      )}
+
+      {remaining > 0 && (
+        <button
+          onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
+          style={{ background: "transparent", color: "var(--navy-500)", border: "1px solid var(--border)" }}
+        >
+          Show more ({remaining} more)
+        </button>
+      )}
     </div>
   );
 }
