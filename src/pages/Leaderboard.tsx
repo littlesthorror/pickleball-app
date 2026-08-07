@@ -5,6 +5,11 @@ import type { LeaderboardRow } from "../types";
 
 type SortMode = "rating" | "improved";
 
+// Keeps the list from growing unbounded as more members join (nearly 200
+// at last count) — search narrows things down instantly, and each section
+// only renders a page at a time with "show more" beneath it.
+const PAGE_SIZE = 20;
+
 function DeltaBadge({ value }: { value: number | null }) {
   if (value === null) return <span className="delta-neutral">new</span>;
   const rounded = Math.round(value);
@@ -26,6 +31,9 @@ export default function Leaderboard({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sort, setSort] = useState<SortMode>("rating");
+  const [search, setSearch] = useState("");
+  const [visibleEstablished, setVisibleEstablished] = useState(PAGE_SIZE);
+  const [visibleProvisional, setVisibleProvisional] = useState(PAGE_SIZE);
 
   useEffect(() => {
     supabase
@@ -40,21 +48,34 @@ export default function Leaderboard({
       });
   }, []);
 
+  const filteredRows = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return q ? rows.filter((r) => r.display_name.toLowerCase().includes(q)) : rows;
+  }, [rows, search]);
+
   const established = useMemo(() => {
-    const list = rows.filter((r) => !r.is_provisional);
+    const list = filteredRows.filter((r) => !r.is_provisional);
     if (sort === "rating") {
       return [...list].sort((a, b) => b.rating - a.rating);
     }
     return [...list].sort((a, b) => (b.delta_30d ?? -Infinity) - (a.delta_30d ?? -Infinity));
-  }, [rows, sort]);
+  }, [filteredRows, sort]);
 
   const provisional = useMemo(
-    () => [...rows.filter((r) => r.is_provisional)].sort((a, b) => b.rating - a.rating),
-    [rows]
+    () => [...filteredRows.filter((r) => r.is_provisional)].sort((a, b) => b.rating - a.rating),
+    [filteredRows]
   );
+
+  useEffect(() => {
+    setVisibleEstablished(PAGE_SIZE);
+    setVisibleProvisional(PAGE_SIZE);
+  }, [search, sort]);
 
   if (loading) return <p>Loading leaderboard…</p>;
   if (error) return <p className="error">{error}</p>;
+
+  const visibleEstablishedRows = established.slice(0, visibleEstablished);
+  const visibleProvisionalRows = provisional.slice(0, visibleProvisional);
 
   return (
     <div>
@@ -73,8 +94,18 @@ export default function Leaderboard({
         <p className="stat-meta" style={{ marginBottom: 12 }}>
           {sort === "rating" ? "Ranked by current rating." : "Ranked by rating change over the last 30 days."}
         </p>
-        {established.length === 0 && <p className="stat-meta">Nobody's established yet (12+ games).</p>}
-        {established.map((p, i) => (
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search by name…"
+        />
+        {established.length === 0 && (
+          <p className="stat-meta">
+            {search ? `No established players match "${search}".` : "Nobody's established yet (12+ games)."}
+          </p>
+        )}
+        {visibleEstablishedRows.map((p, i) => (
           <div
             className="leaderboard-row"
             key={p.id}
@@ -96,6 +127,19 @@ export default function Leaderboard({
             )}
           </div>
         ))}
+        {established.length > visibleEstablished && (
+          <button
+            onClick={() => setVisibleEstablished((c) => c + PAGE_SIZE)}
+            style={{
+              marginTop: 12,
+              background: "transparent",
+              color: "var(--navy-500)",
+              border: "1px solid var(--border)",
+            }}
+          >
+            Show more ({established.length - visibleEstablished} more)
+          </button>
+        )}
       </div>
 
       {provisional.length > 0 && (
@@ -104,7 +148,7 @@ export default function Leaderboard({
           <p className="stat-meta" style={{ marginBottom: 12 }}>
             Fewer than 12 games — ratings still settling in, not yet ranked.
           </p>
-          {provisional.map((p) => (
+          {visibleProvisionalRows.map((p) => (
             <div
               className="leaderboard-row"
               key={p.id}
@@ -119,6 +163,19 @@ export default function Leaderboard({
               <span className="rating">{Math.round(p.rating)}</span>
             </div>
           ))}
+          {provisional.length > visibleProvisional && (
+            <button
+              onClick={() => setVisibleProvisional((c) => c + PAGE_SIZE)}
+              style={{
+                marginTop: 12,
+                background: "transparent",
+                color: "var(--navy-500)",
+                border: "1px solid var(--border)",
+              }}
+            >
+              Show more ({provisional.length - visibleProvisional} more)
+            </button>
+          )}
         </div>
       )}
     </div>

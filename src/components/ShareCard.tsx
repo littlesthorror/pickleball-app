@@ -29,7 +29,7 @@ export default function ShareCard({
     setShareError(null);
     try {
       const blob = await renderShareCardImage(player, badges);
-      const file = new File([blob], `${player.display_name.replace(/\s+/g, "-")}-picklr-card.png`, {
+      const file = new File([blob], `${player.display_name.replace(/\s+/g, "-")}-ghostshot-card.png`, {
         type: "image/png",
       });
 
@@ -41,8 +41,8 @@ export default function ShareCard({
       if (nav.share && nav.canShare && nav.canShare({ files: [file] })) {
         await nav.share({
           files: [file],
-          title: "My Picklr card",
-          text: `${player.display_name} on Picklr — Huntingdon Pickleball`,
+          title: "My GhostShot card",
+          text: `${player.display_name} on GhostShot — Huntingdon Pickleball`,
         });
       } else {
         const url = URL.createObjectURL(blob);
@@ -68,8 +68,8 @@ export default function ShareCard({
     <div className="share-card-overlay" onClick={onClose}>
       <div className="share-card-wrap" onClick={(e) => e.stopPropagation()}>
         <div className="share-card">
-          <div className="share-card-brand">Picklr · Huntingdon Pickleball</div>
-          <Avatar name={player.display_name} url={player.avatar_url} size={72} />
+          <div className="share-card-brand">GhostShot · Huntingdon Pickleball</div>
+          <Avatar name={player.display_name} url={player.avatar_url} size={90} />
           <div className="share-card-name">{player.display_name}</div>
           <span className={`badge ${player.is_provisional ? "badge-provisional" : "badge-established"}`}>
             {player.is_provisional ? "Provisional" : "Established"}

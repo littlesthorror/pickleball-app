@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { ChangeEvent } from "react";
 import { supabase } from "../supabaseClient";
 import type { EventRow } from "../types";
 
@@ -18,9 +19,34 @@ function formatEventTime(timeStr: string | null) {
   return date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 }
 
+// Combines the date + optional time into a real Date object, local time —
+// used both for sorting same-day events by time of day, and for working
+// out when an event's 24-hour "still visible" window ends.
+function eventStart(e: EventRow): Date {
+  const [y, m, d] = e.event_date.split("-").map(Number);
+  if (e.event_time) {
+    const [h, min] = e.event_time.split(":").map(Number);
+    return new Date(y, m - 1, d, h, min);
+  }
+  return new Date(y, m - 1, d);
+}
+
+// Events with no upload just reuse the existing "notices" storage bucket
+// under an events/ prefix, rather than needing a whole new bucket — its
+// RLS is already "admins can write, anyone can read", no path restriction.
+function posterUrl(path: string) {
+  const { data } = supabase.storage.from("notices").getPublicUrl(path);
+  return data.publicUrl;
+}
+
 // How many events to show per section before a "Show more" button appears
 // — keeps the page from growing indefinitely as events pile up over time.
 const PAGE_SIZE = 6;
+
+// How long an event stays visible (in both Upcoming and Past) after it
+// starts, before it's hidden from the app entirely. The row itself isn't
+// deleted — it just stops being shown — so nothing is ever lost.
+const VISIBLE_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 export default function Events({ isAdmin }: { isAdmin: boolean }) {
   const [events, setEvents] = useState<EventRow[]>([]);
@@ -28,13 +54,19 @@ export default function Events({ isAdmin }: { isAdmin: boolean }) {
   const [error, setError] = useState<string | null>(null);
 
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [eventDate, setEventDate] = useState("");
   const [eventTime, setEventTime] = useState("");
   const [location, setLocation] = useState("");
+  const [posterFile, setPosterFile] = useState<File | null>(null);
+  const [existingPosterPath, setExistingPosterPath] = useState<string | null>(null);
+  const [removePoster, setRemovePoster] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
   // Upcoming and Past are paginated separately, since they're really two
   // different lists shown in one place.
@@ -46,7 +78,12 @@ export default function Events({ isAdmin }: { isAdmin: boolean }) {
     supabase
       .from("events")
       .select("*")
+      // Sorts by date first, then by time of day within the same date —
+      // previously two events on the same day could show in the wrong
+      // order because only the date was used for sorting. Events with no
+      // time set (treated as "all day") sort before timed ones.
       .order("event_date", { ascending: true })
+      .order("event_time", { ascending: true, nullsFirst: true })
       .then(({ data, error }) => {
         if (error) setError(error.message);
         else setEvents((data ?? []) as EventRow[]);
@@ -58,33 +95,109 @@ export default function Events({ isAdmin }: { isAdmin: boolean }) {
 
   useEffect(load, []);
 
-  async function handleCreate() {
-    if (!title.trim() || !eventDate) return;
-    setSaving(true);
-    setSaveError(null);
-
-    const { data: userData } = await supabase.auth.getUser();
-
-    const { error } = await supabase.from("events").insert({
-      title: title.trim(),
-      description: description.trim() || null,
-      event_date: eventDate,
-      event_time: eventTime || null,
-      location: location.trim() || null,
-      created_by: userData?.user?.id ?? null,
-    });
-
-    if (error) {
-      setSaveError(error.message);
-      setSaving(false);
-      return;
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setLightboxUrl(null);
     }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
+  function resetForm() {
+    setEditingId(null);
     setTitle("");
     setDescription("");
     setEventDate("");
     setEventTime("");
     setLocation("");
+    setPosterFile(null);
+    setExistingPosterPath(null);
+    setRemovePoster(false);
+    setSaveError(null);
+  }
+
+  function openCreateForm() {
+    resetForm();
+    setShowForm(true);
+  }
+
+  function openEditForm(e: EventRow) {
+    setEditingId(e.id);
+    setTitle(e.title);
+    setDescription(e.description ?? "");
+    setEventDate(e.event_date);
+    setEventTime(e.event_time ?? "");
+    setLocation(e.location ?? "");
+    setExistingPosterPath(e.poster_path);
+    setPosterFile(null);
+    setRemovePoster(false);
+    setSaveError(null);
+    setShowForm(true);
+  }
+
+  function handlePosterChange(ev: ChangeEvent<HTMLInputElement>) {
+    const file = ev.target.files?.[0];
+    if (file) {
+      setPosterFile(file);
+      setRemovePoster(false);
+    }
+  }
+
+  async function handleSave() {
+    if (!title.trim() || !eventDate) return;
+    setSaving(true);
+    setSaveError(null);
+
+    const payload = {
+      title: title.trim(),
+      description: description.trim() || null,
+      event_date: eventDate,
+      event_time: eventTime || null,
+      location: location.trim() || null,
+    };
+
+    let eventId = editingId;
+
+    if (editingId) {
+      const { error } = await supabase.from("events").update(payload).eq("id", editingId);
+      if (error) {
+        setSaveError(error.message);
+        setSaving(false);
+        return;
+      }
+    } else {
+      const { data: userData } = await supabase.auth.getUser();
+      const { data: inserted, error } = await supabase
+        .from("events")
+        .insert({ ...payload, created_by: userData?.user?.id ?? null })
+        .select("id")
+        .single();
+      if (error || !inserted) {
+        setSaveError(error?.message ?? "Couldn't create the event.");
+        setSaving(false);
+        return;
+      }
+      eventId = inserted.id;
+    }
+
+    if (posterFile && eventId) {
+      const ext = posterFile.name.split(".").pop() || "jpg";
+      const path = `events/${eventId}/poster.${ext}`;
+      const { error: uploadError } = await supabase.storage
+        .from("notices")
+        .upload(path, posterFile, { upsert: true });
+      if (uploadError) {
+        setSaveError(`Event saved, but the poster failed to upload: ${uploadError.message}`);
+        setSaving(false);
+        load();
+        return;
+      }
+      await supabase.from("events").update({ poster_path: path }).eq("id", eventId);
+    } else if (removePoster && eventId) {
+      await supabase.from("events").update({ poster_path: null }).eq("id", eventId);
+    }
+
+    resetForm();
     setShowForm(false);
     setSaving(false);
     load();
@@ -103,13 +216,20 @@ export default function Events({ isAdmin }: { isAdmin: boolean }) {
   if (loading) return <p>Loading events…</p>;
   if (error) return <p className="error">{error}</p>;
 
+  const now = new Date();
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const upcoming = events.filter((e) => {
+
+  // Events more than 24 hours past their start time are hidden from the
+  // app entirely — the row stays in the database (nothing is deleted),
+  // it just doesn't show in either Upcoming or Past any more.
+  const visibleEvents = events.filter((e) => now.getTime() - eventStart(e).getTime() < VISIBLE_WINDOW_MS);
+
+  const upcoming = visibleEvents.filter((e) => {
     const [y, m, d] = e.event_date.split("-").map(Number);
     return new Date(y, m - 1, d) >= today;
   });
-  const past = events.filter((e) => !upcoming.includes(e));
+  const past = visibleEvents.filter((e) => !upcoming.includes(e));
 
   return (
     <div>
@@ -118,7 +238,7 @@ export default function Events({ isAdmin }: { isAdmin: boolean }) {
         {isAdmin && (
           <button
             style={{ marginTop: 0, width: "auto", padding: "8px 16px" }}
-            onClick={() => setShowForm((v) => !v)}
+            onClick={() => (showForm ? setShowForm(false) : openCreateForm())}
           >
             {showForm ? "Cancel" : "Add event"}
           </button>
@@ -177,10 +297,33 @@ export default function Events({ isAdmin }: { isAdmin: boolean }) {
             }}
           />
 
+          <label>Poster image (optional)</label>
+          {existingPosterPath && !removePoster && !posterFile && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+              <img
+                src={posterUrl(existingPosterPath)}
+                alt=""
+                style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 8, border: "1px solid var(--border)" }}
+              />
+              <span
+                className="link-action"
+                role="button"
+                tabIndex={0}
+                onClick={() => setRemovePoster(true)}
+              >
+                Remove poster
+              </span>
+            </div>
+          )}
+          {posterFile && (
+            <p className="stat-meta" style={{ marginTop: 0 }}>Selected: {posterFile.name}</p>
+          )}
+          <input type="file" accept="image/*" onChange={handlePosterChange} />
+
           {saveError && <p className="error">{saveError}</p>}
 
-          <button disabled={saving || !title.trim() || !eventDate} onClick={handleCreate}>
-            {saving ? "Saving…" : "Create event"}
+          <button disabled={saving || !title.trim() || !eventDate} onClick={handleSave}>
+            {saving ? "Saving…" : editingId ? "Save changes" : "Create event"}
           </button>
         </div>
       )}
@@ -190,7 +333,23 @@ export default function Events({ isAdmin }: { isAdmin: boolean }) {
         {upcoming.length === 0 && <p className="stat-meta">No upcoming events yet.</p>}
         {upcoming.slice(0, visibleUpcoming).map((e) => (
           <div className="match-row" key={e.id} style={{ alignItems: "flex-start" }}>
-            <div>
+            {e.poster_path && (
+              <img
+                src={posterUrl(e.poster_path)}
+                alt=""
+                onClick={() => setLightboxUrl(posterUrl(e.poster_path!))}
+                style={{
+                  width: 48,
+                  height: 48,
+                  objectFit: "cover",
+                  borderRadius: 8,
+                  marginRight: 12,
+                  cursor: "zoom-in",
+                  flexShrink: 0,
+                }}
+              />
+            )}
+            <div style={{ flex: 1 }}>
               <div className="opponent">{e.title}</div>
               <div className="meta">
                 {formatEventDate(e.event_date)}
@@ -204,19 +363,26 @@ export default function Events({ isAdmin }: { isAdmin: boolean }) {
               )}
             </div>
             {isAdmin && (
-              <button
-                onClick={() => handleDelete(e.id)}
-                style={{
-                  marginTop: 0,
-                  width: "auto",
-                  background: "transparent",
-                  color: "var(--danger)",
-                  padding: "4px 8px",
-                  fontSize: "0.78rem",
-                }}
-              >
-                Remove
-              </button>
+              <div style={{ display: "flex", gap: 6 }}>
+                <span
+                  className="link-action"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => openEditForm(e)}
+                  style={{ fontSize: "0.78rem" }}
+                >
+                  Edit
+                </span>
+                <span
+                  className="link-action"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => handleDelete(e.id)}
+                  style={{ fontSize: "0.78rem", color: "var(--danger)" }}
+                >
+                  Remove
+                </span>
+              </div>
             )}
           </div>
         ))}
@@ -240,6 +406,22 @@ export default function Events({ isAdmin }: { isAdmin: boolean }) {
           <h2>Past</h2>
           {past.slice(0, visiblePast).map((e) => (
             <div className="match-row" key={e.id}>
+              {e.poster_path && (
+                <img
+                  src={posterUrl(e.poster_path)}
+                  alt=""
+                  onClick={() => setLightboxUrl(posterUrl(e.poster_path!))}
+                  style={{
+                    width: 40,
+                    height: 40,
+                    objectFit: "cover",
+                    borderRadius: 8,
+                    marginRight: 12,
+                    cursor: "zoom-in",
+                    flexShrink: 0,
+                  }}
+                />
+              )}
               <div>
                 <div className="opponent">{e.title}</div>
                 <div className="meta">{formatEventDate(e.event_date)}</div>
@@ -259,6 +441,15 @@ export default function Events({ isAdmin }: { isAdmin: boolean }) {
               Show more ({past.length - visiblePast} more)
             </button>
           )}
+        </div>
+      )}
+
+      {lightboxUrl && (
+        <div className="lightbox-overlay" onClick={() => setLightboxUrl(null)}>
+          <img src={lightboxUrl} alt="" className="lightbox-image" onClick={(ev) => ev.stopPropagation()} />
+          <button className="lightbox-close" onClick={() => setLightboxUrl(null)}>
+            ×
+          </button>
         </div>
       )}
     </div>

@@ -66,6 +66,10 @@ export interface EventRow {
   event_date: string;
   event_time: string | null;
   location: string | null;
+  // Path within the "notices" storage bucket (reused rather than a
+  // dedicated bucket) — e.g. "events/<id>/poster.jpg". Null if no poster
+  // has been uploaded for this event.
+  poster_path: string | null;
   created_by: string | null;
   created_at: string;
 }
