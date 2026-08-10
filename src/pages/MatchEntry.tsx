@@ -177,7 +177,7 @@ export default function MatchEntry() {
         const a2 = byId(teamAP2)?.display_name ?? "?";
         const b1 = byId(teamBP1)?.display_name ?? "?";
         const b2 = byId(teamBP2)?.display_name ?? "?";
-        setBanner(`Saved — ${a1} & ${a2} ${teamAScore}–${teamBScore} ${b1} & ${b2}`);
+        setBanner(`Match confirmed — ${a1} & ${a2} ${teamAScore}–${teamBScore} ${b1} & ${b2}`);
         setTeamAScore("");
         setTeamBScore("");
         setSubmitting(false);
@@ -197,7 +197,7 @@ export default function MatchEntry() {
     const a2 = byId(teamAP2)?.display_name ?? "?";
     const b1 = byId(teamBP1)?.display_name ?? "?";
     const b2 = byId(teamBP2)?.display_name ?? "?";
-    setBanner(`Saved — ${a1} & ${a2} ${teamAScore}–${teamBScore} ${b1} & ${b2}`);
+    setBanner(`Match confirmed — ${a1} & ${a2} ${teamAScore}–${teamBScore} ${b1} & ${b2}`);
 
     // Keep the same four players selected — only the scores clear — so
     // entering the next game between the same group is a two-field job.
@@ -234,7 +234,7 @@ export default function MatchEntry() {
       </div>
 
       {banner && (
-        <div className="predicted" style={{ background: "var(--navy-900)" }}>
+        <div className="predicted" style={{ background: "var(--orange-500)" }}>
           {banner}
           <br />
           <span
