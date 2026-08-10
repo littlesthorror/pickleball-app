@@ -104,7 +104,7 @@ export default function GameHistory() {
     const teamB = teamLabel(m.team_b_player_1, m.team_b_player_2);
     if (
       !confirm(
-        `Delete this game (${teamA} ${m.team_a_score}–${m.team_b_score} ${teamB})? This can't be undone. If it's confirmed, everyone's rating will be recalculated from the remaining match history afterward.`
+        `Delete this game (${teamA} ${m.team_a_score}–${m.team_b_score} ${teamB})? The match record itself is gone permanently — this can't be undone. If it's confirmed, every player's rating gets recalculated from the remaining match history afterward, which can shift ratings for people who never played in this game, not just these four.`
       )
     ) {
       return;
