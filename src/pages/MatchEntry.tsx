@@ -161,6 +161,31 @@ export default function MatchEntry() {
     });
 
     if (confirmError) {
+      // The request to reach the rating function can fail client-side
+      // (e.g. a dropped connection) even when the function itself goes on
+      // to finish successfully a moment later. Rather than trust the
+      // failed request alone, check the match's actual status before
+      // showing a scary error for something that isn't actually broken.
+      const { data: recheck } = await supabase
+        .from("matches")
+        .select("status")
+        .eq("id", inserted.id)
+        .single();
+
+      if (recheck?.status === "confirmed") {
+        const a1 = byId(teamAP1)?.display_name ?? "?";
+        const a2 = byId(teamAP2)?.display_name ?? "?";
+        const b1 = byId(teamBP1)?.display_name ?? "?";
+        const b2 = byId(teamBP2)?.display_name ?? "?";
+        setBanner(`Saved — ${a1} & ${a2} ${teamAScore}–${teamBScore} ${b1} & ${b2}`);
+        setTeamAScore("");
+        setTeamBScore("");
+        setSubmitting(false);
+        loadPlayers();
+        teamAScoreRef.current?.focus();
+        return;
+      }
+
       setSubmitError(
         `Match saved, but rating calculation failed: ${confirmError.message}. It's logged as pending — check with the admin who set up the app.`
       );
