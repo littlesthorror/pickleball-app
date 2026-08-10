@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { FunctionsHttpError } from "@supabase/supabase-js";
 import { supabase } from "../supabaseClient";
 import Avatar from "../components/Avatar";
 import type { PlayerStatus } from "../types";
@@ -24,6 +25,7 @@ export default function AdminManagement({ currentUserId }: { currentUserId: stri
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [recomputing, setRecomputing] = useState(false);
   const [search, setSearch] = useState("");
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
@@ -175,6 +177,37 @@ export default function AdminManagement({ currentUserId }: { currentUserId: stri
     load();
   }
 
+  // Rebuilds EVERY player's rating from the complete confirmed match
+  // history, replayed from scratch in chronological order — see
+  // supabase/functions/recompute-ratings/replay.ts. Deleting an older
+  // game (from Game history) already triggers this automatically
+  // afterward, so this button is really for general peace of mind: run
+  // it any time to confirm every rating matches what the full match log
+  // actually supports.
+  async function recomputeHistory() {
+    if (
+      !confirm(
+        "Recalculate every player's rating from the complete match history? This rebuilds everyone's rating from scratch based on every confirmed game, in order — useful as a sanity check, but not something you'd normally need to run."
+      )
+    ) {
+      return;
+    }
+    setRecomputing(true);
+    const { error } = await supabase.functions.invoke("recompute-ratings", { body: {} });
+    setRecomputing(false);
+    if (error) {
+      if (error instanceof FunctionsHttpError) {
+        const body = await error.context.json().catch(() => null);
+        alert(body?.error ?? "Couldn't recompute ratings.");
+      } else {
+        alert("Couldn't reach the server to recompute ratings — check your connection and try again.");
+      }
+      return;
+    }
+    alert("Done — every player's rating has been recalculated from the full match history.");
+    load();
+  }
+
   async function deletePlayer(player: PlayerStatus) {
     if (!confirm(`Permanently delete ${player.display_name}'s account? This can't be undone.`)) {
       return;
@@ -248,6 +281,22 @@ export default function AdminManagement({ currentUserId }: { currentUserId: stri
             Saved — the previous code no longer works.
           </p>
         )}
+      </div>
+
+      <div className="card">
+        <h2 style={{ marginTop: 0 }}>Ratings</h2>
+        <p className="stat-meta" style={{ marginTop: 0 }}>
+          Deleting an older game (in Game history) automatically recalculates everyone's rating afterward, so
+          this shouldn't normally be needed. It's here as a sanity check — recalculates every player's rating
+          from scratch, from the complete confirmed match history, in order.
+        </p>
+        <button
+          disabled={recomputing}
+          onClick={recomputeHistory}
+          style={{ background: "transparent", color: "var(--navy-500)", border: "1px solid var(--border)" }}
+        >
+          {recomputing ? "Recomputing…" : "Recompute history"}
+        </button>
       </div>
 
       <div className="card">

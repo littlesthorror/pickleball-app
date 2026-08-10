@@ -92,17 +92,19 @@ export default function GameHistory() {
 
   useEffect(load, [page]);
 
-  // Only ever offered for a mis-entered game. The edge function is the
-  // real gatekeeper — it refuses (and explains why) if any of the four
-  // players have played a match since this one, since rolling their
-  // rating back safely is only possible while this is still their most
-  // recent confirmed game. See supabase/functions/delete-match.
+  // Only ever offered for a mis-entered game. Any confirmed game can be
+  // deleted, not just the most recent one for its four players — if it's
+  // an older game, the edge function automatically recalculates every
+  // player's rating from the complete remaining match history afterward,
+  // so nothing downstream is left stale. See supabase/functions/delete-match
+  // and recompute-ratings/replay.ts. That recompute is the reason an
+  // older delete can take noticeably longer than a recent one.
   async function deleteMatch(m: MatchRow) {
     const teamA = teamLabel(m.team_a_player_1, m.team_a_player_2);
     const teamB = teamLabel(m.team_b_player_1, m.team_b_player_2);
     if (
       !confirm(
-        `Delete this game (${teamA} ${m.team_a_score}–${m.team_b_score} ${teamB})? This can't be undone.`
+        `Delete this game (${teamA} ${m.team_a_score}–${m.team_b_score} ${teamB})? This can't be undone. If it's confirmed, everyone's rating will be recalculated from the remaining match history afterward.`
       )
     ) {
       return;
@@ -117,13 +119,13 @@ export default function GameHistory() {
       // supabase-js's default error.message here is a generic wrapper
       // ("Edge Function returned a non-2xx status code" / "Failed to
       // send a request to the Edge Function") — it does NOT include the
-      // actual reason the function sent back (e.g. "so-and-so played
-      // again after this game"). When the function did respond (just
-      // with an error status, like the 409 refusal), that real reason is
-      // in the response body, reachable via error.context — so unwrap it
-      // and show that instead. If the request never got a response at
-      // all (network hiccup, timeout), there's no body to read and we
-      // fall back to a plain, honest message.
+      // actual reason the function sent back (e.g. a recompute failure
+      // after the game was already deleted). When the function did
+      // respond (just with an error status), that real reason is in the
+      // response body, reachable via error.context — so unwrap it and
+      // show that instead. If the request never got a response at all
+      // (network hiccup, timeout), there's no body to read and we fall
+      // back to a plain, honest message.
       if (error instanceof FunctionsHttpError) {
         const body = await error.context.json().catch(() => null);
         alert(body?.error ?? "Couldn't delete this game.");
