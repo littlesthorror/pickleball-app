@@ -64,6 +64,10 @@ export function computeBadges(
   // Longest winning streak, purely as a personal-best — shown even if it's
   // short (a 2-game streak is still a nice thing to see for a newer
   // player), never framed as a ranking against anyone else.
+  //
+  // Tiered like the games-played milestones: every threshold reached gets
+  // its own badge, with the fire emoji count going up per tier (added
+  // 2026-08-10 at Ben's request).
   let longestStreak = 0;
   let current = 0;
   for (const h of history) {
@@ -74,39 +78,47 @@ export function computeBadges(
       current = 0;
     }
   }
-  if (longestStreak >= 3) {
-    badges.push({
-      id: "streak",
-      emoji: "🔥",
-      label: `${longestStreak}-game winning streak`,
-      description: "Your best run so far.",
-    });
-  }
-
-  // "Big win" — the single largest rating gain from one match, a decent
-  // proxy for an upset without needing to store/compare opponent ratings
-  // directly. Only shown once, for the standout result.
-  const wins = history.filter((h) => h.won && h.rating_delta > 0);
-  if (wins.length > 0) {
-    const biggest = wins.reduce((best, h) => (h.rating_delta > best.rating_delta ? h : best));
-    if (biggest.rating_delta >= 12) {
+  const streakMilestones = [
+    { games: 3, emoji: "🔥" },
+    { games: 6, emoji: "🔥🔥" },
+    { games: 10, emoji: "🔥🔥🔥" },
+  ];
+  for (const milestone of streakMilestones) {
+    if (longestStreak >= milestone.games) {
       badges.push({
-        id: "big-win",
-        emoji: "⚡",
-        label: "Standout win",
-        description: `Your biggest rating jump from a single win, vs ${biggest.opponent_names}.`,
+        id: `streak-${milestone.games}`,
+        emoji: milestone.emoji,
+        label: `${milestone.games}-game winning streak`,
+        description: `Reached a ${milestone.games}-game winning streak — your best run so far is ${longestStreak}.`,
       });
     }
   }
 
-  // 20+ points scored in a single game.
-  const bigScore = history.find((h) => h.own_score >= 20);
-  if (bigScore) {
+  // "Standout win" — beating the other team by 15 or more clear points in
+  // a single game. Changed 2026-08-10 from a rating-jump-based definition
+  // to this simpler, more tangible margin-of-victory one at Ben's request.
+  // Only shown once, for the biggest margin.
+  const bigWins = history.filter((h) => h.won && h.own_score - h.opponent_score >= 15);
+  if (bigWins.length > 0) {
+    const biggest = bigWins.reduce((best, h) =>
+      h.own_score - h.opponent_score > best.own_score - best.opponent_score ? h : best
+    );
     badges.push({
-      id: "big-score",
+      id: "big-win",
+      emoji: "⚡",
+      label: "Standout win",
+      description: `Beat ${biggest.opponent_names} ${biggest.own_score}–${biggest.opponent_score} — a 15+ point win.`,
+    });
+  }
+
+  // "Twenty Pointer" — 20 or more points scored in a single game.
+  const twentyPointer = history.find((h) => h.own_score >= 20);
+  if (twentyPointer) {
+    badges.push({
+      id: "twenty-pointer",
       emoji: "🎯",
-      label: "20+ points in a game",
-      description: `Scored ${bigScore.own_score} points in a single game.`,
+      label: "Twenty Pointer",
+      description: `Scored ${twentyPointer.own_score} points in a single game.`,
     });
   }
 
