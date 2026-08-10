@@ -39,7 +39,7 @@ export function computeBadges(
       badges.push({
         id: "one-year",
         emoji: "🎊",
-        label: "1 year at the club",
+        label: "1 year using Sideline",
         description: `Joined ${joined.toLocaleDateString(undefined, {
           month: "long",
           day: "numeric",
