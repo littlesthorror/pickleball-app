@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
+import { FunctionsHttpError } from "@supabase/supabase-js";
 import { supabase } from "../supabaseClient";
 import type { MatchStatus } from "../types";
 
@@ -111,8 +112,24 @@ export default function GameHistory() {
       body: { match_id: m.id },
     });
     setDeletingId(null);
+
     if (error) {
-      alert(`Couldn't delete: ${error.message}`);
+      // supabase-js's default error.message here is a generic wrapper
+      // ("Edge Function returned a non-2xx status code" / "Failed to
+      // send a request to the Edge Function") — it does NOT include the
+      // actual reason the function sent back (e.g. "so-and-so played
+      // again after this game"). When the function did respond (just
+      // with an error status, like the 409 refusal), that real reason is
+      // in the response body, reachable via error.context — so unwrap it
+      // and show that instead. If the request never got a response at
+      // all (network hiccup, timeout), there's no body to read and we
+      // fall back to a plain, honest message.
+      if (error instanceof FunctionsHttpError) {
+        const body = await error.context.json().catch(() => null);
+        alert(body?.error ?? "Couldn't delete this game.");
+      } else {
+        alert("Couldn't reach the server to delete this game — check your connection and try again.");
+      }
       return;
     }
     if (data?.error) {
