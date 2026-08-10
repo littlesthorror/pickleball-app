@@ -34,7 +34,7 @@ export default function Login() {
         onError={(e) => (e.currentTarget.style.display = "none")}
         style={{ height: 90, width: 90, objectFit: "contain", borderRadius: 16, marginBottom: 16 }}
       />
-      <h1 style={{ marginBottom: 2 }}>Sideline</h1>
+      <h1 style={{ marginBottom: 2, fontSize: "1.95rem" }}>Sideline</h1>
       <p
         style={{
           color: "#ff7a1a",
