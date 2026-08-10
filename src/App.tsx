@@ -4,6 +4,7 @@ import { supabase } from "./supabaseClient";
 import MatchEntry from "./pages/MatchEntry";
 import Login from "./pages/Login";
 import AdminManagement from "./pages/AdminManagement";
+import GameHistory from "./pages/GameHistory";
 import Dashboard from "./pages/Dashboard";
 import Leaderboard from "./pages/Leaderboard";
 import Profile from "./pages/Profile";
@@ -25,6 +26,7 @@ type Tab =
   | "faq"
   | "match-entry"
   | "manage-admins"
+  | "game-history"
   | "profile";
 
 export default function App() {
@@ -107,20 +109,9 @@ export default function App() {
       {session ? (
         <>
           <div className="app-header">
-            <div
-              className="brand"
-              role="button"
-              tabIndex={0}
-              style={{ cursor: "pointer" }}
-              onClick={() => changeTab("dashboard")}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") changeTab("dashboard");
-              }}
-            >
+            <div className="brand">
               {/* Drop your club logo file at public/logo.png and it'll show
-                  up here automatically — see README for where to add it.
-                  Clicking the logo/name jumps back to the dashboard, same
-                  as most apps' "tap the logo to go home" convention. */}
+                  up here automatically — see README for where to add it. */}
               <img src="/logo.png" alt="" onError={(e) => (e.currentTarget.style.display = "none")} />
               <span className="brand-name">Sideline</span>
             </div>
@@ -188,6 +179,9 @@ export default function App() {
                   <button disabled={tab === "manage-admins"} onClick={() => changeTab("manage-admins")}>
                     Admins
                   </button>
+                  <button disabled={tab === "game-history"} onClick={() => changeTab("game-history")}>
+                    Game history
+                  </button>
                 </div>
               )}
 
@@ -213,6 +207,7 @@ export default function App() {
                   {tab === "manage-admins" && effectiveIsAdmin && (
                     <AdminManagement currentUserId={session.user.id} />
                   )}
+                  {tab === "game-history" && effectiveIsAdmin && <GameHistory />}
                   {tab === "profile" && (
                     <Profile
                       player={player}
