@@ -107,9 +107,20 @@ export default function App() {
       {session ? (
         <>
           <div className="app-header">
-            <div className="brand">
+            <div
+              className="brand"
+              role="button"
+              tabIndex={0}
+              style={{ cursor: "pointer" }}
+              onClick={() => changeTab("dashboard")}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") changeTab("dashboard");
+              }}
+            >
               {/* Drop your club logo file at public/logo.png and it'll show
-                  up here automatically — see README for where to add it. */}
+                  up here automatically — see README for where to add it.
+                  Clicking the logo/name jumps back to the dashboard, same
+                  as most apps' "tap the logo to go home" convention. */}
               <img src="/logo.png" alt="" onError={(e) => (e.currentTarget.style.display = "none")} />
               <span className="brand-name">Sideline</span>
             </div>
