@@ -9,8 +9,8 @@ export default defineConfig({
       registerType: "autoUpdate",
       includeAssets: ["logo.png"],
       manifest: {
-        name: "GhostShot — Huntingdon Pickleball",
-        short_name: "GhostShot",
+        name: "Sideline — Huntingdon Pickleball",
+        short_name: "Sideline",
         description: "Club match ratings and leaderboard for Huntingdon Pickleball.",
         theme_color: "#0a1a33",
         background_color: "#f6f7fb",

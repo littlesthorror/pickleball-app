@@ -46,12 +46,15 @@ export default function MatchEntry() {
 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  // Short-lived confirmation shown above the form after a save — the form
-  // itself stays in place (players kept, only scores cleared) so several
-  // matches from one session can be entered back-to-back without any
-  // full-page reload or navigating away and back.
+  // Inline confirmation banner instead of a full-screen "Match submitted"
+  // takeover — the whole point is to make entering several matches in a
+  // row (same 4 players, different scores) fast, so replacing the entire
+  // screen after every single game was the opposite of that.
   const [banner, setBanner] = useState<string | null>(null);
 
+  // Jumps focus straight to the Team A score box after a submit, since
+  // that's the next thing an admin types when entering another game
+  // between the same four players.
   const teamAScoreRef = useRef<HTMLInputElement>(null);
 
   function loadPlayers() {
@@ -66,12 +69,17 @@ export default function MatchEntry() {
         } else {
           setPlayers((data ?? []) as PlayerStatus[]);
         }
-        setLoading(false);
       });
   }
 
   useEffect(() => {
-    loadPlayers();
+    let cancelled = false;
+    loadPlayers().then(() => {
+      if (!cancelled) setLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const selectedIds = [teamAP1, teamAP2, teamBP1, teamBP2].filter(Boolean);
@@ -84,9 +92,10 @@ export default function MatchEntry() {
     Number(teamBScore) >= 0;
   const canSubmit = allFourPicked && noDuplicates && scoresValid && !submitting;
 
+  const byId = (id: string) => players.find((p) => p.id === id);
+
   const prediction = useMemo(() => {
     if (!allFourPicked || !noDuplicates) return null;
-    const byId = (id: string) => players.find((p) => p.id === id);
     const a1 = byId(teamAP1);
     const a2 = byId(teamAP2);
     const b1 = byId(teamBP1);
@@ -97,6 +106,7 @@ export default function MatchEntry() {
     return {
       teamAProbability: predictedWinProbability(teamA, teamB),
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [teamAP1, teamAP2, teamBP1, teamBP2, players, allFourPicked, noDuplicates]);
 
   function clearPlayers() {
@@ -108,6 +118,7 @@ export default function MatchEntry() {
 
   async function handleSubmit() {
     setSubmitError(null);
+    setBanner(null);
     setSubmitting(true);
 
     const { data: userData } = await supabase.auth.getUser();
@@ -157,24 +168,22 @@ export default function MatchEntry() {
       return;
     }
 
-    const byId = (id: string) => players.find((p) => p.id === id);
-    const a1 = byId(teamAP1);
-    const a2 = byId(teamAP2);
-    const b1 = byId(teamBP1);
-    const b2 = byId(teamBP2);
-    setBanner(
-      `Saved — ${a1?.display_name} & ${a2?.display_name} ${Number(teamAScore)}–${Number(teamBScore)} ${b1?.display_name} & ${b2?.display_name}`
-    );
+    const a1 = byId(teamAP1)?.display_name ?? "?";
+    const a2 = byId(teamAP2)?.display_name ?? "?";
+    const b1 = byId(teamBP1)?.display_name ?? "?";
+    const b2 = byId(teamBP2)?.display_name ?? "?";
+    setBanner(`Saved — ${a1} & ${a2} ${teamAScore}–${teamBScore} ${b1} & ${b2}`);
 
-    // Keep the same four players selected (a session is usually the same
-    // group playing several games) and only clear the scores, ready for
-    // the next match straight away. Ratings just changed, so refresh them
-    // in the background — otherwise the win-probability prediction for the
-    // next match in this session would be based on stale numbers.
+    // Keep the same four players selected — only the scores clear — so
+    // entering the next game between the same group is a two-field job.
     setTeamAScore("");
     setTeamBScore("");
     setSubmitting(false);
+
+    // Refresh ratings in the background so the win-probability prediction
+    // for the next game (if it's the same players again) is accurate.
     loadPlayers();
+
     teamAScoreRef.current?.focus();
   }
 
@@ -190,33 +199,27 @@ export default function MatchEntry() {
 
   return (
     <div>
-      <h1>Enter a match</h1>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <h1 style={{ marginBottom: 0 }}>Enter a match</h1>
+        {allFourPicked && (
+          <span className="link-action" role="button" tabIndex={0} onClick={clearPlayers}>
+            Clear players
+          </span>
+        )}
+      </div>
 
       {banner && (
-        <div
-          className="stat-meta"
-          style={{
-            marginTop: 12,
-            padding: "10px 14px",
-            background: "var(--orange-100)",
-            color: "var(--orange-600)",
-            borderRadius: "var(--radius-md)",
-            fontWeight: 600,
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: 8,
-          }}
-        >
-          <span>{banner}</span>
+        <div className="predicted" style={{ background: "var(--navy-900)" }}>
+          {banner}
+          <br />
           <span
             className="link-action"
             role="button"
             tabIndex={0}
+            style={{ color: "rgba(255,255,255,0.75)" }}
             onClick={() => setBanner(null)}
-            style={{ color: "var(--orange-600)", flexShrink: 0 }}
           >
-            Dismiss
+            dismiss
           </span>
         </div>
       )}
@@ -252,18 +255,6 @@ export default function MatchEntry() {
         onChange={setTeamBP2}
         disabledIds={selectedIds.filter((id) => id !== teamBP2)}
       />
-
-      {selectedIds.length > 0 && (
-        <span
-          className="link-action"
-          role="button"
-          tabIndex={0}
-          onClick={clearPlayers}
-          style={{ display: "inline-block", marginTop: 10, fontSize: "0.85rem" }}
-        >
-          Clear players
-        </span>
-      )}
 
       <div className="score-row" style={{ marginTop: 24 }}>
         <div>

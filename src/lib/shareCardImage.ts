@@ -64,7 +64,7 @@ export async function renderShareCardImage(player: PlayerStatus, badges: Badge[]
   ctx.fillStyle = "rgba(255,255,255,0.6)";
   ctx.font = "600 20px -apple-system, system-ui, sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText("GHOSTSHOT · HUNTINGDON PICKLEBALL", W / 2, 90);
+  ctx.fillText("SIDELINE · HUNTINGDON PICKLEBALL", W / 2, 90);
 
   const avatarSize = 200;
   const avatarY = 140;

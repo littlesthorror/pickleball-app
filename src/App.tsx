@@ -111,7 +111,7 @@ export default function App() {
               {/* Drop your club logo file at public/logo.png and it'll show
                   up here automatically — see README for where to add it. */}
               <img src="/logo.png" alt="" onError={(e) => (e.currentTarget.style.display = "none")} />
-              <span className="brand-name">GhostShot</span>
+              <span className="brand-name">Sideline</span>
             </div>
             {player && (
               <div className="account">
