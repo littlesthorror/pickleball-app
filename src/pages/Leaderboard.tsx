@@ -25,7 +25,7 @@ interface MonthlyLeader {
 function MonthlyStatCard({
   title,
   monthLabel,
-  leader,
+  leaders,
   rowsById,
   formatValue,
   onSelectPlayer,
@@ -33,29 +33,36 @@ function MonthlyStatCard({
 }: {
   title: string;
   monthLabel: string;
-  leader: MonthlyLeader | null;
+  leaders: MonthlyLeader[];
   rowsById: Map<string, LeaderboardRow>;
   formatValue: (value: number) => string;
   onSelectPlayer: (id: string, name: string) => void;
   emptyMessage: string;
 }) {
-  const player = leader ? rowsById.get(leader.playerId) : undefined;
+  const ranked = leaders
+    .map((l) => ({ ...l, player: rowsById.get(l.playerId) }))
+    .filter((l): l is MonthlyLeader & { player: LeaderboardRow } => !!l.player);
+
   return (
     <div className="card">
       <h2 style={{ marginBottom: 0 }}>{title}</h2>
       <p className="stat-meta" style={{ marginBottom: 12 }}>
         {monthLabel}
       </p>
-      {leader && player ? (
-        <div
-          className="leaderboard-row"
-          style={{ cursor: "pointer" }}
-          onClick={() => onSelectPlayer(player.id, player.display_name)}
-        >
-          <Avatar name={player.display_name} url={player.avatar_url} size={28} />
-          <span className="name">{player.display_name}</span>
-          <span className="rating">{formatValue(leader.value)}</span>
-        </div>
+      {ranked.length > 0 ? (
+        ranked.map((entry, i) => (
+          <div
+            className="leaderboard-row"
+            key={entry.playerId}
+            style={{ cursor: "pointer" }}
+            onClick={() => onSelectPlayer(entry.player.id, entry.player.display_name)}
+          >
+            <span className="rank top3">{i + 1}</span>
+            <Avatar name={entry.player.display_name} url={entry.player.avatar_url} size={28} />
+            <span className="name">{entry.player.display_name}</span>
+            <span className="rating">{formatValue(entry.value)}</span>
+          </div>
+        ))
       ) : (
         <p className="stat-meta">{emptyMessage}</p>
       )}
@@ -146,7 +153,9 @@ export default function Leaderboard({
   // leaderboard) are eligible to appear in these blocks.
   const rowsById = useMemo(() => new Map(rows.map((r) => [r.id, r])), [rows]);
 
-  const { mostGames, mostWins, highestWinPct } = useMemo(() => {
+  // Top 3 for each stat, ties broken by whoever appears first in the
+  // query results — not worth a fancier tiebreak for a monthly snapshot.
+  const { mostGamesTop3, mostWinsTop3, highestWinPctTop3 } = useMemo(() => {
     const stats = new Map<string, { games: number; wins: number }>();
     for (const h of monthlyHistory) {
       if (!rowsById.has(h.player_id)) continue;
@@ -156,20 +165,30 @@ export default function Leaderboard({
       stats.set(h.player_id, entry);
     }
 
-    let mostGames: MonthlyLeader | null = null;
-    let mostWins: MonthlyLeader | null = null;
-    let highestWinPct: MonthlyLeader | null = null;
+    const entries = Array.from(stats.entries()).map(([playerId, { games, wins }]) => ({
+      playerId,
+      games,
+      wins,
+      winPct: games > 0 ? (wins / games) * 100 : 0,
+    }));
 
-    for (const [playerId, { games, wins }] of stats) {
-      if (!mostGames || games > mostGames.value) mostGames = { playerId, value: games };
-      if (!mostWins || wins > mostWins.value) mostWins = { playerId, value: wins };
-      if (games >= MIN_GAMES_FOR_WIN_PCT) {
-        const pct = (wins / games) * 100;
-        if (!highestWinPct || pct > highestWinPct.value) highestWinPct = { playerId, value: pct };
-      }
-    }
+    const mostGamesTop3: MonthlyLeader[] = [...entries]
+      .sort((a, b) => b.games - a.games)
+      .slice(0, 3)
+      .map((e) => ({ playerId: e.playerId, value: e.games }));
 
-    return { mostGames, mostWins, highestWinPct };
+    const mostWinsTop3: MonthlyLeader[] = [...entries]
+      .sort((a, b) => b.wins - a.wins)
+      .slice(0, 3)
+      .map((e) => ({ playerId: e.playerId, value: e.wins }));
+
+    const highestWinPctTop3: MonthlyLeader[] = entries
+      .filter((e) => e.games >= MIN_GAMES_FOR_WIN_PCT)
+      .sort((a, b) => b.winPct - a.winPct)
+      .slice(0, 3)
+      .map((e) => ({ playerId: e.playerId, value: e.winPct }));
+
+    return { mostGamesTop3, mostWinsTop3, highestWinPctTop3 };
   }, [monthlyHistory, rowsById]);
 
   if (loading) return <p>Loading leaderboard…</p>;
@@ -246,7 +265,7 @@ export default function Leaderboard({
       <MonthlyStatCard
         title="Most games played"
         monthLabel={monthLabel}
-        leader={mostGames}
+        leaders={mostGamesTop3}
         rowsById={rowsById}
         formatValue={(v) => String(v)}
         onSelectPlayer={onSelectPlayer}
@@ -256,7 +275,7 @@ export default function Leaderboard({
       <MonthlyStatCard
         title="Most wins"
         monthLabel={monthLabel}
-        leader={mostWins}
+        leaders={mostWinsTop3}
         rowsById={rowsById}
         formatValue={(v) => String(v)}
         onSelectPlayer={onSelectPlayer}
@@ -266,7 +285,7 @@ export default function Leaderboard({
       <MonthlyStatCard
         title="Highest win %"
         monthLabel={monthLabel}
-        leader={highestWinPct}
+        leaders={highestWinPctTop3}
         rowsById={rowsById}
         formatValue={(v) => `${Math.round(v)}%`}
         onSelectPlayer={onSelectPlayer}

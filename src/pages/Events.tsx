@@ -51,9 +51,11 @@ const WEEKDAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"];
 // what's coming up without needing to page through the list.
 function MonthCalendar({
   events,
+  selectedDate,
   onSelectDate,
 }: {
   events: EventRow[];
+  selectedDate: string | null;
   onSelectDate: (dateStr: string) => void;
 }) {
   const [viewDate, setViewDate] = useState(() => {
@@ -116,6 +118,7 @@ function MonthCalendar({
           const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
           const dayEvents = eventsByDate.get(dateStr);
           const isToday = dateStr === todayStr;
+          const isSelected = dateStr === selectedDate;
           return (
             <div
               key={i}
@@ -125,8 +128,12 @@ function MonthCalendar({
                 padding: "8px 0 10px",
                 borderRadius: 8,
                 cursor: dayEvents ? "pointer" : "default",
-                border: isToday ? "1px solid var(--navy-500)" : "1px solid transparent",
-                fontWeight: isToday ? 700 : 400,
+                border: isSelected
+                  ? "1.5px solid var(--orange-600)"
+                  : isToday
+                  ? "1px solid var(--navy-500)"
+                  : "1px solid transparent",
+                fontWeight: isToday || isSelected ? 700 : 400,
               }}
             >
               {day}
@@ -442,10 +449,10 @@ export default function Events({ isAdmin }: { isAdmin: boolean }) {
         </div>
       )}
 
-      <MonthCalendar events={events} onSelectDate={(d) => setSelectedDate(d)} />
+      <MonthCalendar events={events} selectedDate={selectedDate} onSelectDate={(d) => setSelectedDate(d)} />
 
       {selectedDate && (
-        <div className="card" style={{ marginTop: 16 }}>
+        <div className="card" style={{ marginTop: 16, border: "1.5px solid var(--orange-600)" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <h2 style={{ marginBottom: 8 }}>{formatEventDate(selectedDate)}</h2>
             <span
