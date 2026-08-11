@@ -45,7 +45,7 @@ body {
 /* flex-wrap lets the account block (avatar/email/links) drop to its own
    row on narrow screens rather than squashing everything into one line —
    matters whenever the brand name is longer than a short word like
-   "Picklr" (e.g. the current "Sideline" name). */
+   "Picklr" (e.g. the current "GhostShot" test name). */
 .app-header {
   display: flex;
   align-items: center;
@@ -541,6 +541,21 @@ textarea {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   text-align: center;
+  cursor: pointer;
+}
+
+/* Tap/click a badge to see what it's for — the native `title` attribute
+   still gives a desktop hover tooltip for free, but doesn't fire on a
+   phone tap, which is how most people use this. */
+.badge-tile-selected {
+  border-color: var(--orange-500);
+  background: var(--orange-100);
+}
+
+.badge-description {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
 }
 
 .badge-tile-emoji {

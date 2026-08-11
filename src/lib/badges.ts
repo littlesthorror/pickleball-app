@@ -61,6 +61,52 @@ export function computeBadges(
     }
   }
 
+  // "Games won" milestones — added 2026-08-11 at Ben's request. Separate
+  // from the games-played milestones above: this counts only the Ws, not
+  // every confirmed match logged.
+  const gamesWon = history.filter((h) => h.won).length;
+  const winMilestones = [
+    { games: 50, emoji: "🏅" },
+    { games: 100, emoji: "🥇" },
+  ];
+  for (const milestone of winMilestones) {
+    if (gamesWon >= milestone.games) {
+      badges.push({
+        id: `wins-${milestone.games}`,
+        emoji: milestone.emoji,
+        label: `${milestone.games} games won`,
+        description: `Won ${milestone.games}+ confirmed matches.`,
+      });
+    }
+  }
+
+  // "Dream team" — 25+ wins alongside the same partner. Grouped by
+  // teammate name (a 2v2 team, not an individual credit split) — same
+  // approach as the head-to-head record on the dashboard. Only awarded
+  // for whichever partner you've won the most with, so it doesn't fire
+  // separately for every partner who happens to clear 25.
+  const winsByPartner = new Map<string, number>();
+  for (const h of history) {
+    if (h.won) winsByPartner.set(h.teammate_name, (winsByPartner.get(h.teammate_name) ?? 0) + 1);
+  }
+  let bestPartnerWins = 0;
+  let bestPartnerName = "";
+  for (const [name, wins] of winsByPartner) {
+    if (wins > bestPartnerWins) {
+      bestPartnerWins = wins;
+      bestPartnerName = name;
+    }
+  }
+  const PARTNER_WIN_MILESTONE = 25;
+  if (bestPartnerWins >= PARTNER_WIN_MILESTONE) {
+    badges.push({
+      id: "partner-25-wins",
+      emoji: "🤝",
+      label: `${PARTNER_WIN_MILESTONE} wins with a partner`,
+      description: `Won ${bestPartnerWins} games alongside ${bestPartnerName}.`,
+    });
+  }
+
   // Longest winning streak, purely as a personal-best — shown even if it's
   // short (a 2-game streak is still a nice thing to see for a newer
   // player), never framed as a ranking against anyone else.

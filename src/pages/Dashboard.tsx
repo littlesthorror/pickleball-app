@@ -51,6 +51,13 @@ export default function Dashboard({
   const [error, setError] = useState<string | null>(null);
   const [xAxis, setXAxis] = useState<XAxisMode>("games");
   const [showShareCard, setShowShareCard] = useState(false);
+  // The badge grid's tooltip previously relied on the native `title`
+  // attribute, which only shows on desktop hover — silent on a phone,
+  // which is how most people actually use this. Tapping a badge now
+  // toggles it "selected" and shows its description below the grid
+  // instead, which works identically for a tap or a click. Added
+  // 2026-08-11 at Ben's request.
+  const [selectedBadgeId, setSelectedBadgeId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -171,6 +178,28 @@ export default function Dashboard({
     return best;
   }, [history, player]);
 
+  // The partner you've won the most games with — added 2026-08-11 at
+  // Ben's request, shown beneath the rating graph. Same grouping approach
+  // as head-to-head below (a 2v2 team's "teammate" isn't split into
+  // individual credit), but this one's purely complimentary (it's about
+  // who to team up with again, not anyone's record against you), so
+  // unlike head-to-head it isn't restricted to your own profile.
+  const bestPartner = useMemo(() => {
+    const winsByPartner = new Map<string, number>();
+    for (const h of history) {
+      if (h.won) winsByPartner.set(h.teammate_name, (winsByPartner.get(h.teammate_name) ?? 0) + 1);
+    }
+    let name: string | null = null;
+    let wins = 0;
+    for (const [n, w] of winsByPartner) {
+      if (w > wins) {
+        name = n;
+        wins = w;
+      }
+    }
+    return name ? { name, wins } : null;
+  }, [history]);
+
   // Grouped by exact opponent pairing (that's what the data has — a 2v2
   // match's "opponent" is really a pair, and different pairings against the
   // same person are kept separate rather than trying to split credit per
@@ -246,12 +275,24 @@ export default function Dashboard({
           <h2>Badges</h2>
           <div className="badge-grid">
             {badges.map((b) => (
-              <div className="badge-tile" key={b.id} title={b.description}>
+              <div
+                className={`badge-tile${selectedBadgeId === b.id ? " badge-tile-selected" : ""}`}
+                key={b.id}
+                title={b.description}
+                role="button"
+                tabIndex={0}
+                onClick={() => setSelectedBadgeId((id) => (id === b.id ? null : b.id))}
+              >
                 <span className="badge-tile-emoji">{b.emoji}</span>
                 <span className="badge-tile-label">{b.label}</span>
               </div>
             ))}
           </div>
+          {selectedBadgeId && (
+            <p className="stat-meta badge-description" style={{ marginBottom: 0 }}>
+              {badges.find((b) => b.id === selectedBadgeId)?.description}
+            </p>
+          )}
         </div>
       )}
 
@@ -313,6 +354,12 @@ export default function Dashboard({
         <p className="stat-meta" style={{ marginTop: 8 }}>
           Shaded band = rating deviation (confidence). Narrows as your rating becomes more established.
         </p>
+        {bestPartner && (
+          <p className="stat-meta" style={{ marginTop: 8, marginBottom: 0 }}>
+            Best partner: <strong style={{ color: "var(--navy-900)" }}>{bestPartner.name}</strong> — {bestPartner.wins}{" "}
+            win{bestPartner.wins === 1 ? "" : "s"} together
+          </p>
+        )}
       </div>
 
       <div className="card">
