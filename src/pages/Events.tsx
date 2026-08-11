@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ChangeEvent } from "react";
 import { supabase } from "../supabaseClient";
 import type { EventRow } from "../types";
@@ -39,6 +39,119 @@ function posterUrl(path: string) {
   return data.publicUrl;
 }
 
+function toDateStr(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+const WEEKDAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"];
+
+// Global month-view calendar — shows every event on the club calendar (not
+// just the "still visible" ones the lists below show) with a dot on any
+// day that has something on, so people can browse forward/back and see
+// what's coming up without needing to page through the list.
+function MonthCalendar({
+  events,
+  onSelectDate,
+}: {
+  events: EventRow[];
+  onSelectDate: (dateStr: string) => void;
+}) {
+  const [viewDate, setViewDate] = useState(() => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1);
+  });
+
+  const eventsByDate = useMemo(() => {
+    const map = new Map<string, EventRow[]>();
+    for (const e of events) {
+      const list = map.get(e.event_date) ?? [];
+      list.push(e);
+      map.set(e.event_date, list);
+    }
+    return map;
+  }, [events]);
+
+  const year = viewDate.getFullYear();
+  const month = viewDate.getMonth();
+  const firstOfMonth = new Date(year, month, 1);
+  const startWeekday = firstOfMonth.getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const todayStr = toDateStr(new Date());
+
+  const cells: (number | null)[] = [];
+  for (let i = 0; i < startWeekday; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+
+  return (
+    <div className="card" style={{ marginTop: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+        <span
+          className="link-action"
+          role="button"
+          tabIndex={0}
+          onClick={() => setViewDate(new Date(year, month - 1, 1))}
+          style={{ fontSize: "1.2rem", padding: "0 8px" }}
+        >
+          ‹
+        </span>
+        <h2 style={{ marginBottom: 0 }}>{viewDate.toLocaleDateString(undefined, { month: "long", year: "numeric" })}</h2>
+        <span
+          className="link-action"
+          role="button"
+          tabIndex={0}
+          onClick={() => setViewDate(new Date(year, month + 1, 1))}
+          style={{ fontSize: "1.2rem", padding: "0 8px" }}
+        >
+          ›
+        </span>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2, textAlign: "center" }}>
+        {WEEKDAY_LABELS.map((label, i) => (
+          <div key={i} className="stat-meta" style={{ fontWeight: 700, padding: "4px 0" }}>
+            {label}
+          </div>
+        ))}
+        {cells.map((day, i) => {
+          if (day === null) return <div key={i} />;
+          const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+          const dayEvents = eventsByDate.get(dateStr);
+          const isToday = dateStr === todayStr;
+          return (
+            <div
+              key={i}
+              onClick={() => dayEvents && onSelectDate(dateStr)}
+              style={{
+                position: "relative",
+                padding: "8px 0 10px",
+                borderRadius: 8,
+                cursor: dayEvents ? "pointer" : "default",
+                border: isToday ? "1px solid var(--navy-500)" : "1px solid transparent",
+                fontWeight: isToday ? 700 : 400,
+              }}
+            >
+              {day}
+              {dayEvents && (
+                <span
+                  style={{
+                    position: "absolute",
+                    bottom: 2,
+                    left: "50%",
+                    transform: "translateX(-50%)",
+                    width: 6,
+                    height: 6,
+                    borderRadius: "50%",
+                    background: "var(--orange-600)",
+                  }}
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // How many events to show per section before a "Show more" button appears
 // — keeps the page from growing indefinitely as events pile up over time.
 const PAGE_SIZE = 6;
@@ -67,6 +180,7 @@ export default function Events({ isAdmin }: { isAdmin: boolean }) {
   const [saveError, setSaveError] = useState<string | null>(null);
 
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
   // Upcoming and Past are paginated separately, since they're really two
   // different lists shown in one place.
@@ -325,6 +439,59 @@ export default function Events({ isAdmin }: { isAdmin: boolean }) {
           <button disabled={saving || !title.trim() || !eventDate} onClick={handleSave}>
             {saving ? "Saving…" : editingId ? "Save changes" : "Create event"}
           </button>
+        </div>
+      )}
+
+      <MonthCalendar events={events} onSelectDate={(d) => setSelectedDate(d)} />
+
+      {selectedDate && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <h2 style={{ marginBottom: 8 }}>{formatEventDate(selectedDate)}</h2>
+            <span
+              className="link-action"
+              role="button"
+              tabIndex={0}
+              onClick={() => setSelectedDate(null)}
+              style={{ fontSize: "0.78rem" }}
+            >
+              Close
+            </span>
+          </div>
+          {events
+            .filter((e) => e.event_date === selectedDate)
+            .map((e) => (
+              <div className="match-row" key={e.id} style={{ alignItems: "flex-start" }}>
+                {e.poster_path && (
+                  <img
+                    src={posterUrl(e.poster_path)}
+                    alt=""
+                    onClick={() => setLightboxUrl(posterUrl(e.poster_path!))}
+                    style={{
+                      width: 48,
+                      height: 48,
+                      objectFit: "cover",
+                      borderRadius: 8,
+                      marginRight: 12,
+                      cursor: "zoom-in",
+                      flexShrink: 0,
+                    }}
+                  />
+                )}
+                <div>
+                  <div className="opponent">{e.title}</div>
+                  <div className="meta">
+                    {formatEventTime(e.event_time) ? formatEventTime(e.event_time) : "All day"}
+                    {e.location ? ` · ${e.location}` : ""}
+                  </div>
+                  {e.description && (
+                    <div className="meta" style={{ marginTop: 4 }}>
+                      {e.description}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
         </div>
       )}
 

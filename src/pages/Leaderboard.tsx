@@ -10,6 +10,59 @@ type SortMode = "rating" | "improved";
 // only renders a page at a time with "show more" beneath it.
 const PAGE_SIZE = 20;
 
+// A win-percentage "winner" with only 1-2 games played this month isn't a
+// meaningful comparison against someone who's played a dozen — this is
+// the minimum games this month before a player is eligible for the
+// Highest win % block. Doesn't apply to the other two blocks, since
+// those are raw counts (no fluke risk from a tiny sample).
+const MIN_GAMES_FOR_WIN_PCT = 3;
+
+interface MonthlyLeader {
+  playerId: string;
+  value: number;
+}
+
+function MonthlyStatCard({
+  title,
+  monthLabel,
+  leader,
+  rowsById,
+  formatValue,
+  onSelectPlayer,
+  emptyMessage,
+}: {
+  title: string;
+  monthLabel: string;
+  leader: MonthlyLeader | null;
+  rowsById: Map<string, LeaderboardRow>;
+  formatValue: (value: number) => string;
+  onSelectPlayer: (id: string, name: string) => void;
+  emptyMessage: string;
+}) {
+  const player = leader ? rowsById.get(leader.playerId) : undefined;
+  return (
+    <div className="card">
+      <h2 style={{ marginBottom: 0 }}>{title}</h2>
+      <p className="stat-meta" style={{ marginBottom: 12 }}>
+        {monthLabel}
+      </p>
+      {leader && player ? (
+        <div
+          className="leaderboard-row"
+          style={{ cursor: "pointer" }}
+          onClick={() => onSelectPlayer(player.id, player.display_name)}
+        >
+          <Avatar name={player.display_name} url={player.avatar_url} size={28} />
+          <span className="name">{player.display_name}</span>
+          <span className="rating">{formatValue(leader.value)}</span>
+        </div>
+      ) : (
+        <p className="stat-meta">{emptyMessage}</p>
+      )}
+    </div>
+  );
+}
+
 function DeltaBadge({ value }: { value: number | null }) {
   if (value === null) return <span className="delta-neutral">new</span>;
   const rounded = Math.round(value);
@@ -34,6 +87,7 @@ export default function Leaderboard({
   const [search, setSearch] = useState("");
   const [visibleEstablished, setVisibleEstablished] = useState(PAGE_SIZE);
   const [visibleProvisional, setVisibleProvisional] = useState(PAGE_SIZE);
+  const [monthlyHistory, setMonthlyHistory] = useState<{ player_id: string; won: boolean }[]>([]);
 
   useEffect(() => {
     supabase
@@ -45,6 +99,18 @@ export default function Leaderboard({
         if (error) setError(error.message);
         else setRows((data ?? []) as LeaderboardRow[]);
         setLoading(false);
+      });
+  }, []);
+
+  useEffect(() => {
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    supabase
+      .from("player_match_history")
+      .select("player_id, won")
+      .gte("played_at", monthStart)
+      .then(({ data, error }) => {
+        if (!error) setMonthlyHistory((data ?? []) as { player_id: string; won: boolean }[]);
       });
   }, []);
 
@@ -70,6 +136,41 @@ export default function Leaderboard({
     setVisibleEstablished(PAGE_SIZE);
     setVisibleProvisional(PAGE_SIZE);
   }, [search, sort]);
+
+  const monthLabel = useMemo(
+    () => new Date().toLocaleDateString(undefined, { month: "long", year: "numeric" }),
+    []
+  );
+
+  // Only players who are active + profile-visible (i.e. already on the
+  // leaderboard) are eligible to appear in these blocks.
+  const rowsById = useMemo(() => new Map(rows.map((r) => [r.id, r])), [rows]);
+
+  const { mostGames, mostWins, highestWinPct } = useMemo(() => {
+    const stats = new Map<string, { games: number; wins: number }>();
+    for (const h of monthlyHistory) {
+      if (!rowsById.has(h.player_id)) continue;
+      const entry = stats.get(h.player_id) ?? { games: 0, wins: 0 };
+      entry.games += 1;
+      if (h.won) entry.wins += 1;
+      stats.set(h.player_id, entry);
+    }
+
+    let mostGames: MonthlyLeader | null = null;
+    let mostWins: MonthlyLeader | null = null;
+    let highestWinPct: MonthlyLeader | null = null;
+
+    for (const [playerId, { games, wins }] of stats) {
+      if (!mostGames || games > mostGames.value) mostGames = { playerId, value: games };
+      if (!mostWins || wins > mostWins.value) mostWins = { playerId, value: wins };
+      if (games >= MIN_GAMES_FOR_WIN_PCT) {
+        const pct = (wins / games) * 100;
+        if (!highestWinPct || pct > highestWinPct.value) highestWinPct = { playerId, value: pct };
+      }
+    }
+
+    return { mostGames, mostWins, highestWinPct };
+  }, [monthlyHistory, rowsById]);
 
   if (loading) return <p>Loading leaderboard…</p>;
   if (error) return <p className="error">{error}</p>;
@@ -141,6 +242,36 @@ export default function Leaderboard({
           </button>
         )}
       </div>
+
+      <MonthlyStatCard
+        title="Most games played"
+        monthLabel={monthLabel}
+        leader={mostGames}
+        rowsById={rowsById}
+        formatValue={(v) => String(v)}
+        onSelectPlayer={onSelectPlayer}
+        emptyMessage="No games played yet this month."
+      />
+
+      <MonthlyStatCard
+        title="Most wins"
+        monthLabel={monthLabel}
+        leader={mostWins}
+        rowsById={rowsById}
+        formatValue={(v) => String(v)}
+        onSelectPlayer={onSelectPlayer}
+        emptyMessage="No games played yet this month."
+      />
+
+      <MonthlyStatCard
+        title="Highest win %"
+        monthLabel={monthLabel}
+        leader={highestWinPct}
+        rowsById={rowsById}
+        formatValue={(v) => `${Math.round(v)}%`}
+        onSelectPlayer={onSelectPlayer}
+        emptyMessage={`Nobody's played ${MIN_GAMES_FOR_WIN_PCT}+ games yet this month.`}
+      />
 
       {provisional.length > 0 && (
         <div className="card">

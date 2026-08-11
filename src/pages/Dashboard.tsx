@@ -222,7 +222,9 @@ export default function Dashboard({
   if (!player) return <p className="error">Couldn't find your player profile.</p>;
 
   const lastDelta = history.length > 0 ? history[history.length - 1].rating_delta : null;
-  const recent = [...history].reverse().slice(0, 8);
+  // Trimmed from 8 to 5 at Ben's request (2026-08-11) — Game history is
+  // there for the full list; this is just a quick recent-form snapshot.
+  const recent = [...history].reverse().slice(0, 5);
   const tier = getTier(player.games_played);
   const nextTier = getNextTier(player.games_played);
 
@@ -269,6 +271,28 @@ export default function Dashboard({
           </button>
         )}
       </div>
+
+      {isOwnProfile && nextEvent && (
+        <div className="card next-event-card" onClick={onViewEvents} style={{ cursor: onViewEvents ? "pointer" : "default" }}>
+          <p className="stat-meta" style={{ marginTop: 0, marginBottom: 4 }}>
+            Next club event
+          </p>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div>
+              <div className="opponent">{nextEvent.title}</div>
+              <div className="meta">
+                {new Date(
+                  Number(nextEvent.event_date.slice(0, 4)),
+                  Number(nextEvent.event_date.slice(5, 7)) - 1,
+                  Number(nextEvent.event_date.slice(8, 10))
+                ).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
+                {nextEvent.location ? ` · ${nextEvent.location}` : ""}
+              </div>
+            </div>
+            <span style={{ color: "var(--navy-500)", fontWeight: 700, fontSize: "1.1rem" }}>→</span>
+          </div>
+        </div>
+      )}
 
       {badges.length > 0 && (
         <div className="card">
@@ -400,28 +424,6 @@ export default function Dashboard({
               </div>
             </div>
           ))}
-        </div>
-      )}
-
-      {isOwnProfile && nextEvent && (
-        <div className="card next-event-card" onClick={onViewEvents} style={{ cursor: onViewEvents ? "pointer" : "default" }}>
-          <p className="stat-meta" style={{ marginTop: 0, marginBottom: 4 }}>
-            Next club event
-          </p>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div>
-              <div className="opponent">{nextEvent.title}</div>
-              <div className="meta">
-                {new Date(
-                  Number(nextEvent.event_date.slice(0, 4)),
-                  Number(nextEvent.event_date.slice(5, 7)) - 1,
-                  Number(nextEvent.event_date.slice(8, 10))
-                ).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
-                {nextEvent.location ? ` · ${nextEvent.location}` : ""}
-              </div>
-            </div>
-            <span style={{ color: "var(--navy-500)", fontWeight: 700, fontSize: "1.1rem" }}>→</span>
-          </div>
         </div>
       )}
 
