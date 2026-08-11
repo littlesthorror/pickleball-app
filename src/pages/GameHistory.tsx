@@ -54,6 +54,9 @@ export default function GameHistory() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState({ teamA: "", teamB: "" });
+  const [savingEdit, setSavingEdit] = useState(false);
 
   function load() {
     setLoading(true);
@@ -141,6 +144,75 @@ export default function GameHistory() {
     load();
   }
 
+  function startEdit(m: MatchRow) {
+    setEditingId(m.id);
+    setEditDraft({ teamA: String(m.team_a_score), teamB: String(m.team_b_score) });
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+  }
+
+  // Only the score is editable here (not the players or date) — that's
+  // all Ben asked for, and it keeps this simple. A pending/disputed
+  // match's new score just gets saved directly, since no rating was ever
+  // calculated from the old one. A confirmed match's original score
+  // already ran through Glicko-2, with everything played after it
+  // computed on top of that result — so like delete-match, this doesn't
+  // try to patch just this one game's rating delta. It saves the
+  // corrected score and then replays the ENTIRE confirmed match history
+  // from scratch (see supabase/functions/edit-match and
+  // recompute-ratings/replay.ts), the same machinery already built and
+  // validated for deleting an older game.
+  async function saveEdit(m: MatchRow) {
+    const teamAScore = Number(editDraft.teamA);
+    const teamBScore = Number(editDraft.teamB);
+    if (
+      !Number.isInteger(teamAScore) ||
+      !Number.isInteger(teamBScore) ||
+      teamAScore < 0 ||
+      teamBScore < 0
+    ) {
+      alert("Scores must be whole numbers, zero or higher.");
+      return;
+    }
+
+    const teamA = teamLabel(m.team_a_player_1, m.team_a_player_2);
+    const teamB = teamLabel(m.team_b_player_1, m.team_b_player_2);
+    if (
+      !confirm(
+        `Change the score to ${teamA} ${teamAScore}–${teamBScore} ${teamB}? If this game is confirmed, every player's rating gets recalculated from the corrected match history afterward, which can shift ratings for people who never played in this game, not just these four.`
+      )
+    ) {
+      return;
+    }
+
+    setSavingEdit(true);
+    const { data, error } = await supabase.functions.invoke("edit-match", {
+      body: { match_id: m.id, team_a_score: teamAScore, team_b_score: teamBScore },
+    });
+    setSavingEdit(false);
+
+    if (error) {
+      // Same reasoning as deleteMatch below: unwrap the real reason from
+      // the response body rather than showing supabase-js's generic
+      // wrapper message.
+      if (error instanceof FunctionsHttpError) {
+        const body = await error.context.json().catch(() => null);
+        alert(body?.error ?? "Couldn't save this score.");
+      } else {
+        alert("Couldn't reach the server to save this score — check your connection and try again.");
+      }
+      return;
+    }
+    if (data?.error) {
+      alert(data.error);
+      return;
+    }
+    setEditingId(null);
+    load();
+  }
+
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
   const from = totalCount === 0 ? 0 : page * PAGE_SIZE + 1;
   const to = Math.min(totalCount, (page + 1) * PAGE_SIZE);
@@ -187,34 +259,94 @@ export default function GameHistory() {
                 </span>
               </div>
 
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                <div style={{ flex: 1, fontWeight: m.team_a_score > m.team_b_score ? 700 : 400 }}>
-                  {teamLabel(m.team_a_player_1, m.team_a_player_2)}
+              {editingId === m.id ? (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                  <div style={{ flex: 1 }}>{teamLabel(m.team_a_player_1, m.team_a_player_2)}</div>
+                  <div style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 6 }}>
+                    <input
+                      type="number"
+                      min={0}
+                      inputMode="numeric"
+                      value={editDraft.teamA}
+                      onChange={(e) => setEditDraft((d) => ({ ...d, teamA: e.target.value }))}
+                      style={{ width: 52, padding: "6px 8px", textAlign: "center", marginTop: 0 }}
+                    />
+                    <span>–</span>
+                    <input
+                      type="number"
+                      min={0}
+                      inputMode="numeric"
+                      value={editDraft.teamB}
+                      onChange={(e) => setEditDraft((d) => ({ ...d, teamB: e.target.value }))}
+                      style={{ width: 52, padding: "6px 8px", textAlign: "center", marginTop: 0 }}
+                    />
+                  </div>
+                  <div style={{ flex: 1, textAlign: "right" }}>{teamLabel(m.team_b_player_1, m.team_b_player_2)}</div>
                 </div>
-                <div style={{ flex: "0 0 auto", fontWeight: 700, fontSize: "1.1rem" }}>
-                  {m.team_a_score}–{m.team_b_score}
+              ) : (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                  <div style={{ flex: 1, fontWeight: m.team_a_score > m.team_b_score ? 700 : 400 }}>
+                    {teamLabel(m.team_a_player_1, m.team_a_player_2)}
+                  </div>
+                  <div style={{ flex: "0 0 auto", fontWeight: 700, fontSize: "1.1rem" }}>
+                    {m.team_a_score}–{m.team_b_score}
+                  </div>
+                  <div
+                    style={{
+                      flex: 1,
+                      textAlign: "right",
+                      fontWeight: m.team_b_score > m.team_a_score ? 700 : 400,
+                    }}
+                  >
+                    {teamLabel(m.team_b_player_1, m.team_b_player_2)}
+                  </div>
                 </div>
-                <div
-                  style={{
-                    flex: 1,
-                    textAlign: "right",
-                    fontWeight: m.team_b_score > m.team_a_score ? 700 : 400,
-                  }}
-                >
-                  {teamLabel(m.team_b_player_1, m.team_b_player_2)}
-                </div>
-              </div>
+              )}
 
-              <div style={{ textAlign: "right", marginTop: 8 }}>
-                <span
-                  className="link-action"
-                  role="button"
-                  tabIndex={0}
-                  style={{ color: "var(--danger)", opacity: deletingId === m.id ? 0.5 : 1, pointerEvents: deletingId ? "none" : "auto" }}
-                  onClick={() => deleteMatch(m)}
-                >
-                  {deletingId === m.id ? "Deleting…" : "Delete — entered in error"}
-                </span>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 12, marginTop: 8 }}>
+                {editingId === m.id ? (
+                  <>
+                    <span
+                      className="link-action"
+                      role="button"
+                      tabIndex={0}
+                      style={{ color: "var(--text-muted)", opacity: savingEdit ? 0.5 : 1, pointerEvents: savingEdit ? "none" : "auto" }}
+                      onClick={cancelEdit}
+                    >
+                      Cancel
+                    </span>
+                    <span
+                      className="link-action"
+                      role="button"
+                      tabIndex={0}
+                      style={{ color: "var(--orange-600)", opacity: savingEdit ? 0.5 : 1, pointerEvents: savingEdit ? "none" : "auto" }}
+                      onClick={() => saveEdit(m)}
+                    >
+                      {savingEdit ? "Saving…" : "Save"}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span
+                      className="link-action"
+                      role="button"
+                      tabIndex={0}
+                      style={{ opacity: editingId || deletingId ? 0.5 : 1, pointerEvents: editingId || deletingId ? "none" : "auto" }}
+                      onClick={() => startEdit(m)}
+                    >
+                      Edit score
+                    </span>
+                    <span
+                      className="link-action"
+                      role="button"
+                      tabIndex={0}
+                      style={{ color: "var(--danger)", opacity: deletingId === m.id ? 0.5 : editingId || deletingId ? 0.5 : 1, pointerEvents: editingId || deletingId ? "none" : "auto" }}
+                      onClick={() => deleteMatch(m)}
+                    >
+                      {deletingId === m.id ? "Deleting…" : "Delete — entered in error"}
+                    </span>
+                  </>
+                )}
               </div>
             </div>
           ))}
