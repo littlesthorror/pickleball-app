@@ -274,7 +274,7 @@ export default function Dashboard({
 
       {isOwnProfile && nextEvent && (
         <div className="card next-event-card" onClick={onViewEvents} style={{ cursor: onViewEvents ? "pointer" : "default" }}>
-          <p className="stat-meta" style={{ marginTop: 0, marginBottom: 4 }}>
+          <p className="stat-meta" style={{ marginTop: 0, marginBottom: 4, color: "var(--orange-600)", fontWeight: 700 }}>
             Next club event
           </p>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
