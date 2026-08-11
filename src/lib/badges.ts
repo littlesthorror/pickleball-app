@@ -180,5 +180,147 @@ export function computeBadges(
     });
   }
 
+  // ── 6 more badges added 2026-08-11 at Ben's request ────────────────────
+
+  // "Heartbreak" — 3 separate losses by the minimum possible margin
+  // (2 points, e.g. 11-9) within any 7-day window. Uses a rolling window
+  // over just the qualifying losses (not every game), so the 3 don't need
+  // to be back-to-back games, just close together in time.
+  const minMarginLosses = history
+    .filter((h) => !h.won && h.opponent_score - h.own_score === 2)
+    .map((h) => new Date(h.played_at).getTime())
+    .sort((a, b) => a - b);
+  const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+  for (let i = 0; i + 2 < minMarginLosses.length; i++) {
+    if (minMarginLosses[i + 2] - minMarginLosses[i] <= WEEK_MS) {
+      const fmt = (t: number) => new Date(t).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+      badges.push({
+        id: "heartbreak",
+        emoji: "💔",
+        label: "Heartbreak",
+        description: `Lost 3 games by just 2 points each, all within one week (${fmt(minMarginLosses[i])}–${fmt(minMarginLosses[i + 2])}).`,
+      });
+      break;
+    }
+  }
+
+  // "Rollercoaster" — rating swings by more than 100 points within a
+  // single calendar month. Measured as the full range (highest minus
+  // lowest rating touched) within the month, seeded with the rating you
+  // entered the month at — so a big move right at the start of the month
+  // still counts, not just swings between games that both fall in-month.
+  // This is a range check rather than requiring the swing to specifically
+  // go up-then-down (vs. just one big move) — a reasonable simplification
+  // given how much "up and down" already tends to happen naturally while
+  // RD is still high early on.
+  const dateJoinedRating = { date: dateJoined, rating: 1500 };
+  const ratingPoints = [dateJoinedRating, ...history.map((h) => ({ date: h.played_at, rating: h.post_rating }))];
+  const monthKey = (d: string) => {
+    const dt = new Date(d);
+    return `${dt.getFullYear()}-${dt.getMonth()}`;
+  };
+  const monthSwings = new Map<string, { min: number; max: number; date: Date }>();
+  for (let i = 1; i < ratingPoints.length; i++) {
+    const key = monthKey(ratingPoints[i].date);
+    if (!monthSwings.has(key)) {
+      const entryRating = ratingPoints[i - 1].rating;
+      monthSwings.set(key, { min: entryRating, max: entryRating, date: new Date(ratingPoints[i].date) });
+    }
+    const g = monthSwings.get(key)!;
+    g.min = Math.min(g.min, ratingPoints[i].rating);
+    g.max = Math.max(g.max, ratingPoints[i].rating);
+  }
+  let biggestSwing = 0;
+  let biggestSwingMonth: Date | null = null;
+  for (const g of monthSwings.values()) {
+    const swing = g.max - g.min;
+    if (swing > biggestSwing) {
+      biggestSwing = swing;
+      biggestSwingMonth = g.date;
+    }
+  }
+  if (biggestSwing > 100 && biggestSwingMonth) {
+    badges.push({
+      id: "rollercoaster",
+      emoji: "🎢",
+      label: "Rollercoaster",
+      description: `Your rating swung by ${Math.round(biggestSwing)} points in ${biggestSwingMonth.toLocaleDateString(undefined, { month: "long", year: "numeric" })} alone.`,
+    });
+  }
+
+  // "Comeback" — win a game immediately after losing the previous one by
+  // 8 or more points.
+  for (let i = 1; i < history.length; i++) {
+    const prev = history[i - 1];
+    const curr = history[i];
+    if (!prev.won && prev.opponent_score - prev.own_score >= 8 && curr.won) {
+      badges.push({
+        id: "comeback",
+        emoji: "💪",
+        label: "Comeback",
+        description: `Bounced back from a ${prev.own_score}–${prev.opponent_score} loss to beat ${curr.opponent_names} ${curr.own_score}–${curr.opponent_score} next time out.`,
+      });
+      break;
+    }
+  }
+
+  // "Bracket Buster" — beat a team where BOTH opponents were individually
+  // rated higher than BOTH you and your partner going in. Needs each of
+  // the other three players' own pre-game ratings, not just yours — see
+  // teammate_pre_rating / opponent_min_pre_rating on the
+  // player_match_history view (added 2026-08-11 specifically for this).
+  const bracketBuster = history.find(
+    (h) =>
+      h.won &&
+      h.teammate_pre_rating != null &&
+      h.opponent_min_pre_rating != null &&
+      h.pre_rating < h.opponent_min_pre_rating &&
+      h.teammate_pre_rating < h.opponent_min_pre_rating
+  );
+  if (bracketBuster) {
+    badges.push({
+      id: "bracket-buster",
+      emoji: "💥",
+      label: "Bracket Buster",
+      description: `Upset ${bracketBuster.opponent_names} even though both were rated higher than you and ${bracketBuster.teammate_name}.`,
+    });
+  }
+
+  // "Point Hoarder" — 1,000+ total points scored across every logged
+  // match, win or lose.
+  const totalPoints = history.reduce((sum, h) => sum + h.own_score, 0);
+  if (totalPoints >= 1000) {
+    badges.push({
+      id: "point-hoarder",
+      emoji: "💰",
+      label: "Point Hoarder",
+      description: `Scored ${totalPoints} points across every logged match, and counting.`,
+    });
+  }
+
+  // "Steady Eddie" — rating stays within a tight band for 20 games in a
+  // row. Margin chosen at 50 points: single-game swings can easily be
+  // 20-40+ points while RD is still high early on, so holding the whole
+  // rating within a 50-point band for 20 STRAIGHT games means genuinely
+  // settled, consistent form — not just a lucky net-zero over a streak
+  // that was actually swinging a lot game to game.
+  const STEADY_WINDOW = 20;
+  const STEADY_MARGIN = 50;
+  for (let start = 0; start + STEADY_WINDOW <= history.length; start++) {
+    const windowGames = history.slice(start, start + STEADY_WINDOW);
+    const values = [windowGames[0].pre_rating, ...windowGames.map((h) => h.post_rating)];
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    if (max - min <= STEADY_MARGIN) {
+      badges.push({
+        id: "steady-eddie",
+        emoji: "⚖️",
+        label: "Steady Eddie",
+        description: `Kept your rating within ${STEADY_MARGIN} points across 20 games in a row — ice in your veins.`,
+      });
+      break;
+    }
+  }
+
   return badges;
 }

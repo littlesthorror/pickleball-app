@@ -46,6 +46,12 @@ export interface PlayerMatchHistoryRow {
   teammate_name: string;
   opponent_names: string;
   game_number: number;
+  // Added 2026-08-11 for the "Bracket Buster" badge — your partner's own
+  // pre-game rating, and the LOWER of the two opponents' pre-game
+  // ratings (all that's needed to check whether both opponents outrated
+  // both of you).
+  teammate_pre_rating: number | null;
+  opponent_min_pre_rating: number | null;
 }
 
 export type MatchStatus = "pending" | "confirmed" | "disputed";
