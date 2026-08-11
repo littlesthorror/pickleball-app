@@ -119,16 +119,28 @@ export default function GameHistory() {
     setDeletingId(null);
 
     if (error) {
-      // supabase-js's default error.message here is a generic wrapper
-      // ("Edge Function returned a non-2xx status code" / "Failed to
-      // send a request to the Edge Function") — it does NOT include the
-      // actual reason the function sent back (e.g. a recompute failure
-      // after the game was already deleted). When the function did
-      // respond (just with an error status), that real reason is in the
-      // response body, reachable via error.context — so unwrap it and
-      // show that instead. If the request never got a response at all
-      // (network hiccup, timeout), there's no body to read and we fall
-      // back to a plain, honest message.
+      // Same reasoning as saveEdit below: a confirmed match's delete
+      // involves a full-history recompute, which can take long enough
+      // that the client's request times out or drops even though the
+      // function itself goes on to finish successfully a moment later.
+      // Check whether the match is actually gone before trusting the
+      // failed request alone.
+      const { data: recheck } = await supabase.from("matches").select("id").eq("id", m.id).maybeSingle();
+      if (!recheck) {
+        load();
+        return;
+      }
+
+      // Genuinely still there — supabase-js's default error.message here
+      // is a generic wrapper ("Edge Function returned a non-2xx status
+      // code" / "Failed to send a request to the Edge Function") — it
+      // does NOT include the actual reason the function sent back (e.g.
+      // a recompute failure after the game was already deleted). When
+      // the function did respond (just with an error status), that real
+      // reason is in the response body, reachable via error.context — so
+      // unwrap it and show that instead. If the request never got a
+      // response at all, there's no body to read and we fall back to a
+      // plain, honest message.
       if (error instanceof FunctionsHttpError) {
         const body = await error.context.json().catch(() => null);
         alert(body?.error ?? "Couldn't delete this game.");
@@ -194,9 +206,29 @@ export default function GameHistory() {
     setSavingEdit(false);
 
     if (error) {
-      // Same reasoning as deleteMatch below: unwrap the real reason from
-      // the response body rather than showing supabase-js's generic
-      // wrapper message.
+      // A confirmed match's save involves a full-history recompute (see
+      // supabase/functions/edit-match), which can take a moment — long
+      // enough that the *client's* request can time out or drop even
+      // though the function itself goes on to finish successfully a
+      // moment later. Rather than trust a failed request alone and show
+      // a scary error for something that isn't actually broken, check
+      // the match's real saved score before deciding. Mirrors the same
+      // fix already in MatchEntry.tsx for confirm-match.
+      const { data: recheck } = await supabase
+        .from("matches")
+        .select("team_a_score, team_b_score")
+        .eq("id", m.id)
+        .single();
+
+      if (recheck?.team_a_score === teamAScore && recheck?.team_b_score === teamBScore) {
+        setEditingId(null);
+        load();
+        return;
+      }
+
+      // Genuinely didn't save — now it's worth unwrapping the real
+      // reason from the response body rather than showing supabase-js's
+      // generic wrapper message, same as deleteMatch below.
       if (error instanceof FunctionsHttpError) {
         const body = await error.context.json().catch(() => null);
         alert(body?.error ?? "Couldn't save this score.");
