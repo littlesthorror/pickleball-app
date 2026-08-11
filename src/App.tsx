@@ -85,9 +85,64 @@ export default function App() {
     loadPlayer();
   }, [session]);
 
+  // "New since you last looked" tracking for the Notices/Events nav
+  // buttons — last_seen_*_at lives on the players row itself (not the
+  // player_status view, which doesn't expose it) so it's fetched
+  // separately here. Re-fetched whenever the signed-in player changes.
+  const [lastSeenNotices, setLastSeenNotices] = useState<string | null>(null);
+  const [lastSeenEvents, setLastSeenEvents] = useState<string | null>(null);
+  const [latestNoticeAt, setLatestNoticeAt] = useState<string | null>(null);
+  const [latestEventAt, setLatestEventAt] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!player) return;
+    supabase
+      .from("players")
+      .select("last_seen_notices_at, last_seen_events_at")
+      .eq("id", player.id)
+      .single()
+      .then(({ data }) => {
+        setLastSeenNotices(data?.last_seen_notices_at ?? null);
+        setLastSeenEvents(data?.last_seen_events_at ?? null);
+      });
+    supabase
+      .from("notices")
+      .select("created_at")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .then(({ data }) => setLatestNoticeAt(data?.[0]?.created_at ?? null));
+    supabase
+      .from("events")
+      .select("created_at")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .then(({ data }) => setLatestEventAt(data?.[0]?.created_at ?? null));
+  }, [player?.id]);
+
+  const hasNewNotice =
+    !!latestNoticeAt && (!lastSeenNotices || new Date(latestNoticeAt) > new Date(lastSeenNotices));
+  const hasNewEvent =
+    !!latestEventAt && (!lastSeenEvents || new Date(latestEventAt) > new Date(lastSeenEvents));
+
+  function markNoticesSeen() {
+    if (!player || !hasNewNotice) return;
+    const now = new Date().toISOString();
+    setLastSeenNotices(now);
+    supabase.from("players").update({ last_seen_notices_at: now }).eq("id", player.id);
+  }
+
+  function markEventsSeen() {
+    if (!player || !hasNewEvent) return;
+    const now = new Date().toISOString();
+    setLastSeenEvents(now);
+    supabase.from("players").update({ last_seen_events_at: now }).eq("id", player.id);
+  }
+
   function changeTab(next: Tab) {
     setViewingPlayer(null);
     setTab(next);
+    if (next === "notices") markNoticesSeen();
+    if (next === "events") markEventsSeen();
   }
 
   function togglePreview() {
@@ -160,11 +215,45 @@ export default function App() {
                 <button disabled={tab === "club-stats"} onClick={() => changeTab("club-stats")}>
                   Club stats
                 </button>
-                <button disabled={tab === "events"} onClick={() => changeTab("events")}>
+                <button
+                  disabled={tab === "events"}
+                  onClick={() => changeTab("events")}
+                  style={{ position: "relative" }}
+                >
                   Events
+                  {hasNewEvent && (
+                    <span
+                      style={{
+                        position: "absolute",
+                        top: 4,
+                        right: 4,
+                        width: 8,
+                        height: 8,
+                        borderRadius: "50%",
+                        background: "var(--orange-600)",
+                      }}
+                    />
+                  )}
                 </button>
-                <button disabled={tab === "notices"} onClick={() => changeTab("notices")}>
+                <button
+                  disabled={tab === "notices"}
+                  onClick={() => changeTab("notices")}
+                  style={{ position: "relative" }}
+                >
                   Notices
+                  {hasNewNotice && (
+                    <span
+                      style={{
+                        position: "absolute",
+                        top: 4,
+                        right: 4,
+                        width: 8,
+                        height: 8,
+                        borderRadius: "50%",
+                        background: "var(--orange-600)",
+                      }}
+                    />
+                  )}
                 </button>
                 <button disabled={tab === "faq"} onClick={() => changeTab("faq")}>
                   FAQ

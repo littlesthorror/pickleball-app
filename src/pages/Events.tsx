@@ -124,8 +124,7 @@ function MonthCalendar({
               key={i}
               onClick={() => dayEvents && onSelectDate(dateStr)}
               style={{
-                position: "relative",
-                padding: "8px 0 10px",
+                padding: "4px 0",
                 borderRadius: 8,
                 cursor: dayEvents ? "pointer" : "default",
                 border: isSelected
@@ -133,24 +132,22 @@ function MonthCalendar({
                   : isToday
                   ? "1px solid var(--navy-500)"
                   : "1px solid transparent",
-                fontWeight: isToday || isSelected ? 700 : 400,
               }}
             >
-              {day}
-              {dayEvents && (
-                <span
-                  style={{
-                    position: "absolute",
-                    bottom: 2,
-                    left: "50%",
-                    transform: "translateX(-50%)",
-                    width: 6,
-                    height: 6,
-                    borderRadius: "50%",
-                    background: "var(--orange-600)",
-                  }}
-                />
-              )}
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: 26,
+                  height: 26,
+                  borderRadius: "50%",
+                  border: dayEvents ? "2px solid var(--orange-600)" : "2px solid transparent",
+                  fontWeight: dayEvents || isToday || isSelected ? 700 : 400,
+                }}
+              >
+                {day}
+              </span>
             </div>
           );
         })}
