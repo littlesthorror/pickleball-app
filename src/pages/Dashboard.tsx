@@ -21,6 +21,7 @@ ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip,
 
 const NAVY = "#0f2547";
 const ORANGE_BAND = "rgba(255, 122, 26, 0.14)";
+const BADGE_PAGE_SIZE = 6;
 
 type XAxisMode = "games" | "date";
 
@@ -58,6 +59,10 @@ export default function Dashboard({
   // instead, which works identically for a tap or a click. Added
   // 2026-08-11 at Ben's request.
   const [selectedBadgeId, setSelectedBadgeId] = useState<string | null>(null);
+  // Keeps the badges card from growing unbounded as someone racks up more
+  // and more of them — shows the first 6 (most recently earned first) with
+  // a "Show more" toggle beneath. Added 2026-08-13 at Ben's request.
+  const [showAllBadges, setShowAllBadges] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -147,10 +152,17 @@ export default function Dashboard({
     };
   }, [player, history, xAxis]);
 
-  const badges = useMemo(
-    () => computeBadges(history, player?.games_played ?? 0, player?.date_joined ?? ""),
-    [history, player]
-  );
+  const badges = useMemo(() => {
+    const computed = computeBadges(history, player?.games_played ?? 0, player?.date_joined ?? "");
+    // Most recently earned first — badges with no known date (shouldn't
+    // happen in practice) sort to the end rather than the top.
+    return [...computed].sort((a, b) => {
+      if (!a.achievedAt && !b.achievedAt) return 0;
+      if (!a.achievedAt) return 1;
+      if (!b.achievedAt) return -1;
+      return new Date(b.achievedAt).getTime() - new Date(a.achievedAt).getTime();
+    });
+  }, [history, player]);
 
   // 30-day change and personal best — both derived from the same history
   // array already loaded for the chart, so no extra query needed. Mirrors
@@ -298,7 +310,7 @@ export default function Dashboard({
         <div className="card">
           <h2>Badges</h2>
           <div className="badge-grid">
-            {badges.map((b) => (
+            {(showAllBadges ? badges : badges.slice(0, BADGE_PAGE_SIZE)).map((b) => (
               <div
                 className={`badge-tile${selectedBadgeId === b.id ? " badge-tile-selected" : ""}`}
                 key={b.id}
@@ -316,6 +328,22 @@ export default function Dashboard({
             <p className="stat-meta badge-description" style={{ marginBottom: 0 }}>
               {badges.find((b) => b.id === selectedBadgeId)?.description}
             </p>
+          )}
+          {badges.length > BADGE_PAGE_SIZE && (
+            <button
+              onClick={() => {
+                setShowAllBadges((v) => !v);
+                setSelectedBadgeId(null);
+              }}
+              style={{
+                marginTop: 12,
+                background: "transparent",
+                color: "var(--navy-500)",
+                border: "1px solid var(--border)",
+              }}
+            >
+              {showAllBadges ? "Show less" : `Show more (${badges.length - BADGE_PAGE_SIZE} more)`}
+            </button>
           )}
         </div>
       )}

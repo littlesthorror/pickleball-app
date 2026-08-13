@@ -46,7 +46,7 @@ export default function Login() {
           margin: "0 0 24px",
         }}
       >
-        by Huntingdon Pickleball
+        Huntingdon Pickleball
       </p>
       <button onClick={handleSignIn} style={{ width: "auto", padding: "12px 28px" }}>
         Sign in with Google

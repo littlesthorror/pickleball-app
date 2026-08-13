@@ -5,6 +5,11 @@ export interface Badge {
   emoji: string;
   label: string;
   description: string;
+  // ISO date string for the game (or moment) that earned this badge — used
+  // to sort the Dashboard's badge grid "most recent first". Added
+  // 2026-08-13 so the grid can show newest achievements up top rather than
+  // a fixed category order.
+  achievedAt: string | null;
 }
 
 // Deliberately celebratory-only, with one exception ("First time pickled")
@@ -27,6 +32,7 @@ export function computeBadges(
       emoji: "🎉",
       label: "First win",
       description: `Beat ${firstWin.opponent_names} on your way to your first W.`,
+      achievedAt: firstWin.played_at,
     });
   }
 
@@ -45,10 +51,14 @@ export function computeBadges(
           day: "numeric",
           year: "numeric",
         })}.`,
+        achievedAt: oneYearLater.toISOString(),
       });
     }
   }
 
+  // History arrives ordered by game_number ascending (see Dashboard.tsx's
+  // query), so the Nth entry is the game that crossed the Nth-game
+  // milestone — used below for games-played, games-won, and streak dates.
   const gameMilestones = [10, 25, 50, 100, 200, 250, 500];
   for (const milestone of gameMilestones) {
     if (gamesPlayed >= milestone) {
@@ -57,6 +67,7 @@ export function computeBadges(
         emoji: milestone >= 100 ? "🏆" : "📈",
         label: `${milestone} games played`,
         description: `Logged ${milestone}+ confirmed matches.`,
+        achievedAt: history[milestone - 1]?.played_at ?? null,
       });
     }
   }
@@ -64,7 +75,8 @@ export function computeBadges(
   // "Games won" milestones — added 2026-08-11 at Ben's request. Separate
   // from the games-played milestones above: this counts only the Ws, not
   // every confirmed match logged.
-  const gamesWon = history.filter((h) => h.won).length;
+  const wonGames = history.filter((h) => h.won);
+  const gamesWon = wonGames.length;
   const winMilestones = [
     { games: 50, emoji: "🏅" },
     { games: 100, emoji: "🥇" },
@@ -76,6 +88,7 @@ export function computeBadges(
         emoji: milestone.emoji,
         label: `${milestone.games} games won`,
         description: `Won ${milestone.games}+ confirmed matches.`,
+        achievedAt: wonGames[milestone.games - 1]?.played_at ?? null,
       });
     }
   }
@@ -99,11 +112,13 @@ export function computeBadges(
   }
   const PARTNER_WIN_MILESTONE = 25;
   if (bestPartnerWins >= PARTNER_WIN_MILESTONE) {
+    const partnerWins = history.filter((h) => h.won && h.teammate_name === bestPartnerName);
     badges.push({
       id: "partner-25-wins",
       emoji: "🤝",
       label: `${PARTNER_WIN_MILESTONE} wins with a partner`,
       description: `Won ${bestPartnerWins} games alongside ${bestPartnerName}.`,
+      achievedAt: partnerWins[PARTNER_WIN_MILESTONE - 1]?.played_at ?? null,
     });
   }
 
@@ -114,21 +129,29 @@ export function computeBadges(
   // Tiered like the games-played milestones: every threshold reached gets
   // its own badge, with the fire emoji count going up per tier (added
   // 2026-08-10 at Ben's request).
-  let longestStreak = 0;
-  let current = 0;
-  for (const h of history) {
-    if (h.won) {
-      current += 1;
-      longestStreak = Math.max(longestStreak, current);
-    } else {
-      current = 0;
-    }
-  }
   const streakMilestones = [
     { games: 3, emoji: "🔥" },
     { games: 6, emoji: "🔥🔥" },
     { games: 10, emoji: "🔥🔥🔥" },
   ];
+  let longestStreak = 0;
+  let current = 0;
+  // Date each threshold was first reached — the game that made the streak
+  // hit that length, not the streak's eventual end.
+  const streakReachedAt = new Map<number, string>();
+  for (const h of history) {
+    if (h.won) {
+      current += 1;
+      longestStreak = Math.max(longestStreak, current);
+      for (const milestone of streakMilestones) {
+        if (current === milestone.games && !streakReachedAt.has(milestone.games)) {
+          streakReachedAt.set(milestone.games, h.played_at);
+        }
+      }
+    } else {
+      current = 0;
+    }
+  }
   for (const milestone of streakMilestones) {
     if (longestStreak >= milestone.games) {
       badges.push({
@@ -136,6 +159,7 @@ export function computeBadges(
         emoji: milestone.emoji,
         label: `${milestone.games}-game winning streak`,
         description: `Reached a ${milestone.games}-game winning streak — your best run so far is ${longestStreak}.`,
+        achievedAt: streakReachedAt.get(milestone.games) ?? null,
       });
     }
   }
@@ -154,6 +178,7 @@ export function computeBadges(
       emoji: "⚡",
       label: "Standout win",
       description: `Beat ${biggest.opponent_names} ${biggest.own_score}–${biggest.opponent_score} — a 15+ point win.`,
+      achievedAt: biggest.played_at,
     });
   }
 
@@ -165,6 +190,7 @@ export function computeBadges(
       emoji: "🎯",
       label: "Twenty Pointer",
       description: `Scored ${twentyPointer.own_score} points in a single game.`,
+      achievedAt: twentyPointer.played_at,
     });
   }
 
@@ -177,6 +203,7 @@ export function computeBadges(
       emoji: "🥒",
       label: "First time pickled",
       description: `Shut out 0–${pickled.opponent_score} — it happens to everyone eventually.`,
+      achievedAt: pickled.played_at,
     });
   }
 
@@ -199,6 +226,7 @@ export function computeBadges(
         emoji: "💔",
         label: "Heartbreak",
         description: `Lost 3 games by just 2 points each, all within one week (${fmt(minMarginLosses[i])}–${fmt(minMarginLosses[i + 2])}).`,
+        achievedAt: new Date(minMarginLosses[i + 2]).toISOString(),
       });
       break;
     }
@@ -245,6 +273,7 @@ export function computeBadges(
       emoji: "🎢",
       label: "Rollercoaster",
       description: `Your rating swung by ${Math.round(biggestSwing)} points in ${biggestSwingMonth.toLocaleDateString(undefined, { month: "long", year: "numeric" })} alone.`,
+      achievedAt: biggestSwingMonth.toISOString(),
     });
   }
 
@@ -259,6 +288,7 @@ export function computeBadges(
         emoji: "💪",
         label: "Comeback",
         description: `Bounced back from a ${prev.own_score}–${prev.opponent_score} loss to beat ${curr.opponent_names} ${curr.own_score}–${curr.opponent_score} next time out.`,
+        achievedAt: curr.played_at,
       });
       break;
     }
@@ -283,18 +313,26 @@ export function computeBadges(
       emoji: "💥",
       label: "Bracket Buster",
       description: `Upset ${bracketBuster.opponent_names} even though both were rated higher than you and ${bracketBuster.teammate_name}.`,
+      achievedAt: bracketBuster.played_at,
     });
   }
 
   // "Point Hoarder" — 1,000+ total points scored across every logged
-  // match, win or lose.
-  const totalPoints = history.reduce((sum, h) => sum + h.own_score, 0);
+  // match, win or lose. Tracked as a running total so we can also record
+  // which game actually crossed the line, not just the final total.
+  let totalPoints = 0;
+  let pointHoarderAt: string | null = null;
+  for (const h of history) {
+    totalPoints += h.own_score;
+    if (totalPoints >= 1000 && !pointHoarderAt) pointHoarderAt = h.played_at;
+  }
   if (totalPoints >= 1000) {
     badges.push({
       id: "point-hoarder",
       emoji: "💰",
       label: "Point Hoarder",
       description: `Scored ${totalPoints} points across every logged match, and counting.`,
+      achievedAt: pointHoarderAt,
     });
   }
 
@@ -317,6 +355,7 @@ export function computeBadges(
         emoji: "⚖️",
         label: "Steady Eddie",
         description: `Kept your rating within ${STEADY_MARGIN} points across 20 games in a row — ice in your veins.`,
+        achievedAt: windowGames[windowGames.length - 1].played_at,
       });
       break;
     }
