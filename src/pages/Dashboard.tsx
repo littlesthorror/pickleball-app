@@ -16,6 +16,8 @@ import { computeBadges } from "../lib/badges";
 import type { MonthlyFinish } from "../lib/badges";
 import { isBirthdayToday } from "../lib/birthday";
 import { getTier, getNextTier } from "../lib/tiers";
+import { getCurrentSeason, getTrackedSeasons } from "../lib/seasons";
+import type { Season } from "../lib/seasons";
 import type { EventRow, PlayerMatchHistoryRow, PlayerStatus } from "../types";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Filler);
@@ -25,6 +27,15 @@ const ORANGE_BAND = "rgba(255, 122, 26, 0.14)";
 const BADGE_PAGE_SIZE = 6;
 
 type XAxisMode = "games" | "date";
+
+interface SeasonHistoryEntry {
+  season: Season;
+  rank: number;
+  rating: number;
+  games: number;
+  wins: number;
+  ratingGain: number;
+}
 
 interface ViewerMatchRow {
   team_a_player_1_id: string;
@@ -90,6 +101,16 @@ export default function Dashboard({
   // to match this one specific person regardless of who their partner was
   // in any given game — player_match_history only has opponent names.
   const [viewerMatches, setViewerMatches] = useState<ViewerMatchRow[]>([]);
+  // Seasons — one row per tracked season this player was already
+  // established (12+ games) for, fetched via the same live
+  // get_season_standings() function the Leaderboard's season card uses.
+  // Shown on any profile (own or a clubmate's), same as Personal Best /
+  // Best Partner — it's about this player's own trajectory, not a
+  // comparison against anyone specific.
+  const trackedSeasons = useMemo(() => getTrackedSeasons(), []);
+  const currentSeason = useMemo(() => getCurrentSeason(), []);
+  const [seasonEntries, setSeasonEntries] = useState<SeasonHistoryEntry[]>([]);
+  const [seasonLoading, setSeasonLoading] = useState(trackedSeasons.length > 0);
 
   useEffect(() => {
     let cancelled = false;
@@ -143,6 +164,46 @@ export default function Dashboard({
         if (!error) setViewerMatches((data ?? []) as ViewerMatchRow[]);
       });
   }, [isOwnProfile, viewerId]);
+
+  useEffect(() => {
+    if (trackedSeasons.length === 0) {
+      setSeasonEntries([]);
+      return;
+    }
+    let cancelled = false;
+    setSeasonLoading(true);
+    Promise.all(
+      trackedSeasons.map((season) => {
+        const isCurrent = season.key === currentSeason.key;
+        const asOf = isCurrent ? new Date() : new Date(season.nextStart.getTime() - 1000);
+        return supabase
+          .rpc("get_season_standings", { p_season_start: season.start.toISOString(), p_as_of: asOf.toISOString() })
+          .then(({ data, error }) => {
+            if (error || !data) return null;
+            const row = (
+              data as { player_id: string; rank: number; rating: number; games: number; wins: number; rating_gain: number }[]
+            ).find((r) => r.player_id === playerId);
+            if (!row) return null;
+            const entry: SeasonHistoryEntry = {
+              season,
+              rank: row.rank,
+              rating: row.rating,
+              games: row.games,
+              wins: row.wins,
+              ratingGain: row.rating_gain,
+            };
+            return entry;
+          });
+      })
+    ).then((results) => {
+      if (cancelled) return;
+      setSeasonEntries(results.filter((r): r is SeasonHistoryEntry => !!r));
+      setSeasonLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [trackedSeasons, currentSeason, playerId]);
 
   useEffect(() => {
     if (!isOwnProfile) return;
@@ -325,6 +386,22 @@ export default function Dashboard({
     }
     return best;
   }, [history]);
+
+  const currentSeasonEntry = seasonEntries.find((e) => e.season.key === currentSeason.key) ?? null;
+  const pastSeasonEntries = [...seasonEntries]
+    .filter((e) => e.season.key !== currentSeason.key)
+    .sort((a, b) => b.season.start.getTime() - a.season.start.getTime());
+  // Positive-only, and only from seasons that have actually finished —
+  // the current season's rank/gain can still move, so it wouldn't really
+  // be a "best" yet.
+  const bestRankEntry =
+    pastSeasonEntries.length > 0
+      ? pastSeasonEntries.reduce((best, e) => (e.rank < best.rank ? e : best))
+      : null;
+  const bestGainEntry =
+    pastSeasonEntries.length > 0
+      ? pastSeasonEntries.reduce((best, e) => (e.ratingGain > best.ratingGain ? e : best))
+      : null;
 
   // Your own record against this one specific player, regardless of who
   // either of you partnered with in any given match — only computed when
@@ -557,6 +634,90 @@ export default function Dashboard({
                 {longestStreak} game{longestStreak === 1 ? "" : "s"}
               </div>
             </div>
+          )}
+        </div>
+      )}
+
+      {trackedSeasons.length === 0 ? (
+        <div className="card">
+          <h2>Season</h2>
+          <p className="stat-meta" style={{ marginBottom: 0 }}>
+            Seasons kick off with Autumn on 1 September.
+          </p>
+        </div>
+      ) : (
+        <div className="card">
+          <h2>{currentSeason.label}</h2>
+          {seasonLoading ? (
+            <p className="stat-meta">Loading…</p>
+          ) : currentSeasonEntry ? (
+            <div className="match-row">
+              <div>
+                <div className="opponent">This season</div>
+                <div className="meta">
+                  {currentSeasonEntry.games} game{currentSeasonEntry.games === 1 ? "" : "s"} ·{" "}
+                  {currentSeasonEntry.games > 0
+                    ? Math.round((currentSeasonEntry.wins / currentSeasonEntry.games) * 100)
+                    : 0}
+                  % wins
+                </div>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <div className="score">#{currentSeasonEntry.rank}</div>
+                <div
+                  className={
+                    currentSeasonEntry.ratingGain > 0
+                      ? "delta-positive"
+                      : currentSeasonEntry.ratingGain < 0
+                      ? "delta-negative"
+                      : "delta-neutral"
+                  }
+                  style={{ fontSize: "0.78rem" }}
+                >
+                  {currentSeasonEntry.ratingGain > 0 ? "+" : ""}
+                  {Math.round(currentSeasonEntry.ratingGain)}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <p className="stat-meta">Not yet established (12+ games) this season.</p>
+          )}
+
+          {pastSeasonEntries.length > 0 && (
+            <>
+              <h2 style={{ marginTop: 16 }}>Season history</h2>
+              {pastSeasonEntries.map((e) => (
+                <div className="match-row" key={e.season.key}>
+                  <div>
+                    <div className="opponent">{e.season.label}</div>
+                    <div className="meta">
+                      {e.games} games · {e.ratingGain > 0 ? "+" : ""}
+                      {Math.round(e.ratingGain)} rating
+                    </div>
+                  </div>
+                  <div className="score">#{e.rank}</div>
+                </div>
+              ))}
+            </>
+          )}
+
+          {(bestRankEntry || (bestGainEntry && bestGainEntry.ratingGain > 0)) && (
+            <>
+              <h2 style={{ marginTop: 16 }}>Personal bests</h2>
+              {bestRankEntry && (
+                <p className="stat-meta" style={{ marginBottom: 4 }}>
+                  Best finish: <strong style={{ color: "var(--navy-900)" }}>#{bestRankEntry.rank}</strong> (
+                  {bestRankEntry.season.label})
+                </p>
+              )}
+              {bestGainEntry && bestGainEntry.ratingGain > 0 && (
+                <p className="stat-meta" style={{ marginBottom: 0 }}>
+                  Best season gain:{" "}
+                  <strong style={{ color: "var(--navy-900)" }}>+{Math.round(bestGainEntry.ratingGain)}</strong> (
+                  {bestGainEntry.season.label})
+                </p>
+              )}
+            </>
           )}
         </div>
       )}

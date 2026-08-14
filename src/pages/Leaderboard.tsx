@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../supabaseClient";
 import Avatar from "../components/Avatar";
 import type { LeaderboardRow } from "../types";
+import { getCurrentSeason, getTrackedSeasons } from "../lib/seasons";
 
 type SortMode = "rating" | "improved";
 
@@ -66,6 +67,15 @@ interface ClubPlayerAward {
   winPct: number;
   ratingGain: number;
   composite: number;
+}
+
+interface SeasonStandingRow {
+  playerId: string;
+  rank: number;
+  rating: number;
+  games: number;
+  wins: number;
+  ratingGain: number;
 }
 
 // Past Club Player winners, one row per completed month — written by the
@@ -159,6 +169,17 @@ export default function Leaderboard({
   const [monthlyMatches, setMonthlyMatches] = useState<MonthlyMatchTeams[]>([]);
   const [pastClubPlayers, setPastClubPlayers] = useState<PastClubPlayer[]>([]);
 
+  // Seasons — trackedSeasons is empty until 1 September 2026 (Autumn),
+  // when Ben's chosen to start tracking. Standings are computed live via
+  // get_season_standings rather than fetched from a table, since ratings
+  // never reset between seasons so nothing needs to be pre-saved.
+  const trackedSeasons = useMemo(() => getTrackedSeasons(), []);
+  const currentSeason = useMemo(() => getCurrentSeason(), []);
+  const [viewedSeasonIndex, setViewedSeasonIndex] = useState(() => Math.max(0, trackedSeasons.length - 1));
+  const [seasonStandings, setSeasonStandings] = useState<SeasonStandingRow[]>([]);
+  const [seasonLoading, setSeasonLoading] = useState(false);
+  const [visibleSeasonRows, setVisibleSeasonRows] = useState(PAGE_SIZE);
+
   useEffect(() => {
     supabase
       .from("leaderboard")
@@ -227,6 +248,35 @@ export default function Leaderboard({
         if (!error) setMonthlyMatches((data ?? []) as MonthlyMatchTeams[]);
       });
   }, []);
+
+  useEffect(() => {
+    if (trackedSeasons.length === 0) return;
+    const season = trackedSeasons[viewedSeasonIndex];
+    if (!season) return;
+    setSeasonLoading(true);
+    const isCurrent = season.key === currentSeason.key;
+    const asOf = isCurrent ? new Date() : new Date(season.nextStart.getTime() - 1000);
+    supabase
+      .rpc("get_season_standings", { p_season_start: season.start.toISOString(), p_as_of: asOf.toISOString() })
+      .then(({ data, error }) => {
+        if (!error) {
+          setSeasonStandings(
+            (data ?? []).map(
+              (r: { player_id: string; rank: number; rating: number; games: number; wins: number; rating_gain: number }) => ({
+                playerId: r.player_id,
+                rank: r.rank,
+                rating: r.rating,
+                games: r.games,
+                wins: r.wins,
+                ratingGain: r.rating_gain,
+              })
+            )
+          );
+        }
+        setSeasonLoading(false);
+        setVisibleSeasonRows(PAGE_SIZE);
+      });
+  }, [viewedSeasonIndex, trackedSeasons, currentSeason]);
 
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -496,6 +546,97 @@ export default function Leaderboard({
           </div>
         )}
       </div>
+
+      {trackedSeasons.length === 0 ? (
+        <div className="card">
+          <h2 style={{ marginBottom: 0 }}>Season leaderboard</h2>
+          <p className="stat-meta" style={{ marginBottom: 0 }}>
+            Seasons kick off with Autumn on 1 September — check back then to see standings.
+          </p>
+        </div>
+      ) : (
+        <div className="card">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+            <span
+              className="link-action"
+              role="button"
+              tabIndex={0}
+              onClick={() => viewedSeasonIndex > 0 && setViewedSeasonIndex((i) => i - 1)}
+              style={{
+                fontSize: "1.2rem",
+                padding: "0 8px",
+                opacity: viewedSeasonIndex === 0 ? 0.3 : 1,
+                cursor: viewedSeasonIndex === 0 ? "default" : "pointer",
+              }}
+            >
+              ‹
+            </span>
+            <h2 style={{ marginBottom: 0 }}>{trackedSeasons[viewedSeasonIndex].label}</h2>
+            <span
+              className="link-action"
+              role="button"
+              tabIndex={0}
+              onClick={() =>
+                viewedSeasonIndex < trackedSeasons.length - 1 && setViewedSeasonIndex((i) => i + 1)
+              }
+              style={{
+                fontSize: "1.2rem",
+                padding: "0 8px",
+                opacity: viewedSeasonIndex === trackedSeasons.length - 1 ? 0.3 : 1,
+                cursor: viewedSeasonIndex === trackedSeasons.length - 1 ? "default" : "pointer",
+              }}
+            >
+              ›
+            </span>
+          </div>
+          <p className="stat-meta" style={{ marginBottom: 12 }}>
+            {trackedSeasons[viewedSeasonIndex].key === currentSeason.key
+              ? "In progress — ratings carry straight over, nothing resets."
+              : "Final standings for this season."}
+          </p>
+          {seasonLoading ? (
+            <p className="stat-meta">Loading…</p>
+          ) : seasonStandings.length === 0 ? (
+            <p className="stat-meta">Nobody's established (12+ games) yet this season.</p>
+          ) : (
+            <>
+              {seasonStandings.slice(0, visibleSeasonRows).map((row) => {
+                const player = rowsById.get(row.playerId);
+                if (!player) return null;
+                return (
+                  <div
+                    className="leaderboard-row"
+                    key={row.playerId}
+                    style={{ cursor: "pointer" }}
+                    onClick={() => onSelectPlayer(player.id, player.display_name)}
+                  >
+                    <span className={`rank ${row.rank <= 3 ? "top3" : ""}`}>{row.rank}</span>
+                    <Avatar name={player.display_name} url={player.avatar_url} size={28} />
+                    <span className="name">{player.display_name}</span>
+                    <span style={{ width: 56, textAlign: "right" }}>
+                      <DeltaBadge value={row.ratingGain} />
+                    </span>
+                    <span className="rating">{Math.round(row.rating)}</span>
+                  </div>
+                );
+              })}
+              {seasonStandings.length > visibleSeasonRows && (
+                <button
+                  onClick={() => setVisibleSeasonRows((c) => c + PAGE_SIZE)}
+                  style={{
+                    marginTop: 12,
+                    background: "transparent",
+                    color: "var(--navy-500)",
+                    border: "1px solid var(--border)",
+                  }}
+                >
+                  Show more ({seasonStandings.length - visibleSeasonRows} more)
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      )}
 
       <MonthlyStatCard
         title="Most games played"

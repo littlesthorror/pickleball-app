@@ -16,6 +16,13 @@ import Events from "./pages/Events";
 import FAQ from "./pages/FAQ";
 import Notices from "./pages/Notices";
 import type { PlayerStatus } from "./types";
+import { getCurrentSeason, isWithinNewSeasonWindow } from "./lib/seasons";
+
+// One-line "new season" banner, shown for the first few days of each
+// tracked season (see isWithinNewSeasonWindow) — purely time-window based,
+// no per-player dismiss state to track. Ben specifically wanted this to
+// reassure people nothing resets, not just announce the date.
+const SEASON_EMOJI: Record<string, string> = { Spring: "🌱", Summer: "☀️", Autumn: "🍂", Winter: "❄️" };
 
 type Tab =
   | "dashboard"
@@ -119,6 +126,9 @@ export default function App() {
       .then(({ data }) => setLatestEventAt(data?.[0]?.created_at ?? null));
   }, [player?.id]);
 
+  const showSeasonBanner = isWithinNewSeasonWindow();
+  const currentSeason = getCurrentSeason();
+
   const hasNewNotice =
     !!latestNoticeAt && (!lastSeenNotices || new Date(latestNoticeAt) > new Date(lastSeenNotices));
   const hasNewEvent =
@@ -190,6 +200,13 @@ export default function App() {
               <span className="link-action" role="button" tabIndex={0} onClick={togglePreview}>
                 exit preview
               </span>
+            </div>
+          )}
+
+          {showSeasonBanner && (
+            <div className="preview-banner">
+              {SEASON_EMOJI[currentSeason.name]} A new season has begun — {currentSeason.label} is under way.
+              Ratings carry straight over, nothing resets.
             </div>
           )}
 
