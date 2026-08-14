@@ -300,10 +300,13 @@ export default function Events({ isAdmin }: { isAdmin: boolean }) {
 
     if (posterFile && eventId) {
       const ext = posterFile.name.split(".").pop() || "jpg";
-      const path = `events/${eventId}/poster.${ext}`;
-      const { error: uploadError } = await supabase.storage
-        .from("notices")
-        .upload(path, posterFile, { upsert: true });
+      // A fresh, unique path per upload — rather than always overwriting
+      // events/<id>/poster.<ext> — so the image gets a new URL every time
+      // a poster is replaced. The old scheme reused the same URL for every
+      // replacement, so browsers kept showing the cached original even
+      // though the file underneath had changed. Found and fixed 2026-08-14.
+      const path = `events/${eventId}/poster-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+      const { error: uploadError } = await supabase.storage.from("notices").upload(path, posterFile);
       if (uploadError) {
         setSaveError(`Event saved, but the poster failed to upload: ${uploadError.message}`);
         setSaving(false);
@@ -311,8 +314,16 @@ export default function Events({ isAdmin }: { isAdmin: boolean }) {
         return;
       }
       await supabase.from("events").update({ poster_path: path }).eq("id", eventId);
+      // Clean up the old file now that the new one is safely in place —
+      // otherwise every replacement leaves an orphaned image in storage.
+      if (existingPosterPath && existingPosterPath !== path) {
+        await supabase.storage.from("notices").remove([existingPosterPath]);
+      }
     } else if (removePoster && eventId) {
       await supabase.from("events").update({ poster_path: null }).eq("id", eventId);
+      if (existingPosterPath) {
+        await supabase.storage.from("notices").remove([existingPosterPath]);
+      }
     }
 
     resetForm();
