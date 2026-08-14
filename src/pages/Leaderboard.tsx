@@ -17,6 +17,12 @@ const PAGE_SIZE = 20;
 // those are raw counts (no fluke risk from a tiny sample).
 const MIN_GAMES_FOR_WIN_PCT = 3;
 
+// Club Player needs a fuller month's picture than the win-% block above —
+// Ben's club typically plays ~8 games a session with some players doing
+// multiple sessions a week, so 12 games this month is a realistic bar
+// without being a stretch (2026-08-14).
+const MIN_GAMES_FOR_CLUB_PLAYER = 12;
+
 interface MonthlyLeader {
   playerId: string;
   value: number;
@@ -60,6 +66,21 @@ interface ClubPlayerAward {
   winPct: number;
   ratingGain: number;
   composite: number;
+}
+
+// Past Club Player winners, one row per completed month — written by the
+// same snapshot_month_end_leaderboard() call that powers the Top 10/Top 3
+// badges. Forward-only: the first row will be whichever month is the
+// first to complete after this shipped (2026-08-14), nothing backfilled.
+interface PastClubPlayer {
+  yearMonth: string;
+  games: number;
+  wins: number;
+  winPct: number;
+  ratingGain: number;
+  playerId: string;
+  displayName: string;
+  avatarUrl: string | null;
 }
 
 function MonthlyStatCard({
@@ -136,6 +157,7 @@ export default function Leaderboard({
   const [visibleProvisional, setVisibleProvisional] = useState(PAGE_SIZE);
   const [monthlyHistory, setMonthlyHistory] = useState<MonthlyHistoryRow[]>([]);
   const [monthlyMatches, setMonthlyMatches] = useState<MonthlyMatchTeams[]>([]);
+  const [pastClubPlayers, setPastClubPlayers] = useState<PastClubPlayer[]>([]);
 
   useEffect(() => {
     supabase
@@ -149,12 +171,39 @@ export default function Leaderboard({
         setLoading(false);
       });
 
-    // Lazily records last month's Top 10 finishers the first time anyone
-    // opens the leaderboard after the month rolls over — no cron job in
-    // this project, so this is the trigger instead. Cheap no-op almost
-    // every time (it self-guards against re-running for a month that's
-    // already been recorded). Powers the Top 10 / Top 3 badges.
+    // Lazily records last month's Top 10 finishers (and Club Player — see
+    // below) the first time anyone opens the leaderboard after the month
+    // rolls over — no cron job in this project, so this is the trigger
+    // instead. Cheap no-op almost every time (it self-guards against
+    // re-running for a month that's already been recorded). Powers the
+    // Top 10 / Top 3 badges.
     supabase.rpc("snapshot_month_end_leaderboard");
+
+    supabase
+      .from("monthly_club_player_awards")
+      .select("year_month, player_id, games, wins, win_pct, rating_gain, players(display_name, avatar_url)")
+      .order("year_month", { ascending: false })
+      .limit(3)
+      .then(({ data, error }) => {
+        if (error || !data) return;
+        setPastClubPlayers(
+          data
+            .filter((r) => !!r.players)
+            .map((r) => {
+              const player = r.players as unknown as { display_name: string; avatar_url: string | null };
+              return {
+                yearMonth: r.year_month as string,
+                games: r.games as number,
+                wins: r.wins as number,
+                winPct: (r.win_pct as number) * 100,
+                ratingGain: r.rating_gain as number,
+                playerId: r.player_id as string,
+                displayName: player.display_name,
+                avatarUrl: player.avatar_url,
+              };
+            })
+        );
+      });
   }, []);
 
   useEffect(() => {
@@ -258,11 +307,12 @@ export default function Leaderboard({
       .map((e) => ({ playerId: e.playerId, value: e.ratingGain }));
 
     // "Club Player" rewards well-rounded form rather than one big number:
-    // an even blend of activity (games played), reliability (win %, same
-    // 3+ game minimum as above), and improvement (rating gained), each
-    // scaled against the best in the field this month so no single factor
-    // dominates just because of its raw units.
-    const eligible = entries.filter((e) => e.games >= MIN_GAMES_FOR_WIN_PCT);
+    // an even blend of activity (games played), reliability (win %), and
+    // improvement (rating gained), each scaled against the best in the
+    // field this month so no single factor dominates just because of its
+    // raw units. Needs a fuller month's picture than the win-% block
+    // above, so it has its own (higher) minimum games threshold.
+    const eligible = entries.filter((e) => e.games >= MIN_GAMES_FOR_CLUB_PLAYER);
     const maxGames = Math.max(0, ...eligible.map((e) => e.games));
     const maxRatingGain = Math.max(0, ...eligible.map((e) => e.ratingGain));
     const clubPlayerCandidates: ClubPlayerAward[] = eligible.map((e) => {
@@ -525,6 +575,41 @@ export default function Leaderboard({
           <p className="stat-meta">No matches played together yet this month.</p>
         )}
       </div>
+
+      {pastClubPlayers.length > 0 && (
+        <div className="card">
+          <h2 style={{ marginBottom: 0 }}>Club Player — recent months</h2>
+          <p className="stat-meta" style={{ marginBottom: 12 }}>
+            Locked in once each month ends.
+          </p>
+          {pastClubPlayers.map((p) => (
+            <div
+              className="match-row"
+              key={p.yearMonth}
+              style={{ cursor: "pointer" }}
+              onClick={() => onSelectPlayer(p.playerId, p.displayName)}
+            >
+              <div>
+                <div className="opponent">
+                  {new Date(
+                    Number(p.yearMonth.slice(0, 4)),
+                    Number(p.yearMonth.slice(5, 7)) - 1,
+                    1
+                  ).toLocaleDateString(undefined, { month: "long", year: "numeric" })}
+                </div>
+                <div className="meta">
+                  {p.games} games · {Math.round(p.winPct)}% wins · {p.ratingGain > 0 ? "+" : ""}
+                  {Math.round(p.ratingGain)} rating
+                </div>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <Avatar name={p.displayName} url={p.avatarUrl} size={24} />
+                <span style={{ fontWeight: 700, color: "var(--navy-900)" }}>{p.displayName}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {provisional.length > 0 && (
         <div className="card">
