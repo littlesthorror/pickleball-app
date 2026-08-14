@@ -547,97 +547,6 @@ export default function Leaderboard({
         )}
       </div>
 
-      {trackedSeasons.length === 0 ? (
-        <div className="card">
-          <h2 style={{ marginBottom: 0 }}>Season leaderboard</h2>
-          <p className="stat-meta" style={{ marginBottom: 0 }}>
-            Seasons kick off with Autumn on 1 September — check back then to see standings.
-          </p>
-        </div>
-      ) : (
-        <div className="card">
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-            <span
-              className="link-action"
-              role="button"
-              tabIndex={0}
-              onClick={() => viewedSeasonIndex > 0 && setViewedSeasonIndex((i) => i - 1)}
-              style={{
-                fontSize: "1.2rem",
-                padding: "0 8px",
-                opacity: viewedSeasonIndex === 0 ? 0.3 : 1,
-                cursor: viewedSeasonIndex === 0 ? "default" : "pointer",
-              }}
-            >
-              ‹
-            </span>
-            <h2 style={{ marginBottom: 0 }}>{trackedSeasons[viewedSeasonIndex].label}</h2>
-            <span
-              className="link-action"
-              role="button"
-              tabIndex={0}
-              onClick={() =>
-                viewedSeasonIndex < trackedSeasons.length - 1 && setViewedSeasonIndex((i) => i + 1)
-              }
-              style={{
-                fontSize: "1.2rem",
-                padding: "0 8px",
-                opacity: viewedSeasonIndex === trackedSeasons.length - 1 ? 0.3 : 1,
-                cursor: viewedSeasonIndex === trackedSeasons.length - 1 ? "default" : "pointer",
-              }}
-            >
-              ›
-            </span>
-          </div>
-          <p className="stat-meta" style={{ marginBottom: 12 }}>
-            {trackedSeasons[viewedSeasonIndex].key === currentSeason.key
-              ? "In progress — ratings carry straight over, nothing resets."
-              : "Final standings for this season."}
-          </p>
-          {seasonLoading ? (
-            <p className="stat-meta">Loading…</p>
-          ) : seasonStandings.length === 0 ? (
-            <p className="stat-meta">Nobody's established (12+ games) yet this season.</p>
-          ) : (
-            <>
-              {seasonStandings.slice(0, visibleSeasonRows).map((row) => {
-                const player = rowsById.get(row.playerId);
-                if (!player) return null;
-                return (
-                  <div
-                    className="leaderboard-row"
-                    key={row.playerId}
-                    style={{ cursor: "pointer" }}
-                    onClick={() => onSelectPlayer(player.id, player.display_name)}
-                  >
-                    <span className={`rank ${row.rank <= 3 ? "top3" : ""}`}>{row.rank}</span>
-                    <Avatar name={player.display_name} url={player.avatar_url} size={28} />
-                    <span className="name">{player.display_name}</span>
-                    <span style={{ width: 56, textAlign: "right" }}>
-                      <DeltaBadge value={row.ratingGain} />
-                    </span>
-                    <span className="rating">{Math.round(row.rating)}</span>
-                  </div>
-                );
-              })}
-              {seasonStandings.length > visibleSeasonRows && (
-                <button
-                  onClick={() => setVisibleSeasonRows((c) => c + PAGE_SIZE)}
-                  style={{
-                    marginTop: 12,
-                    background: "transparent",
-                    color: "var(--navy-500)",
-                    border: "1px solid var(--border)",
-                  }}
-                >
-                  Show more ({seasonStandings.length - visibleSeasonRows} more)
-                </button>
-              )}
-            </>
-          )}
-        </div>
-      )}
-
       <MonthlyStatCard
         title="Most games played"
         monthLabel={monthLabel}
@@ -749,6 +658,97 @@ export default function Leaderboard({
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {trackedSeasons.length === 0 ? (
+        <div className="card">
+          <h2 style={{ marginBottom: 0 }}>Season leaderboard</h2>
+          <p className="stat-meta" style={{ marginBottom: 0 }}>
+            Seasons kick off with Autumn on 1 September — check back then to see standings.
+          </p>
+        </div>
+      ) : (
+        <div className="card">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+            <span
+              className="link-action"
+              role="button"
+              tabIndex={0}
+              onClick={() => viewedSeasonIndex > 0 && setViewedSeasonIndex((i) => i - 1)}
+              style={{
+                fontSize: "1.2rem",
+                padding: "0 8px",
+                opacity: viewedSeasonIndex === 0 ? 0.3 : 1,
+                cursor: viewedSeasonIndex === 0 ? "default" : "pointer",
+              }}
+            >
+              ‹
+            </span>
+            <h2 style={{ marginBottom: 0 }}>{trackedSeasons[viewedSeasonIndex].label}</h2>
+            <span
+              className="link-action"
+              role="button"
+              tabIndex={0}
+              onClick={() =>
+                viewedSeasonIndex < trackedSeasons.length - 1 && setViewedSeasonIndex((i) => i + 1)
+              }
+              style={{
+                fontSize: "1.2rem",
+                padding: "0 8px",
+                opacity: viewedSeasonIndex === trackedSeasons.length - 1 ? 0.3 : 1,
+                cursor: viewedSeasonIndex === trackedSeasons.length - 1 ? "default" : "pointer",
+              }}
+            >
+              ›
+            </span>
+          </div>
+          <p className="stat-meta" style={{ marginBottom: 12 }}>
+            {trackedSeasons[viewedSeasonIndex].key === currentSeason.key
+              ? "In progress — ratings carry straight over, nothing resets."
+              : "Final standings for this season."}
+          </p>
+          {seasonLoading ? (
+            <p className="stat-meta">Loading…</p>
+          ) : seasonStandings.length === 0 ? (
+            <p className="stat-meta">Nobody's established (12+ games) yet this season.</p>
+          ) : (
+            <>
+              {seasonStandings.slice(0, visibleSeasonRows).map((row) => {
+                const player = rowsById.get(row.playerId);
+                if (!player) return null;
+                return (
+                  <div
+                    className="leaderboard-row"
+                    key={row.playerId}
+                    style={{ cursor: "pointer" }}
+                    onClick={() => onSelectPlayer(player.id, player.display_name)}
+                  >
+                    <span className={`rank ${row.rank <= 3 ? "top3" : ""}`}>{row.rank}</span>
+                    <Avatar name={player.display_name} url={player.avatar_url} size={28} />
+                    <span className="name">{player.display_name}</span>
+                    <span style={{ width: 56, textAlign: "right" }}>
+                      <DeltaBadge value={row.ratingGain} />
+                    </span>
+                    <span className="rating">{Math.round(row.rating)}</span>
+                  </div>
+                );
+              })}
+              {seasonStandings.length > visibleSeasonRows && (
+                <button
+                  onClick={() => setVisibleSeasonRows((c) => c + PAGE_SIZE)}
+                  style={{
+                    marginTop: 12,
+                    background: "transparent",
+                    color: "var(--navy-500)",
+                    border: "1px solid var(--border)",
+                  }}
+                >
+                  Show more ({seasonStandings.length - visibleSeasonRows} more)
+                </button>
+              )}
+            </>
+          )}
         </div>
       )}
 
