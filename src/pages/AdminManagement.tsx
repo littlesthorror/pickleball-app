@@ -213,9 +213,28 @@ export default function AdminManagement({ currentUserId }: { currentUserId: stri
       return;
     }
     setRecomputing(true);
+    const attemptedAt = Date.now();
     const { error } = await supabase.functions.invoke("recompute-ratings", { body: {} });
     setRecomputing(false);
     if (error) {
+      // Same false-failure class as reset-player — invoke() can report a
+      // client-side error even when the recompute actually completed.
+      // Every player's player_ratings row gets a fresh updated_at as part
+      // of the rebuild, so a very recent one is a reliable "it worked"
+      // signal even though there's no single row to point at.
+      const { data: recheck } = await supabase
+        .from("player_ratings")
+        .select("updated_at")
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const justRecomputed =
+        !!recheck?.updated_at && new Date(recheck.updated_at).getTime() > attemptedAt - 5000;
+      if (justRecomputed) {
+        alert("Done — every player's rating has been recalculated from the full match history.");
+        load();
+        return;
+      }
       if (error instanceof FunctionsHttpError) {
         const body = await error.context.json().catch(() => null);
         alert(body?.error ?? "Couldn't recompute ratings.");
