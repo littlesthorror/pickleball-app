@@ -171,7 +171,27 @@ export default function AdminManagement({ currentUserId }: { currentUserId: stri
     });
     setBusyId(null);
     if (error) {
-      alert(`Couldn't reset: ${error.message}`);
+      // Same false-failure class as confirm/delete/edit-match — invoke()
+      // can report a client-side error even when the reset actually went
+      // through server-side. Recheck the DB before showing an alarming
+      // message: if reset_at was just set, it worked.
+      const { data: recheck } = await supabase
+        .from("player_ratings")
+        .select("reset_at")
+        .eq("player_id", player.id)
+        .maybeSingle();
+      const justReset =
+        !!recheck?.reset_at && new Date(recheck.reset_at).getTime() > Date.now() - 15000;
+      if (justReset) {
+        load();
+        return;
+      }
+      if (error instanceof FunctionsHttpError) {
+        const body = await error.context.json().catch(() => null);
+        alert(body?.error ?? "Couldn't reset this player's history.");
+      } else {
+        alert("Couldn't reach the server to reset this player's history — check your connection and try again.");
+      }
       return;
     }
     load();
