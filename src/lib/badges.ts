@@ -1,5 +1,14 @@
 import type { PlayerMatchHistoryRow } from "../types";
 
+// One row per calendar month this player finished in the club's Top 10 —
+// fetched from monthly_leaderboard_snapshots, which is only ever populated
+// forward from when that feature shipped (2026-08-14). No backfill for
+// earlier months, per Ben's call — every player effectively starts fresh.
+export interface MonthlyFinish {
+  yearMonth: string; // "YYYY-MM"
+  rank: number;
+}
+
 export interface Badge {
   id: string;
   emoji: string;
@@ -21,7 +30,8 @@ export interface Badge {
 export function computeBadges(
   history: PlayerMatchHistoryRow[],
   gamesPlayed: number,
-  dateJoined: string
+  dateJoined: string,
+  monthlyFinishes: MonthlyFinish[] = []
 ): Badge[] {
   const badges: Badge[] = [];
 
@@ -359,6 +369,43 @@ export function computeBadges(
       });
       break;
     }
+  }
+
+  // "Top 10" / "Top 3" finish — the two deliberate exceptions to the
+  // "never compares you to anyone else" rule (alongside "First time
+  // pickled" above), added 2026-08-14 at Ben's explicit request. Reaching
+  // Top 3 always implies Top 10, so both can fire together. Forward-only:
+  // monthlyFinishes only ever contains months snapshotted after this
+  // feature shipped, never backfilled.
+  const monthLabel = (yearMonth: string) => {
+    const [y, m] = yearMonth.split("-").map(Number);
+    return new Date(y, m - 1, 1).toLocaleDateString(undefined, { month: "long", year: "numeric" });
+  };
+  const top10Finishes = monthlyFinishes.filter((f) => f.rank <= 10).sort((a, b) => (a.yearMonth < b.yearMonth ? 1 : -1));
+  const top3Finishes = monthlyFinishes.filter((f) => f.rank <= 3).sort((a, b) => (a.yearMonth < b.yearMonth ? 1 : -1));
+  if (top10Finishes.length > 0) {
+    const latest = top10Finishes[0];
+    badges.push({
+      id: "top10-finish",
+      emoji: "🔟",
+      label: "Top 10 finish",
+      description: `Finished a month in the club's Top 10 — ${top10Finishes.length} time${
+        top10Finishes.length === 1 ? "" : "s"
+      }, most recently ${monthLabel(latest.yearMonth)}.`,
+      achievedAt: new Date(Number(latest.yearMonth.slice(0, 4)), Number(latest.yearMonth.slice(5, 7)), 0).toISOString(),
+    });
+  }
+  if (top3Finishes.length > 0) {
+    const latest = top3Finishes[0];
+    badges.push({
+      id: "top3-finish",
+      emoji: "🥉",
+      label: "Top 3 finish",
+      description: `Finished a month in the club's Top 3 — ${top3Finishes.length} time${
+        top3Finishes.length === 1 ? "" : "s"
+      }, most recently ${monthLabel(latest.yearMonth)}.`,
+      achievedAt: new Date(Number(latest.yearMonth.slice(0, 4)), Number(latest.yearMonth.slice(5, 7)), 0).toISOString(),
+    });
   }
 
   return badges;

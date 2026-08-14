@@ -278,6 +278,7 @@ export default function App() {
                 <PlayerDetail
                   playerId={viewingPlayer.id}
                   playerName={viewingPlayer.name}
+                  viewerId={player.id}
                   onBack={() => setViewingPlayer(null)}
                 />
               ) : (

@@ -13,6 +13,7 @@ import { supabase } from "../supabaseClient";
 import Avatar from "../components/Avatar";
 import ShareCard from "../components/ShareCard";
 import { computeBadges } from "../lib/badges";
+import type { MonthlyFinish } from "../lib/badges";
 import { isBirthdayToday } from "../lib/birthday";
 import { getTier, getNextTier } from "../lib/tiers";
 import type { EventRow, PlayerMatchHistoryRow, PlayerStatus } from "../types";
@@ -25,6 +26,15 @@ const BADGE_PAGE_SIZE = 6;
 
 type XAxisMode = "games" | "date";
 
+interface ViewerMatchRow {
+  team_a_player_1_id: string;
+  team_a_player_2_id: string;
+  team_b_player_1_id: string;
+  team_b_player_2_id: string;
+  team_a_score: number;
+  team_b_score: number;
+}
+
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
@@ -32,21 +42,31 @@ function formatDate(iso: string) {
 export default function Dashboard({
   playerId,
   isOwnProfile = false,
+  viewerId,
   onViewEvents,
 }: {
   playerId: string;
-  // Head-to-head records and the "share my card" action are only shown on
-  // your own dashboard — not when viewing a clubmate's, via the leaderboard
-  // click-through. Keeps this purely self-reflective rather than something
-  // people can browse to see how they stack up against a specific person,
-  // per Ben's "no unnecessary gloating or unfairness" note (2026-08-04).
+  // The full opponent-by-opponent head-to-head breakdown and the "share my
+  // card" action are only shown on your own dashboard — not when viewing a
+  // clubmate's, via the leaderboard click-through. Keeps that full
+  // breakdown purely self-reflective rather than something people can
+  // browse to see how a clubmate stacks up against everyone else, per
+  // Ben's "no unnecessary gloating or unfairness" note (2026-08-04).
   isOwnProfile?: boolean;
+  // The signed-in user's own player id — only needed (and only used) when
+  // viewing someone else's dashboard, to show "your own record against
+  // this specific person" (added 2026-08-14). Unlike the full breakdown
+  // above, this is about the viewer's own relationship with this one
+  // player, not exposing the viewed player's data, so it's fine to show
+  // on a clubmate's profile.
+  viewerId?: string;
   // Lets the "next event" block jump to the Events tab — only wired up on
   // your own dashboard, same as above.
   onViewEvents?: () => void;
 }) {
   const [player, setPlayer] = useState<PlayerStatus | null>(null);
   const [history, setHistory] = useState<PlayerMatchHistoryRow[]>([]);
+  const [monthlyFinishes, setMonthlyFinishes] = useState<MonthlyFinish[]>([]);
   const [nextEvent, setNextEvent] = useState<EventRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -63,6 +83,13 @@ export default function Dashboard({
   // and more of them — shows the first 6 (most recently earned first) with
   // a "Show more" toggle beneath. Added 2026-08-13 at Ben's request.
   const [showAllBadges, setShowAllBadges] = useState(false);
+  // Raw match rows involving the viewer — only fetched when looking at a
+  // clubmate's dashboard, to compute "your record vs this specific
+  // player" below. Uses the `matches` table directly (not
+  // player_match_history) because it needs real player ids on both teams
+  // to match this one specific person regardless of who their partner was
+  // in any given game — player_match_history only has opponent names.
+  const [viewerMatches, setViewerMatches] = useState<ViewerMatchRow[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -84,10 +111,38 @@ export default function Dashboard({
       setLoading(false);
     }
     load();
+
+    supabase
+      .from("monthly_leaderboard_snapshots")
+      .select("year_month, rank")
+      .eq("player_id", playerId)
+      .then(({ data, error }) => {
+        if (cancelled || error) return;
+        setMonthlyFinishes(
+          (data ?? []).map((r) => ({ yearMonth: r.year_month as string, rank: r.rank as number }))
+        );
+      });
     return () => {
       cancelled = true;
     };
   }, [playerId]);
+
+  useEffect(() => {
+    if (isOwnProfile || !viewerId) {
+      setViewerMatches([]);
+      return;
+    }
+    supabase
+      .from("matches")
+      .select("team_a_player_1_id, team_a_player_2_id, team_b_player_1_id, team_b_player_2_id, team_a_score, team_b_score")
+      .eq("status", "confirmed")
+      .or(
+        `team_a_player_1_id.eq.${viewerId},team_a_player_2_id.eq.${viewerId},team_b_player_1_id.eq.${viewerId},team_b_player_2_id.eq.${viewerId}`
+      )
+      .then(({ data, error }) => {
+        if (!error) setViewerMatches((data ?? []) as ViewerMatchRow[]);
+      });
+  }, [isOwnProfile, viewerId]);
 
   useEffect(() => {
     if (!isOwnProfile) return;
@@ -153,7 +208,7 @@ export default function Dashboard({
   }, [player, history, xAxis]);
 
   const badges = useMemo(() => {
-    const computed = computeBadges(history, player?.games_played ?? 0, player?.date_joined ?? "");
+    const computed = computeBadges(history, player?.games_played ?? 0, player?.date_joined ?? "", monthlyFinishes);
     // Most recently earned first — badges with no known date (shouldn't
     // happen in practice) sort to the end rather than the top.
     return [...computed].sort((a, b) => {
@@ -162,7 +217,7 @@ export default function Dashboard({
       if (!b.achievedAt) return -1;
       return new Date(b.achievedAt).getTime() - new Date(a.achievedAt).getTime();
     });
-  }, [history, player]);
+  }, [history, player, monthlyFinishes]);
 
   // 30-day change and personal best — both derived from the same history
   // array already loaded for the chart, so no extra query needed. Mirrors
@@ -228,6 +283,73 @@ export default function Dashboard({
       .map(([opponent, record]) => ({ opponent, ...record, total: record.wins + record.losses }))
       .sort((a, b) => b.total - a.total);
   }, [history]);
+
+  // The calendar month with the most wins — ties go to the more recent
+  // month. Wins only (not win %), so it stays a simple, upbeat "your best
+  // stretch" fact rather than another ranking to game.
+  const bestMonth = useMemo(() => {
+    const byMonth = new Map<string, number>();
+    for (const h of history) {
+      if (!h.won) continue;
+      const d = new Date(h.played_at);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      byMonth.set(key, (byMonth.get(key) ?? 0) + 1);
+    }
+    let bestKey: string | null = null;
+    let bestWins = 0;
+    for (const [key, wins] of byMonth) {
+      if (wins > bestWins || (wins === bestWins && (!bestKey || key > bestKey))) {
+        bestKey = key;
+        bestWins = wins;
+      }
+    }
+    if (!bestKey) return null;
+    const [y, m] = bestKey.split("-").map(Number);
+    const label = new Date(y, m - 1, 1).toLocaleDateString(undefined, { month: "long", year: "numeric" });
+    return { label, wins: bestWins };
+  }, [history]);
+
+  // Longest winning streak ever, not just the currently active one (that's
+  // what Club Stats shows across the whole club) — `history` is already
+  // ordered oldest-first by game_number, so a single forward pass works.
+  const longestStreak = useMemo(() => {
+    let best = 0;
+    let current = 0;
+    for (const h of history) {
+      if (h.won) {
+        current += 1;
+        best = Math.max(best, current);
+      } else {
+        current = 0;
+      }
+    }
+    return best;
+  }, [history]);
+
+  // Your own record against this one specific player, regardless of who
+  // either of you partnered with in any given match — only computed when
+  // viewing someone else's dashboard. Matches where you were teammates
+  // (rather than opponents), or that don't involve the viewed player at
+  // all, are skipped.
+  const headToHeadVsViewed = useMemo(() => {
+    if (isOwnProfile || !viewerId) return null;
+    let wins = 0;
+    let losses = 0;
+    for (const m of viewerMatches) {
+      const viewerOnA = m.team_a_player_1_id === viewerId || m.team_a_player_2_id === viewerId;
+      const viewerOnB = m.team_b_player_1_id === viewerId || m.team_b_player_2_id === viewerId;
+      const viewedOnA = m.team_a_player_1_id === playerId || m.team_a_player_2_id === playerId;
+      const viewedOnB = m.team_b_player_1_id === playerId || m.team_b_player_2_id === playerId;
+      if (viewerOnA && viewedOnB) {
+        if (m.team_a_score > m.team_b_score) wins++;
+        else losses++;
+      } else if (viewerOnB && viewedOnA) {
+        if (m.team_b_score > m.team_a_score) wins++;
+        else losses++;
+      }
+    }
+    return wins + losses > 0 ? { wins, losses } : null;
+  }, [viewerMatches, viewerId, playerId, isOwnProfile]);
 
   if (loading) return <p>Loading your dashboard…</p>;
   if (error) return <p className="error">{error}</p>;
@@ -414,6 +536,31 @@ export default function Dashboard({
         )}
       </div>
 
+      {(bestMonth || longestStreak >= 2) && (
+        <div className="card">
+          <h2>Highlights</h2>
+          {bestMonth && (
+            <div className="match-row">
+              <div>
+                <div className="opponent">Best month</div>
+                <div className="meta">{bestMonth.label}</div>
+              </div>
+              <div className="score">
+                {bestMonth.wins} win{bestMonth.wins === 1 ? "" : "s"}
+              </div>
+            </div>
+          )}
+          {longestStreak >= 2 && (
+            <div className="match-row">
+              <div className="opponent">Longest winning streak</div>
+              <div className="score">
+                {longestStreak} game{longestStreak === 1 ? "" : "s"}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="card">
         <h2>Recent matches</h2>
         {recent.length === 0 && <p className="stat-meta">No confirmed matches yet.</p>}
@@ -452,6 +599,22 @@ export default function Dashboard({
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {!isOwnProfile && viewerId && (
+        <div className="card">
+          <h2>Head-to-head</h2>
+          {headToHeadVsViewed ? (
+            <div className="match-row">
+              <div className="opponent">You vs {player.display_name}</div>
+              <div className="score">
+                {headToHeadVsViewed.wins}–{headToHeadVsViewed.losses}
+              </div>
+            </div>
+          ) : (
+            <p className="stat-meta">You haven't played {player.display_name} yet.</p>
+          )}
         </div>
       )}
 

@@ -22,6 +22,46 @@ interface MonthlyLeader {
   value: number;
 }
 
+interface MonthlyHistoryRow {
+  player_id: string;
+  match_id: string;
+  won: boolean;
+  rating_delta: number;
+  pre_rating: number;
+  own_score: number;
+  opponent_score: number;
+  teammate_name: string;
+  opponent_names: string;
+}
+
+interface MonthlyMatchTeams {
+  team_a_player_1_id: string;
+  team_a_player_2_id: string;
+  team_b_player_1_id: string;
+  team_b_player_2_id: string;
+}
+
+interface BiggestUpset {
+  winnerNames: string;
+  loserNames: string;
+  winnerAvgRating: number;
+  loserAvgRating: number;
+  score: string;
+}
+
+interface TopPairing {
+  names: string;
+  count: number;
+}
+
+interface ClubPlayerAward {
+  playerId: string;
+  games: number;
+  winPct: number;
+  ratingGain: number;
+  composite: number;
+}
+
 function MonthlyStatCard({
   title,
   monthLabel,
@@ -94,7 +134,8 @@ export default function Leaderboard({
   const [search, setSearch] = useState("");
   const [visibleEstablished, setVisibleEstablished] = useState(PAGE_SIZE);
   const [visibleProvisional, setVisibleProvisional] = useState(PAGE_SIZE);
-  const [monthlyHistory, setMonthlyHistory] = useState<{ player_id: string; won: boolean }[]>([]);
+  const [monthlyHistory, setMonthlyHistory] = useState<MonthlyHistoryRow[]>([]);
+  const [monthlyMatches, setMonthlyMatches] = useState<MonthlyMatchTeams[]>([]);
 
   useEffect(() => {
     supabase
@@ -107,6 +148,13 @@ export default function Leaderboard({
         else setRows((data ?? []) as LeaderboardRow[]);
         setLoading(false);
       });
+
+    // Lazily records last month's Top 10 finishers the first time anyone
+    // opens the leaderboard after the month rolls over — no cron job in
+    // this project, so this is the trigger instead. Cheap no-op almost
+    // every time (it self-guards against re-running for a month that's
+    // already been recorded). Powers the Top 10 / Top 3 badges.
+    supabase.rpc("snapshot_month_end_leaderboard");
   }, []);
 
   useEffect(() => {
@@ -114,10 +162,20 @@ export default function Leaderboard({
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
     supabase
       .from("player_match_history")
-      .select("player_id, won")
+      .select(
+        "player_id, match_id, won, rating_delta, pre_rating, own_score, opponent_score, teammate_name, opponent_names"
+      )
       .gte("played_at", monthStart)
       .then(({ data, error }) => {
-        if (!error) setMonthlyHistory((data ?? []) as { player_id: string; won: boolean }[]);
+        if (!error) setMonthlyHistory((data ?? []) as MonthlyHistoryRow[]);
+      });
+    supabase
+      .from("matches")
+      .select("team_a_player_1_id, team_a_player_2_id, team_b_player_1_id, team_b_player_2_id")
+      .eq("status", "confirmed")
+      .gte("played_at", monthStart)
+      .then(({ data, error }) => {
+        if (!error) setMonthlyMatches((data ?? []) as MonthlyMatchTeams[]);
       });
   }, []);
 
@@ -155,20 +213,22 @@ export default function Leaderboard({
 
   // Top 3 for each stat, ties broken by whoever appears first in the
   // query results — not worth a fancier tiebreak for a monthly snapshot.
-  const { mostGamesTop3, mostWinsTop3, highestWinPctTop3 } = useMemo(() => {
-    const stats = new Map<string, { games: number; wins: number }>();
+  const { mostGamesTop3, mostWinsTop3, highestWinPctTop3, biggestMoversTop3, clubPlayer } = useMemo(() => {
+    const stats = new Map<string, { games: number; wins: number; ratingGain: number }>();
     for (const h of monthlyHistory) {
       if (!rowsById.has(h.player_id)) continue;
-      const entry = stats.get(h.player_id) ?? { games: 0, wins: 0 };
+      const entry = stats.get(h.player_id) ?? { games: 0, wins: 0, ratingGain: 0 };
       entry.games += 1;
       if (h.won) entry.wins += 1;
+      entry.ratingGain += h.rating_delta;
       stats.set(h.player_id, entry);
     }
 
-    const entries = Array.from(stats.entries()).map(([playerId, { games, wins }]) => ({
+    const entries = Array.from(stats.entries()).map(([playerId, { games, wins, ratingGain }]) => ({
       playerId,
       games,
       wins,
+      ratingGain,
       winPct: games > 0 ? (wins / games) * 100 : 0,
     }));
 
@@ -188,8 +248,104 @@ export default function Leaderboard({
       .slice(0, 3)
       .map((e) => ({ playerId: e.playerId, value: e.winPct }));
 
-    return { mostGamesTop3, mostWinsTop3, highestWinPctTop3 };
+    // Only rewards genuine improvement — a player who lost rating this
+    // month simply doesn't appear here, rather than showing up with a
+    // negative value.
+    const biggestMoversTop3: MonthlyLeader[] = entries
+      .filter((e) => e.ratingGain > 0)
+      .sort((a, b) => b.ratingGain - a.ratingGain)
+      .slice(0, 3)
+      .map((e) => ({ playerId: e.playerId, value: e.ratingGain }));
+
+    // "Club Player" rewards well-rounded form rather than one big number:
+    // an even blend of activity (games played), reliability (win %, same
+    // 3+ game minimum as above), and improvement (rating gained), each
+    // scaled against the best in the field this month so no single factor
+    // dominates just because of its raw units.
+    const eligible = entries.filter((e) => e.games >= MIN_GAMES_FOR_WIN_PCT);
+    const maxGames = Math.max(0, ...eligible.map((e) => e.games));
+    const maxRatingGain = Math.max(0, ...eligible.map((e) => e.ratingGain));
+    const clubPlayerCandidates: ClubPlayerAward[] = eligible.map((e) => {
+      const gamesNorm = maxGames > 0 ? e.games / maxGames : 0;
+      const winPctNorm = e.winPct / 100;
+      const ratingGainNorm = maxRatingGain > 0 ? Math.max(0, e.ratingGain) / maxRatingGain : 0;
+      return {
+        playerId: e.playerId,
+        games: e.games,
+        winPct: e.winPct,
+        ratingGain: e.ratingGain,
+        composite: (gamesNorm + winPctNorm + ratingGainNorm) / 3,
+      };
+    });
+    const clubPlayer: ClubPlayerAward | null =
+      clubPlayerCandidates.sort((a, b) => b.composite - a.composite)[0] ?? null;
+
+    return { mostGamesTop3, mostWinsTop3, highestWinPctTop3, biggestMoversTop3, clubPlayer };
   }, [monthlyHistory, rowsById]);
+
+  // Biggest upset: the confirmed match this month with the largest
+  // average pre-match rating gap where the lower-rated pair still won.
+  // Both winners' rows carry each other's names in `teammate_name`, so
+  // the pair can be named without a second lookup — and it stays correct
+  // even if one of them isn't currently visible on the leaderboard.
+  const biggestUpset = useMemo<BiggestUpset | null>(() => {
+    const byMatch = new Map<string, MonthlyHistoryRow[]>();
+    for (const h of monthlyHistory) {
+      const list = byMatch.get(h.match_id) ?? [];
+      list.push(h);
+      byMatch.set(h.match_id, list);
+    }
+
+    let best: BiggestUpset | null = null;
+    for (const matchRows of byMatch.values()) {
+      const winners = matchRows.filter((r) => r.won);
+      const losers = matchRows.filter((r) => !r.won);
+      if (winners.length === 0 || losers.length === 0) continue;
+
+      const winnerAvgRating = winners.reduce((s, r) => s + r.pre_rating, 0) / winners.length;
+      const loserAvgRating = losers.reduce((s, r) => s + r.pre_rating, 0) / losers.length;
+      if (loserAvgRating <= winnerAvgRating) continue;
+
+      if (!best || loserAvgRating - winnerAvgRating > best.loserAvgRating - best.winnerAvgRating) {
+        const [w0, w1] = winners;
+        best = {
+          winnerNames: w1 ? `${w0.teammate_name} & ${w1.teammate_name}` : w0.teammate_name,
+          loserNames: w0.opponent_names,
+          winnerAvgRating,
+          loserAvgRating,
+          score: `${w0.own_score}-${w0.opponent_score}`,
+        };
+      }
+    }
+    return best;
+  }, [monthlyHistory]);
+
+  // Most active pairing: counted from raw match rows (by player id, not
+  // name) so two players who happen to share a display name can't merge.
+  const topPairing = useMemo<TopPairing | null>(() => {
+    const pairCounts = new Map<string, number>();
+    const addPair = (a: string, b: string) => {
+      const key = [a, b].sort().join("|");
+      pairCounts.set(key, (pairCounts.get(key) ?? 0) + 1);
+    };
+    for (const m of monthlyMatches) {
+      addPair(m.team_a_player_1_id, m.team_a_player_2_id);
+      addPair(m.team_b_player_1_id, m.team_b_player_2_id);
+    }
+
+    let top: TopPairing | null = null;
+    for (const [key, count] of pairCounts) {
+      if (!top || count > top.count) {
+        const [a, b] = key.split("|");
+        const nameA = rowsById.get(a)?.display_name ?? "?";
+        const nameB = rowsById.get(b)?.display_name ?? "?";
+        top = { names: `${nameA} & ${nameB}`, count };
+      }
+    }
+    return top;
+  }, [monthlyMatches, rowsById]);
+
+  const clubPlayerRow = clubPlayer ? rowsById.get(clubPlayer.playerId) : undefined;
 
   if (loading) return <p>Loading leaderboard…</p>;
   if (error) return <p className="error">{error}</p>;
@@ -260,6 +416,35 @@ export default function Leaderboard({
             Show more ({established.length - visibleEstablished} more)
           </button>
         )}
+        {clubPlayerRow && clubPlayer && (
+          <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--border)" }}>
+            <p
+              className="stat-meta"
+              style={{
+                color: "var(--orange-600)",
+                fontWeight: 700,
+                textTransform: "uppercase",
+                letterSpacing: "0.04em",
+                marginBottom: 8,
+              }}
+            >
+              🏓 Club Player — {monthLabel}
+            </p>
+            <div
+              className="leaderboard-row"
+              style={{ cursor: "pointer", borderBottom: "none", padding: "0 4px" }}
+              onClick={() => onSelectPlayer(clubPlayerRow.id, clubPlayerRow.display_name)}
+            >
+              <Avatar name={clubPlayerRow.display_name} url={clubPlayerRow.avatar_url} size={28} />
+              <span className="name">{clubPlayerRow.display_name}</span>
+              <span className="stat-meta" style={{ margin: 0 }}>
+                {clubPlayer.games} games · {Math.round(clubPlayer.winPct)}% wins ·{" "}
+                {clubPlayer.ratingGain > 0 ? "+" : ""}
+                {Math.round(clubPlayer.ratingGain)} rating
+              </span>
+            </div>
+          </div>
+        )}
       </div>
 
       <MonthlyStatCard
@@ -291,6 +476,55 @@ export default function Leaderboard({
         onSelectPlayer={onSelectPlayer}
         emptyMessage={`Nobody's played ${MIN_GAMES_FOR_WIN_PCT}+ games yet this month.`}
       />
+
+      <MonthlyStatCard
+        title="Biggest movers"
+        monthLabel={monthLabel}
+        leaders={biggestMoversTop3}
+        rowsById={rowsById}
+        formatValue={(v) => `+${Math.round(v)}`}
+        onSelectPlayer={onSelectPlayer}
+        emptyMessage="Nobody's gained rating yet this month."
+      />
+
+      <div className="card">
+        <h2 style={{ marginBottom: 0 }}>Biggest upset</h2>
+        <p className="stat-meta" style={{ marginBottom: 12 }}>
+          {monthLabel}
+        </p>
+        {biggestUpset ? (
+          <div className="match-row">
+            <div>
+              <div className="opponent">{biggestUpset.winnerNames}</div>
+              <div className="meta">
+                beat {biggestUpset.loserNames} · outrated by{" "}
+                {Math.round(biggestUpset.loserAvgRating - biggestUpset.winnerAvgRating)} pts
+              </div>
+            </div>
+            <div className="score">{biggestUpset.score}</div>
+          </div>
+        ) : (
+          <p className="stat-meta">No upsets yet this month — favourites are holding serve.</p>
+        )}
+      </div>
+
+      <div className="card">
+        <h2 style={{ marginBottom: 0 }}>Most active pairing</h2>
+        <p className="stat-meta" style={{ marginBottom: 12 }}>
+          {monthLabel}
+        </p>
+        {topPairing ? (
+          <div className="match-row">
+            <div>
+              <div className="opponent">{topPairing.names}</div>
+              <div className="meta">teammates, not opponents</div>
+            </div>
+            <div className="score">{topPairing.count}</div>
+          </div>
+        ) : (
+          <p className="stat-meta">No matches played together yet this month.</p>
+        )}
+      </div>
 
       {provisional.length > 0 && (
         <div className="card">

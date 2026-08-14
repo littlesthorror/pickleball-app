@@ -7,10 +7,14 @@ import Dashboard from "./Dashboard";
 export default function PlayerDetail({
   playerId,
   playerName,
+  viewerId,
   onBack,
 }: {
   playerId: string;
   playerName: string;
+  // The signed-in user's own player id — passed through to Dashboard so it
+  // can show "your record vs this player" (added 2026-08-14).
+  viewerId: string;
   onBack: () => void;
 }) {
   return (
@@ -30,7 +34,7 @@ export default function PlayerDetail({
         ← Back to leaderboard
       </button>
       <h1 style={{ marginBottom: 16 }}>{playerName}</h1>
-      <Dashboard playerId={playerId} />
+      <Dashboard playerId={playerId} viewerId={viewerId} />
     </div>
   );
 }
