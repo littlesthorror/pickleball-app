@@ -285,54 +285,71 @@ function EventTicketModal({
   onEdit: () => void;
   onDelete: () => void;
 }) {
-  const [counts, setCounts] = useState<{ going: number; waitlist: number } | null>(null);
+  // Holds every RSVP row for this event (with the player's name joined
+  // in) so both the counts and the "who's coming" list below can be
+  // derived from one fetch — this is also how attendance actually gets
+  // tracked: admins (or anyone, since RSVPs are readable by any signed-in
+  // member) can open an event's ticket and see exactly who's said "I'm
+  // in".
+  interface RsvpRow {
+    player_id: string;
+    status: "going" | "waitlist";
+    players: { display_name: string } | null;
+  }
+  const [rsvpRows, setRsvpRows] = useState<RsvpRow[] | null>(null);
   const [myStatus, setMyStatus] = useState<"going" | "waitlist" | null>(null);
   const [rsvpLoading, setRsvpLoading] = useState(true);
   const [rsvpSaving, setRsvpSaving] = useState(false);
   const [rsvpError, setRsvpError] = useState<string | null>(null);
+
+  async function fetchRsvps() {
+    setRsvpLoading(true);
+    const { data, error } = await supabase
+      .from("event_rsvps")
+      .select("player_id, status, players(display_name)")
+      .eq("event_id", event.id);
+    if (!error && data) {
+      const rows = data.map((r) => ({
+        player_id: r.player_id as string,
+        status: r.status as "going" | "waitlist",
+        players: (r.players as unknown as { display_name: string } | null) ?? null,
+      }));
+      setRsvpRows(rows);
+      const mine = rows.find((r) => r.player_id === playerId);
+      setMyStatus(mine?.status ?? null);
+    }
+    setRsvpLoading(false);
+  }
 
   useEffect(() => {
     if (!event.rsvp_enabled) {
       setRsvpLoading(false);
       return;
     }
-    let cancelled = false;
-    setRsvpLoading(true);
-    supabase
-      .from("event_rsvps")
-      .select("player_id, status")
-      .eq("event_id", event.id)
-      .then(({ data, error }) => {
-        if (cancelled) return;
-        if (!error && data) {
-          setCounts({
-            going: data.filter((r) => r.status === "going").length,
-            waitlist: data.filter((r) => r.status === "waitlist").length,
-          });
-          const mine = data.find((r) => r.player_id === playerId);
-          setMyStatus((mine?.status as "going" | "waitlist" | undefined) ?? null);
-        }
-        setRsvpLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
+    fetchRsvps();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [event.id, event.rsvp_enabled, playerId]);
+
+  const goingRows = rsvpRows?.filter((r) => r.status === "going") ?? [];
+  const waitlistRows = rsvpRows?.filter((r) => r.status === "waitlist") ?? [];
+  const goingCount = goingRows.length;
+  const goingNames = goingRows
+    .map((r) => r.players?.display_name ?? "Unknown")
+    .sort((a, b) => a.localeCompare(b));
+  const waitlistNames = waitlistRows
+    .map((r) => r.players?.display_name ?? "Unknown")
+    .sort((a, b) => a.localeCompare(b));
 
   async function handleRsvp() {
     setRsvpSaving(true);
     setRsvpError(null);
-    const full = event.capacity != null && (counts?.going ?? 0) >= event.capacity;
+    const full = event.capacity != null && goingCount >= event.capacity;
     const status: "going" | "waitlist" = full ? "waitlist" : "going";
     const { error } = await supabase.from("event_rsvps").insert({ event_id: event.id, player_id: playerId, status });
     if (error) {
       setRsvpError(error.message);
     } else {
-      setMyStatus(status);
-      setCounts((c) => {
-        const base = c ?? { going: 0, waitlist: 0 };
-        return status === "going" ? { ...base, going: base.going + 1 } : { ...base, waitlist: base.waitlist + 1 };
-      });
+      await fetchRsvps();
     }
     setRsvpSaving(false);
   }
@@ -348,18 +365,14 @@ function EventTicketModal({
     if (error) {
       setRsvpError(error.message);
     } else {
-      setCounts((c) => {
-        if (!c) return c;
-        return myStatus === "going" ? { ...c, going: Math.max(0, c.going - 1) } : { ...c, waitlist: Math.max(0, c.waitlist - 1) };
-      });
-      setMyStatus(null);
+      await fetchRsvps();
     }
     setRsvpSaving(false);
   }
 
   const visual = posterVisual(event);
-  const spotsFull = event.capacity != null && (counts?.going ?? 0) >= event.capacity;
-  const spotsPct = event.capacity ? Math.min(100, Math.round(((counts?.going ?? 0) / event.capacity) * 100)) : 0;
+  const spotsFull = event.capacity != null && goingCount >= event.capacity;
+  const spotsPct = event.capacity ? Math.min(100, Math.round((goingCount / event.capacity) * 100)) : 0;
 
   return (
     <div className="ticket-overlay" onClick={onClose}>
@@ -416,14 +429,30 @@ function EventTicketModal({
             <div style={{ marginTop: 18 }}>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.78rem", marginBottom: 6 }}>
                 <span className="stat-meta">Spots filled</span>
-                <span className="stat-meta">{rsvpLoading ? "…" : `${counts?.going ?? 0} / ${event.capacity}`}</span>
+                <span className="stat-meta">{rsvpLoading ? "…" : `${goingCount} / ${event.capacity}`}</span>
               </div>
               <div className="ticket-spots-bar">
                 <div className={`ticket-spots-fill${spotsFull ? " full" : ""}`} style={{ width: `${spotsPct}%` }} />
               </div>
-              {event.waitlist_enabled && (counts?.waitlist ?? 0) > 0 && (
-                <p className="stat-meta" style={{ marginTop: 6, marginBottom: 0 }}>
-                  {counts?.waitlist} on the waitlist
+            </div>
+          )}
+
+          {event.rsvp_enabled && !rsvpLoading && (goingNames.length > 0 || waitlistNames.length > 0) && (
+            <div style={{ marginTop: 12 }}>
+              {goingNames.length > 0 && (
+                <p className="stat-meta" style={{ marginBottom: waitlistNames.length > 0 ? 4 : 0 }}>
+                  <strong style={{ color: "var(--navy-700)" }}>
+                    Going ({goingNames.length}):
+                  </strong>{" "}
+                  {goingNames.join(", ")}
+                </p>
+              )}
+              {waitlistNames.length > 0 && (
+                <p className="stat-meta" style={{ marginBottom: 0 }}>
+                  <strong style={{ color: "var(--navy-700)" }}>
+                    Waitlist ({waitlistNames.length}):
+                  </strong>{" "}
+                  {waitlistNames.join(", ")}
                 </p>
               )}
             </div>
@@ -540,6 +569,24 @@ export default function Events({ isAdmin, playerId }: { isAdmin: boolean; player
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [ticketEvent, setTicketEvent] = useState<EventRow | null>(null);
+
+  // Category filter — "category" here is just whatever's been typed into
+  // an event's Format field, so the options are built from whatever's
+  // actually in use rather than a fixed list. Derived from the full,
+  // unfiltered `events` so the dropdown doesn't lose options once one's
+  // selected.
+  const [categoryFilter, setCategoryFilter] = useState("");
+  const categories = useMemo(
+    () =>
+      Array.from(new Set(events.map((e) => e.format).filter((f): f is string => !!f))).sort((a, b) =>
+        a.localeCompare(b)
+      ),
+    [events]
+  );
+  const filteredEvents = useMemo(
+    () => (categoryFilter ? events.filter((e) => e.format === categoryFilter) : events),
+    [events, categoryFilter]
+  );
 
   // Upcoming and Past are paginated separately, since they're really two
   // different lists shown in one place.
@@ -734,7 +781,7 @@ export default function Events({ isAdmin, playerId }: { isAdmin: boolean; player
   // Events more than 24 hours past their start time are hidden from the
   // app entirely — the row stays in the database (nothing is deleted),
   // it just doesn't show in either Upcoming or Past any more.
-  const visibleEvents = events.filter((e) => now.getTime() - eventStart(e).getTime() < VISIBLE_WINDOW_MS);
+  const visibleEvents = filteredEvents.filter((e) => now.getTime() - eventStart(e).getTime() < VISIBLE_WINDOW_MS);
 
   const upcoming = visibleEvents.filter((e) => {
     const [y, m, d] = e.event_date.split("-").map(Number);
@@ -757,6 +804,20 @@ export default function Events({ isAdmin, playerId }: { isAdmin: boolean; player
           </button>
         )}
       </div>
+
+      {categories.length > 0 && (
+        <div style={{ marginTop: 8 }}>
+          <label>Filter by category</label>
+          <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
+            <option value="">All events</option>
+            {categories.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {isAdmin && showForm && (
         <div className="card" style={{ marginTop: 16 }}>
@@ -925,7 +986,7 @@ export default function Events({ isAdmin, playerId }: { isAdmin: boolean; player
         </div>
       )}
 
-      <MonthCalendar events={events} selectedDate={selectedDate} onSelectDate={(d) => setSelectedDate(d)} />
+      <MonthCalendar events={filteredEvents} selectedDate={selectedDate} onSelectDate={(d) => setSelectedDate(d)} />
 
       {selectedDate && (
         <div className="card" style={{ marginTop: 16, border: "1.5px solid var(--orange-600)" }}>
@@ -941,7 +1002,7 @@ export default function Events({ isAdmin, playerId }: { isAdmin: boolean; player
               Close
             </span>
           </div>
-          {events
+          {filteredEvents
             .filter((e) => e.event_date === selectedDate)
             .map((e) => (
               <EventRowCard
