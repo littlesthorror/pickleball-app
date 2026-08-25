@@ -861,6 +861,7 @@ textarea {
 }
 
 .ticket-title {
+  color: #fff;
   font-size: 1.45rem;
   font-weight: 800;
   margin: 0 0 12px;

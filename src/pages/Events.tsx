@@ -292,6 +292,10 @@ function EventTicketModal({
   const [rsvpError, setRsvpError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!event.rsvp_enabled) {
+      setRsvpLoading(false);
+      return;
+    }
     let cancelled = false;
     setRsvpLoading(true);
     supabase
@@ -313,7 +317,7 @@ function EventTicketModal({
     return () => {
       cancelled = true;
     };
-  }, [event.id, playerId]);
+  }, [event.id, event.rsvp_enabled, playerId]);
 
   async function handleRsvp() {
     setRsvpSaving(true);
@@ -408,7 +412,7 @@ function EventTicketModal({
             </p>
           )}
 
-          {event.capacity != null && (
+          {event.rsvp_enabled && event.capacity != null && (
             <div style={{ marginTop: 18 }}>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.78rem", marginBottom: 6 }}>
                 <span className="stat-meta">Spots filled</span>
@@ -425,14 +429,14 @@ function EventTicketModal({
             </div>
           )}
 
-          {rsvpError && (
+          {event.rsvp_enabled && rsvpError && (
             <p className="error" style={{ marginTop: 10 }}>
               {rsvpError}
             </p>
           )}
 
           <div style={{ marginTop: 18, display: "flex", flexDirection: "column", gap: 8 }}>
-            {myStatus ? (
+            {!event.rsvp_enabled ? null : myStatus ? (
               <>
                 <p style={{ margin: 0, fontWeight: 600, color: "var(--navy-700)" }}>
                   {myStatus === "going" ? "You're in ✓" : "You're on the waitlist"}
@@ -508,6 +512,9 @@ const EMPTY_DRAFT = {
   capacity: "",
   waitlistEnabled: "",
   posterPlaceholder: "",
+  // Defaults on, so existing behaviour (every event gets an "I'm in"
+  // button) doesn't change unless an admin deliberately turns it off.
+  rsvpEnabled: "1",
 };
 
 export default function Events({ isAdmin, playerId }: { isAdmin: boolean; playerId: string }) {
@@ -614,6 +621,7 @@ export default function Events({ isAdmin, playerId }: { isAdmin: boolean; player
       capacity: e.capacity != null ? String(e.capacity) : "",
       waitlistEnabled: e.waitlist_enabled ? "1" : "",
       posterPlaceholder: e.poster_placeholder ?? "",
+      rsvpEnabled: e.rsvp_enabled ? "1" : "",
     });
     setExistingPosterPath(e.poster_path);
     setPosterFile(null);
@@ -646,6 +654,7 @@ export default function Events({ isAdmin, playerId }: { isAdmin: boolean; player
       capacity: draft.capacity.trim() ? Number(draft.capacity) : null,
       waitlist_enabled: draft.waitlistEnabled === "1",
       poster_placeholder: (draft.posterPlaceholder || null) as EventPosterPlaceholder | null,
+      rsvp_enabled: draft.rsvpEnabled === "1",
     };
 
     let eventId = editingId;
@@ -822,26 +831,43 @@ export default function Events({ isAdmin, playerId }: { isAdmin: boolean; player
             style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)" }}
           />
 
-          <label>Capacity (optional)</label>
-          <input
-            type="number"
-            min={1}
-            value={draft.capacity}
-            onChange={(e) => setDraft((d) => ({ ...d, capacity: e.target.value }))}
-            placeholder="Leave blank for no limit"
-            style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)" }}
-          />
+          <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <input
+              type="checkbox"
+              checked={draft.rsvpEnabled === "1"}
+              onChange={(e) => setDraft((d) => ({ ...d, rsvpEnabled: e.target.checked ? "1" : "" }))}
+              style={{ width: "auto" }}
+            />
+            Show an "I'm in" RSVP button
+          </label>
+          <p className="stat-meta" style={{ marginTop: 2 }}>
+            Turn this off for events where attendance isn't tracked (e.g. a general announcement).
+          </p>
 
-          {draft.capacity.trim() && (
-            <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
+          {draft.rsvpEnabled === "1" && (
+            <>
+              <label>Capacity (optional)</label>
               <input
-                type="checkbox"
-                checked={draft.waitlistEnabled === "1"}
-                onChange={(e) => setDraft((d) => ({ ...d, waitlistEnabled: e.target.checked ? "1" : "" }))}
-                style={{ width: "auto" }}
+                type="number"
+                min={1}
+                value={draft.capacity}
+                onChange={(e) => setDraft((d) => ({ ...d, capacity: e.target.value }))}
+                placeholder="Leave blank for no limit"
+                style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)" }}
               />
-              Allow a waitlist once full
-            </label>
+
+              {draft.capacity.trim() && (
+                <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
+                  <input
+                    type="checkbox"
+                    checked={draft.waitlistEnabled === "1"}
+                    onChange={(e) => setDraft((d) => ({ ...d, waitlistEnabled: e.target.checked ? "1" : "" }))}
+                    style={{ width: "auto" }}
+                  />
+                  Allow a waitlist once full
+                </label>
+              )}
+            </>
           )}
 
           <label>Description (optional)</label>

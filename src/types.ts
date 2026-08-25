@@ -90,6 +90,11 @@ export interface EventRow {
   capacity: number | null;
   waitlist_enabled: boolean;
   poster_placeholder: EventPosterPlaceholder | null;
+  // Added 2026-08-25 — lets an admin leave the "I'm in" RSVP button off
+  // entirely for events where attendance tracking doesn't make sense
+  // (e.g. a plain announcement). Defaults true so existing events keep
+  // behaving exactly as before.
+  rsvp_enabled: boolean;
 }
 
 export interface EventRsvpRow {
