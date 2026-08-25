@@ -1,6 +1,7 @@
 import { useState } from "react";
 import Avatar from "./Avatar";
 import { renderShareCardImage } from "../lib/shareCardImage";
+import type { ShareCardStats } from "../lib/shareCardImage";
 import type { Badge } from "../lib/badges";
 import type { PlayerStatus } from "../types";
 
@@ -15,8 +16,11 @@ import type { PlayerStatus } from "../types";
 export default function ShareCard({
   player,
   badges,
+  bestPartner,
+  highestWin,
+  leaderboardPosition,
   onClose,
-}: {
+}: ShareCardStats & {
   player: PlayerStatus;
   badges: Badge[];
   onClose: () => void;
@@ -28,7 +32,7 @@ export default function ShareCard({
     setWorking(true);
     setShareError(null);
     try {
-      const blob = await renderShareCardImage(player, badges);
+      const blob = await renderShareCardImage(player, badges, { bestPartner, highestWin, leaderboardPosition });
       const file = new File([blob], `${player.display_name.replace(/\s+/g, "-")}-sideline-card.png`, {
         type: "image/png",
       });
@@ -69,7 +73,7 @@ export default function ShareCard({
       <div className="share-card-wrap" onClick={(e) => e.stopPropagation()}>
         <div className="share-card">
           <div className="share-card-brand">Sideline · Huntingdon Pickleball</div>
-          <Avatar name={player.display_name} url={player.avatar_url} size={90} />
+          <Avatar name={player.display_name} url={player.avatar_url} size={128} />
           <div className="share-card-name">{player.display_name}</div>
           <span className={`badge ${player.is_provisional ? "badge-provisional" : "badge-established"}`}>
             {player.is_provisional ? "Provisional" : "Established"}
@@ -78,6 +82,28 @@ export default function ShareCard({
           <div className="share-card-meta">
             {player.games_played} game{player.games_played === 1 ? "" : "s"} played
           </div>
+
+          <div className="share-card-stats">
+            <div className="share-card-stat">
+              <div className="share-card-stat-label">Games played</div>
+              <div className="share-card-stat-value">{player.games_played}</div>
+            </div>
+            <div className="share-card-stat">
+              <div className="share-card-stat-label">Leaderboard</div>
+              <div className="share-card-stat-value">
+                {leaderboardPosition ? `#${leaderboardPosition.rank} of ${leaderboardPosition.totalRanked}` : "—"}
+              </div>
+            </div>
+            <div className="share-card-stat">
+              <div className="share-card-stat-label">Best partner</div>
+              <div className="share-card-stat-value">{bestPartner ? bestPartner.name : "—"}</div>
+            </div>
+            <div className="share-card-stat">
+              <div className="share-card-stat-label">Highest win</div>
+              <div className="share-card-stat-value">{highestWin ? `vs ${highestWin.opponentNames}` : "—"}</div>
+            </div>
+          </div>
+
           {badges.length > 0 && (
             <div className="share-card-badges">
               {badges.slice(0, 4).map((b) => (

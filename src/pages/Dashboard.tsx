@@ -111,6 +111,15 @@ export default function Dashboard({
   const currentSeason = useMemo(() => getCurrentSeason(), []);
   const [seasonEntries, setSeasonEntries] = useState<SeasonHistoryEntry[]>([]);
   const [seasonLoading, setSeasonLoading] = useState(trackedSeasons.length > 0);
+  // Live overall leaderboard position — only fetched on your own profile
+  // (same "own profile only" scoping as the share button itself), since
+  // it's just for the share card below. Mirrors the Leaderboard page's own
+  // ranking rule: sorted by current rating, provisional players excluded
+  // (they're not ranked there either), so null here means either not
+  // fetched yet or genuinely not-yet-ranked.
+  const [leaderboardPosition, setLeaderboardPosition] = useState<{ rank: number; totalRanked: number } | null>(
+    null
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -216,6 +225,22 @@ export default function Dashboard({
       .limit(1)
       .then(({ data }) => setNextEvent(((data ?? [])[0] as EventRow) ?? null));
   }, [isOwnProfile]);
+
+  useEffect(() => {
+    if (!isOwnProfile) return;
+    supabase
+      .from("player_status")
+      .select("id, rating, is_provisional")
+      .eq("is_active", true)
+      .then(({ data, error }) => {
+        if (error || !data) return;
+        const ranked = (data as { id: string; rating: number; is_provisional: boolean }[])
+          .filter((p) => !p.is_provisional)
+          .sort((a, b) => b.rating - a.rating);
+        const idx = ranked.findIndex((p) => p.id === playerId);
+        setLeaderboardPosition(idx === -1 ? null : { rank: idx + 1, totalRanked: ranked.length });
+      });
+  }, [isOwnProfile, playerId]);
 
   const chartData = useMemo(() => {
     if (!player) return null;
@@ -326,6 +351,21 @@ export default function Dashboard({
       }
     }
     return name ? { name, wins } : null;
+  }, [history]);
+
+  // Best win of your career so far — the highest-rated opponent pairing
+  // you've beaten. Uses each match's lower-rated opponent as the yardstick
+  // (the same "at least this good" proxy the Bracket Buster badge already
+  // uses), since that's the only opponent-strength figure captured per
+  // match — no extra query needed, `history` already has it. Shown on the
+  // share card as a highlight-reel stat.
+  const highestWin = useMemo(() => {
+    let best: PlayerMatchHistoryRow | null = null;
+    for (const h of history) {
+      if (!h.won || h.opponent_min_pre_rating == null) continue;
+      if (!best || h.opponent_min_pre_rating > (best.opponent_min_pre_rating ?? -Infinity)) best = h;
+    }
+    return best ? { opponentNames: best.opponent_names, opponentRating: Math.round(best.opponent_min_pre_rating!) } : null;
   }, [history]);
 
   // Grouped by exact opponent pairing (that's what the data has — a 2v2
@@ -780,7 +820,14 @@ export default function Dashboard({
       )}
 
       {isOwnProfile && showShareCard && (
-        <ShareCard player={player} badges={badges} onClose={() => setShowShareCard(false)} />
+        <ShareCard
+          player={player}
+          badges={badges}
+          bestPartner={bestPartner}
+          highestWin={highestWin}
+          leaderboardPosition={leaderboardPosition}
+          onClose={() => setShowShareCard(false)}
+        />
       )}
     </div>
   );
