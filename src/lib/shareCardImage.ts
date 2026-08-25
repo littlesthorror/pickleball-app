@@ -76,12 +76,41 @@ export async function renderShareCardImage(
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Canvas not supported on this device.");
 
-  const gradient = ctx.createLinearGradient(0, 0, W * 0.3, H);
-  gradient.addColorStop(0, "#0a1a33");
-  gradient.addColorStop(1, "#163460");
-  ctx.fillStyle = gradient;
+  // Court-photo backdrop (Ben's, 2026-08-25), cover-fit and clipped to the
+  // card's rounded corners, with the same navy gradient as a translucent
+  // wash on top so the white text/stat pills stay legible over a busy
+  // photo. Falls back to the old flat gradient if the image can't load
+  // (offline, hosting hiccup) — mirrors the same fallback pattern used
+  // below for the player's own photo.
   roundRect(ctx, 0, 0, W, H, 28);
-  ctx.fill();
+  ctx.save();
+  ctx.clip();
+
+  let backdropLoaded = false;
+  try {
+    const backdrop = await loadImage("/share-card-bg.jpg");
+    const scale = Math.max(W / backdrop.width, H / backdrop.height);
+    const drawW = backdrop.width * scale;
+    const drawH = backdrop.height * scale;
+    ctx.drawImage(backdrop, (W - drawW) / 2, (H - drawH) / 2, drawW, drawH);
+    backdropLoaded = true;
+  } catch {
+    // fall through to the flat gradient below
+  }
+  if (!backdropLoaded) {
+    const fallback = ctx.createLinearGradient(0, 0, W * 0.3, H);
+    fallback.addColorStop(0, "#0a1a33");
+    fallback.addColorStop(1, "#163460");
+    ctx.fillStyle = fallback;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  const gradient = ctx.createLinearGradient(0, 0, W * 0.3, H);
+  gradient.addColorStop(0, "rgba(10, 26, 51, 0.88)");
+  gradient.addColorStop(1, "rgba(22, 52, 96, 0.82)");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, W, H);
+  ctx.restore();
 
   ctx.fillStyle = "rgba(255,255,255,0.6)";
   ctx.font = "600 20px -apple-system, system-ui, sans-serif";
