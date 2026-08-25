@@ -1,5 +1,11 @@
 import type { Badge } from "./badges";
 import type { PlayerStatus } from "../types";
+// Imported (rather than referenced as a plain "/share-card-bg.jpg" public
+// path) so Vite fingerprints it with a content hash at build time — see
+// the matching comment in index.css for why: swapping this photo file
+// then reliably busts caches instead of possibly leaving people on the
+// old image indefinitely.
+import shareCardBgUrl from "../assets/share-card-bg.jpg";
 
 // Hand-drawn on <canvas> rather than photographing the DOM with a library
 // like html2canvas — avoids adding a new dependency (and its failure modes
@@ -88,7 +94,7 @@ export async function renderShareCardImage(
 
   let backdropLoaded = false;
   try {
-    const backdrop = await loadImage("/share-card-bg.jpg");
+    const backdrop = await loadImage(shareCardBgUrl);
     const scale = Math.max(W / backdrop.width, H / backdrop.height);
     const drawW = backdrop.width * scale;
     const drawH = backdrop.height * scale;
