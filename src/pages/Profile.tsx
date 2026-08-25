@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ChangeEvent } from "react";
 import { supabase } from "../supabaseClient";
 import Avatar from "../components/Avatar";
+import { getExistingSubscription, isPushSupported, subscribeToPush, unsubscribeFromPush } from "../lib/push";
 import type { PlayerStatus } from "../types";
 
 // Used two ways: as a one-time "complete your profile" step right after
@@ -37,6 +38,36 @@ export default function Profile({
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Push notifications (2026-08-25) — see src/lib/push.ts. Only relevant
+  // once the account exists (not during first-time setup), and only in
+  // browsers that support the Push API at all (notably not iOS Safari
+  // unless the app's been added to the home screen).
+  const [pushSubscribed, setPushSubscribed] = useState(false);
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushError, setPushError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isFirstTime || !isPushSupported()) return;
+    getExistingSubscription().then((sub) => setPushSubscribed(!!sub));
+  }, [isFirstTime]);
+
+  async function handleTogglePush() {
+    setPushBusy(true);
+    setPushError(null);
+    try {
+      if (pushSubscribed) {
+        await unsubscribeFromPush();
+        setPushSubscribed(false);
+      } else {
+        await subscribeToPush(player.id);
+        setPushSubscribed(true);
+      }
+    } catch (err) {
+      setPushError(err instanceof Error ? err.message : "Couldn't update notification settings.");
+    }
+    setPushBusy(false);
+  }
 
   async function handlePhotoChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -192,6 +223,27 @@ export default function Profile({
           {saving ? "Saving…" : isFirstTime ? "Finish setup" : "Save changes"}
         </button>
       </div>
+
+      {!isFirstTime && isPushSupported() && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <h2 style={{ marginTop: 0 }}>Notifications</h2>
+          <p className="stat-meta" style={{ marginTop: 0 }}>
+            Get a push notification on this device when a new notice or event is posted.
+          </p>
+          <button
+            disabled={pushBusy}
+            onClick={handleTogglePush}
+            style={
+              pushSubscribed
+                ? { marginTop: 0, background: "transparent", color: "var(--danger)", border: "1px solid var(--border)" }
+                : { marginTop: 0 }
+            }
+          >
+            {pushBusy ? "…" : pushSubscribed ? "Turn off notifications" : "Turn on notifications"}
+          </button>
+          {pushError && <p className="error">{pushError}</p>}
+        </div>
+      )}
 
       {!isFirstTime && (
         <div className="card" style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 10 }}>

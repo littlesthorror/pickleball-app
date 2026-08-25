@@ -40,7 +40,15 @@ export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [player, setPlayer] = useState<PlayerStatus | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<Tab>("dashboard");
+  // Defaults to "dashboard" as before, but a push notification tap (see
+  // src/sw.ts's notificationclick handler) opens the app at "/#notices" or
+  // "/#events" — there's no real client-side router here, so a URL hash is
+  // the lightest way to land directly on the right tab instead of always
+  // landing on the dashboard. Added 2026-08-25 alongside push notifications.
+  const [tab, setTab] = useState<Tab>(() => {
+    const hash = window.location.hash.replace("#", "");
+    return hash === "notices" || hash === "events" ? (hash as Tab) : "dashboard";
+  });
   const [viewingPlayer, setViewingPlayer] = useState<{ id: string; name: string } | null>(null);
   // Lets an admin see exactly what a regular player sees — hides admin
   // tabs/controls in the UI only. Doesn't touch the real is_admin flag, so

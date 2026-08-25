@@ -675,6 +675,7 @@ export default function Leaderboard({
               className="link-action"
               role="button"
               tabIndex={0}
+              aria-label="Previous season"
               onClick={() => viewedSeasonIndex > 0 && setViewedSeasonIndex((i) => i - 1)}
               style={{
                 fontSize: "1.2rem",
@@ -690,6 +691,7 @@ export default function Leaderboard({
               className="link-action"
               role="button"
               tabIndex={0}
+              aria-label="Next season"
               onClick={() =>
                 viewedSeasonIndex < trackedSeasons.length - 1 && setViewedSeasonIndex((i) => i + 1)
               }

@@ -2,7 +2,11 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { registerSW } from "virtual:pwa-register";
 import App from "./App";
+import { initErrorLogging } from "./lib/errorLogging";
 import "./index.css";
+
+// Admin-visible error logging (2026-08-25) — see src/lib/errorLogging.ts.
+initErrorLogging();
 
 // The PWA plugin's default auto-injected registration script only checks
 // for a new build when the browser happens to re-fetch the service worker

@@ -15,5 +15,11 @@
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  // src/sw.ts is a service worker (ServiceWorkerGlobalScope, not Window/DOM)
+  // and is bundled separately by vite-plugin-pwa's injectManifest strategy
+  // at build time — excluded here so the app's own `tsc` type-check step
+  // doesn't try to check it against DOM lib types. See that file's header
+  // comment for more.
+  "exclude": ["src/sw.ts"]
 }

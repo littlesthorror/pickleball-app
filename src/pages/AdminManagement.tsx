@@ -5,6 +5,22 @@ import Avatar from "../components/Avatar";
 import type { PlayerStatus } from "../types";
 
 const PAGE_SIZE = 20;
+const ERROR_LOG_LIMIT = 50;
+
+// Added 2026-08-25 alongside src/lib/errorLogging.ts — see that file for
+// how these rows get written. Kept local to this file since nothing else
+// in the app needs this shape.
+interface ClientErrorLog {
+  id: string;
+  created_at: string;
+  player_id: string | null;
+  message: string;
+  stack: string | null;
+  source: string | null;
+  page_path: string | null;
+  user_agent: string | null;
+  players: { display_name: string } | null;
+}
 
 // Full admin-management screen — replaces the earlier "hardcoded admin
 // emails" approach. Any existing admin can promote/demote other players,
@@ -41,6 +57,12 @@ export default function AdminManagement({ currentUserId }: { currentUserId: stri
   // each card have its own editable field without a form per player.
   const [roleDrafts, setRoleDrafts] = useState<Record<string, string>>({});
 
+  // Client-side error logs (2026-08-25) — see src/lib/errorLogging.ts.
+  const [errorLogs, setErrorLogs] = useState<ClientErrorLog[]>([]);
+  const [errorLogsLoading, setErrorLogsLoading] = useState(true);
+  const [clearingLogs, setClearingLogs] = useState(false);
+  const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
+
   function load() {
     setLoading(true);
     supabase
@@ -70,8 +92,36 @@ export default function AdminManagement({ currentUserId }: { currentUserId: stri
       });
   }
 
+  function loadErrorLogs() {
+    setErrorLogsLoading(true);
+    supabase
+      .from("client_error_logs")
+      .select("*, players(display_name)")
+      .order("created_at", { ascending: false })
+      .limit(ERROR_LOG_LIMIT)
+      .then(({ data, error }) => {
+        if (!error && data) {
+          setErrorLogs(data as unknown as ClientErrorLog[]);
+        }
+        setErrorLogsLoading(false);
+      });
+  }
+
+  async function clearErrorLogs() {
+    if (!confirm(`Clear all ${errorLogs.length} logged error${errorLogs.length === 1 ? "" : "s"}?`)) return;
+    setClearingLogs(true);
+    const { error } = await supabase.from("client_error_logs").delete().not("id", "is", null);
+    setClearingLogs(false);
+    if (error) {
+      alert(`Couldn't clear error logs: ${error.message}`);
+      return;
+    }
+    loadErrorLogs();
+  }
+
   useEffect(load, []);
   useEffect(loadInviteCode, []);
+  useEffect(loadErrorLogs, []);
 
   // Admins first (highest priority to find quickly), then everyone else
   // alphabetically. Search filters by name before sorting/paginating.
@@ -336,6 +386,74 @@ export default function AdminManagement({ currentUserId }: { currentUserId: stri
         >
           {recomputing ? "Recomputing…" : "Recompute history"}
         </button>
+      </div>
+
+      <div className="card">
+        <h2 style={{ marginTop: 0 }}>Error logs</h2>
+        <p className="stat-meta" style={{ marginTop: 0 }}>
+          Uncaught errors from members' devices, logged automatically — useful for spotting real bugs (like a
+          browser quirk on a specific phone) without relying on someone describing it after the fact.
+        </p>
+        {errorLogsLoading ? (
+          <p className="stat-meta">Loading…</p>
+        ) : errorLogs.length === 0 ? (
+          <p className="stat-meta">No errors logged. Nothing's broken (that we know of).</p>
+        ) : (
+          <>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
+              {errorLogs.map((log) => (
+                <div
+                  key={log.id}
+                  style={{
+                    border: "1px solid var(--border)",
+                    borderRadius: 8,
+                    padding: "8px 10px",
+                    cursor: "pointer",
+                  }}
+                  onClick={() => setExpandedLogId((id) => (id === log.id ? null : log.id))}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
+                    <span style={{ fontWeight: 600, fontSize: "0.85rem" }}>{log.message}</span>
+                    <span className="stat-meta" style={{ marginTop: 0, flex: "0 0 auto" }}>
+                      {new Date(log.created_at).toLocaleString(undefined, {
+                        month: "short",
+                        day: "numeric",
+                        hour: "numeric",
+                        minute: "2-digit",
+                      })}
+                    </span>
+                  </div>
+                  <div className="stat-meta" style={{ marginTop: 2 }}>
+                    {log.players?.display_name ?? "Unknown member"} · {log.source ?? "unknown source"}
+                    {log.page_path && ` · ${log.page_path}`}
+                  </div>
+                  {expandedLogId === log.id && (
+                    <div
+                      style={{
+                        marginTop: 8,
+                        fontSize: "0.75rem",
+                        fontFamily: "monospace",
+                        whiteSpace: "pre-wrap",
+                        wordBreak: "break-word",
+                        color: "var(--text-muted)",
+                      }}
+                    >
+                      {log.stack ?? "No stack trace available."}
+                      {log.user_agent && `\n\n${log.user_agent}`}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+            <button
+              disabled={clearingLogs}
+              onClick={clearErrorLogs}
+              style={{ background: "transparent", color: "var(--danger)", border: "1px solid var(--border)" }}
+            >
+              {clearingLogs ? "Clearing…" : "Clear all logs"}
+            </button>
+          </>
+        )}
       </div>
 
       <div className="card">

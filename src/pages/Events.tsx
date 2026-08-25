@@ -114,6 +114,7 @@ function MonthCalendar({
           className="link-action"
           role="button"
           tabIndex={0}
+          aria-label="Previous month"
           onClick={() => setViewDate(new Date(year, month - 1, 1))}
           style={{ fontSize: "1.2rem", padding: "0 8px" }}
         >
@@ -124,6 +125,7 @@ function MonthCalendar({
           className="link-action"
           role="button"
           tabIndex={0}
+          aria-label="Next month"
           onClick={() => setViewDate(new Date(year, month + 1, 1))}
           style={{ fontSize: "1.2rem", padding: "0 8px" }}
         >
@@ -1098,7 +1100,7 @@ export default function Events({ isAdmin, playerId }: { isAdmin: boolean; player
       {lightboxUrl && (
         <div className="lightbox-overlay" onClick={() => setLightboxUrl(null)}>
           <img src={lightboxUrl} alt="" className="lightbox-image" onClick={(ev) => ev.stopPropagation()} />
-          <button className="lightbox-close" onClick={() => setLightboxUrl(null)}>
+          <button className="lightbox-close" onClick={() => setLightboxUrl(null)} aria-label="Close">
             ×
           </button>
         </div>

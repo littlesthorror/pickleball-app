@@ -324,6 +324,7 @@ export default function FAQ({ isAdmin }: { isAdmin: boolean }) {
                           key={id}
                           role="button"
                           tabIndex={0}
+                          aria-label="Play video"
                           onClick={() => setVideoId(id)}
                           style={{
                             position: "relative",
@@ -408,7 +409,7 @@ export default function FAQ({ isAdmin }: { isAdmin: boolean }) {
       {lightboxUrl && (
         <div className="lightbox-overlay" onClick={() => setLightboxUrl(null)}>
           <img src={lightboxUrl} alt="" className="lightbox-image" onClick={(ev) => ev.stopPropagation()} />
-          <button className="lightbox-close" onClick={() => setLightboxUrl(null)}>
+          <button className="lightbox-close" onClick={() => setLightboxUrl(null)} aria-label="Close">
             ×
           </button>
         </div>
@@ -425,7 +426,7 @@ export default function FAQ({ isAdmin }: { isAdmin: boolean }) {
               style={{ width: "100%", height: "100%", border: "none", borderRadius: 8 }}
             />
           </div>
-          <button className="lightbox-close" onClick={() => setVideoId(null)}>
+          <button className="lightbox-close" onClick={() => setVideoId(null)} aria-label="Close">
             ×
           </button>
         </div>
