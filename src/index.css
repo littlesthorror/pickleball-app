@@ -699,6 +699,22 @@ textarea {
   border-color: var(--orange-500);
 }
 
+/* .opponent/.meta only had sizing rules scoped under .match-row — outside
+   that, they rendered as plain unstyled divs, so the event title and the
+   date/location line beneath it came out the same size with no visual
+   hierarchy. Scoped the same treatment here so the date/location line
+   reads smaller and quieter than the title above it. */
+.next-event-card .opponent {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.next-event-card .meta {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  margin-top: 2px;
+}
+
 /* ── Notice title (bigger than the body text below it) ─────────────── */
 .notice-title {
   font-size: 1rem;
