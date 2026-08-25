@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ChangeEvent } from "react";
 import { supabase } from "../supabaseClient";
-import type { EventRow } from "../types";
+import { useDraft } from "../lib/useDraft";
+import { linkify } from "../lib/linkify";
+import type { EventPosterPlaceholder, EventRow } from "../types";
 
 function formatEventDate(dateStr: string) {
   // event_date is a plain date (no time zone) — parse as local, not UTC,
@@ -41,6 +43,27 @@ function posterUrl(path: string) {
 
 function toDateStr(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+// Themed fallback shown in place of a poster until one's been uploaded —
+// picked by the admin from a dropdown (see the admin form below). Falls
+// back further to a plain calendar icon for events created before this
+// feature existed, which have no placeholder choice saved at all.
+const PLACEHOLDER_STYLES: Record<EventPosterPlaceholder, { emoji: string; background: string }> = {
+  trophy: { emoji: "🏆", background: "linear-gradient(160deg, var(--navy-900), var(--navy-700))" },
+  social: { emoji: "🍷", background: "linear-gradient(160deg, var(--orange-600), var(--orange-500))" },
+};
+
+function posterVisual(
+  e: EventRow
+): { kind: "image"; url: string } | { kind: "placeholder"; emoji: string; background: string } {
+  if (e.poster_path) return { kind: "image", url: posterUrl(e.poster_path) };
+  const style = e.poster_placeholder ? PLACEHOLDER_STYLES[e.poster_placeholder] : null;
+  return {
+    kind: "placeholder",
+    emoji: style?.emoji ?? "📅",
+    background: style?.background ?? "linear-gradient(160deg, var(--navy-700), var(--navy-500))",
+  };
 }
 
 const WEEKDAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"];
@@ -156,6 +179,311 @@ function MonthCalendar({
   );
 }
 
+// Compact, legible list row used everywhere an event appears outside the
+// ticket popup (Upcoming, Past, and the selected-calendar-day panel) —
+// thumbnail + title + when + chevron, tap anywhere to open the full
+// ticket. Admin Edit/Remove sit off to the side and stop the click from
+// also opening the ticket.
+function EventRowCard({
+  event,
+  isAdmin,
+  compact,
+  onOpen,
+  onEdit,
+  onDelete,
+}: {
+  event: EventRow;
+  isAdmin: boolean;
+  compact?: boolean;
+  onOpen: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const visual = posterVisual(event);
+  const size = compact ? 38 : 44;
+  return (
+    <div className="match-row" style={{ alignItems: "center" }}>
+      <div className="event-row-card" onClick={onOpen} style={{ flex: 1, minWidth: 0 }}>
+        <div
+          className="event-row-thumb"
+          style={{
+            width: size,
+            height: size,
+            fontSize: compact ? 16 : 19,
+            ...(visual.kind === "image"
+              ? { backgroundImage: `url(${visual.url})` }
+              : { background: visual.background }),
+          }}
+        >
+          {visual.kind === "placeholder" && visual.emoji}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="opponent" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {event.title}
+          </div>
+          <div className="meta">
+            {formatEventDate(event.event_date)}
+            {formatEventTime(event.event_time) ? ` · ${formatEventTime(event.event_time)}` : ""}
+            {event.location ? ` · ${event.location}` : ""}
+          </div>
+        </div>
+        <span style={{ color: "var(--text-muted)", fontSize: "1.1rem", flexShrink: 0 }}>›</span>
+      </div>
+      {isAdmin && (
+        <div style={{ display: "flex", gap: 6, flexShrink: 0, marginLeft: 8 }}>
+          <span
+            className="link-action"
+            role="button"
+            tabIndex={0}
+            onClick={(ev) => {
+              ev.stopPropagation();
+              onEdit();
+            }}
+            style={{ fontSize: "0.72rem" }}
+          >
+            Edit
+          </span>
+          <span
+            className="link-action"
+            role="button"
+            tabIndex={0}
+            onClick={(ev) => {
+              ev.stopPropagation();
+              onDelete();
+            }}
+            style={{ fontSize: "0.72rem", color: "var(--danger)" }}
+          >
+            Remove
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// The ticket-style detail popup — re-skinned from Ben's mockup
+// (event-details-mockup.html, 2026-08-15) in the site's own navy/orange
+// palette rather than the mockup's teal/lime one. Structure lifted as
+// closely as possible: 16:9 poster, gradient header block, a perforated
+// divider, a body with Format/Hosted-by rows, description, spots bar, and
+// an RSVP button that becomes "Join waitlist" or a disabled "Fully
+// booked" state.
+function EventTicketModal({
+  event,
+  isAdmin,
+  playerId,
+  onClose,
+  onZoom,
+  onEdit,
+  onDelete,
+}: {
+  event: EventRow;
+  isAdmin: boolean;
+  playerId: string;
+  onClose: () => void;
+  onZoom: (url: string) => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const [counts, setCounts] = useState<{ going: number; waitlist: number } | null>(null);
+  const [myStatus, setMyStatus] = useState<"going" | "waitlist" | null>(null);
+  const [rsvpLoading, setRsvpLoading] = useState(true);
+  const [rsvpSaving, setRsvpSaving] = useState(false);
+  const [rsvpError, setRsvpError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setRsvpLoading(true);
+    supabase
+      .from("event_rsvps")
+      .select("player_id, status")
+      .eq("event_id", event.id)
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (!error && data) {
+          setCounts({
+            going: data.filter((r) => r.status === "going").length,
+            waitlist: data.filter((r) => r.status === "waitlist").length,
+          });
+          const mine = data.find((r) => r.player_id === playerId);
+          setMyStatus((mine?.status as "going" | "waitlist" | undefined) ?? null);
+        }
+        setRsvpLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [event.id, playerId]);
+
+  async function handleRsvp() {
+    setRsvpSaving(true);
+    setRsvpError(null);
+    const full = event.capacity != null && (counts?.going ?? 0) >= event.capacity;
+    const status: "going" | "waitlist" = full ? "waitlist" : "going";
+    const { error } = await supabase.from("event_rsvps").insert({ event_id: event.id, player_id: playerId, status });
+    if (error) {
+      setRsvpError(error.message);
+    } else {
+      setMyStatus(status);
+      setCounts((c) => {
+        const base = c ?? { going: 0, waitlist: 0 };
+        return status === "going" ? { ...base, going: base.going + 1 } : { ...base, waitlist: base.waitlist + 1 };
+      });
+    }
+    setRsvpSaving(false);
+  }
+
+  async function handleCancelRsvp() {
+    setRsvpSaving(true);
+    setRsvpError(null);
+    const { error } = await supabase
+      .from("event_rsvps")
+      .delete()
+      .eq("event_id", event.id)
+      .eq("player_id", playerId);
+    if (error) {
+      setRsvpError(error.message);
+    } else {
+      setCounts((c) => {
+        if (!c) return c;
+        return myStatus === "going" ? { ...c, going: Math.max(0, c.going - 1) } : { ...c, waitlist: Math.max(0, c.waitlist - 1) };
+      });
+      setMyStatus(null);
+    }
+    setRsvpSaving(false);
+  }
+
+  const visual = posterVisual(event);
+  const spotsFull = event.capacity != null && (counts?.going ?? 0) >= event.capacity;
+  const spotsPct = event.capacity ? Math.min(100, Math.round(((counts?.going ?? 0) / event.capacity) * 100)) : 0;
+
+  return (
+    <div className="ticket-overlay" onClick={onClose}>
+      <div className="ticket-card" onClick={(ev) => ev.stopPropagation()}>
+        <button className="ticket-close" onClick={onClose} aria-label="Close">
+          ×
+        </button>
+
+        <div
+          className="ticket-poster"
+          style={visual.kind === "image" ? { backgroundImage: `url(${visual.url})` } : { background: visual.background }}
+          onClick={() => visual.kind === "image" && onZoom(visual.url)}
+        >
+          {visual.kind === "placeholder" && <span className="ticket-poster-icon">{visual.emoji}</span>}
+          {visual.kind === "image" && <span className="ticket-poster-hint">Tap to zoom</span>}
+        </div>
+
+        <div className="ticket-header">
+          {event.format && <div className="ticket-meta">{event.format}</div>}
+          <h2 className="ticket-title">{event.title}</h2>
+          <div className="ticket-when">
+            📅 <strong>{formatEventDate(event.event_date)}</strong>
+            {formatEventTime(event.event_time) ? ` · ${formatEventTime(event.event_time)}` : ""}
+          </div>
+          {event.location && <div className="ticket-when">📍 {event.location}</div>}
+        </div>
+
+        <div className="ticket-perforation">
+          <span className="ticket-notch ticket-notch-left" />
+          <span className="ticket-notch ticket-notch-right" />
+        </div>
+
+        <div className="ticket-body">
+          {event.format && (
+            <div className="ticket-row">
+              <span className="ticket-row-label">Format</span>
+              <span className="ticket-row-value">{event.format}</span>
+            </div>
+          )}
+          {event.hosted_by && (
+            <div className="ticket-row">
+              <span className="ticket-row-label">Hosted by</span>
+              <span className="ticket-row-value">{event.hosted_by}</span>
+            </div>
+          )}
+
+          {event.description && (
+            <p className="rich-text" style={{ marginTop: 16, marginBottom: 0 }}>
+              {linkify(event.description)}
+            </p>
+          )}
+
+          {event.capacity != null && (
+            <div style={{ marginTop: 18 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.78rem", marginBottom: 6 }}>
+                <span className="stat-meta">Spots filled</span>
+                <span className="stat-meta">{rsvpLoading ? "…" : `${counts?.going ?? 0} / ${event.capacity}`}</span>
+              </div>
+              <div className="ticket-spots-bar">
+                <div className={`ticket-spots-fill${spotsFull ? " full" : ""}`} style={{ width: `${spotsPct}%` }} />
+              </div>
+              {event.waitlist_enabled && (counts?.waitlist ?? 0) > 0 && (
+                <p className="stat-meta" style={{ marginTop: 6, marginBottom: 0 }}>
+                  {counts?.waitlist} on the waitlist
+                </p>
+              )}
+            </div>
+          )}
+
+          {rsvpError && (
+            <p className="error" style={{ marginTop: 10 }}>
+              {rsvpError}
+            </p>
+          )}
+
+          <div style={{ marginTop: 18, display: "flex", flexDirection: "column", gap: 8 }}>
+            {myStatus ? (
+              <>
+                <p style={{ margin: 0, fontWeight: 600, color: "var(--navy-700)" }}>
+                  {myStatus === "going" ? "You're in ✓" : "You're on the waitlist"}
+                </p>
+                <button
+                  disabled={rsvpSaving}
+                  onClick={handleCancelRsvp}
+                  style={{ background: "transparent", color: "var(--danger)", border: "1px solid var(--border)" }}
+                >
+                  {rsvpSaving ? "…" : "Cancel"}
+                </button>
+              </>
+            ) : event.capacity != null && spotsFull && !event.waitlist_enabled ? (
+              <button disabled style={{ background: "var(--border)", color: "var(--text-muted)" }}>
+                Fully booked
+              </button>
+            ) : (
+              <button disabled={rsvpLoading || rsvpSaving} onClick={handleRsvp}>
+                {rsvpSaving ? "…" : spotsFull ? "Join waitlist" : "I'm in"}
+              </button>
+            )}
+
+            {event.external_url && (
+              <button className="btn-sky" onClick={() => window.open(event.external_url!, "_blank", "noopener,noreferrer")}>
+                More info ↗
+              </button>
+            )}
+
+            {isAdmin && (
+              <div style={{ display: "flex", gap: 14, marginTop: 4 }}>
+                <span className="link-action" role="button" tabIndex={0} onClick={onEdit} style={{ fontSize: "0.78rem" }}>
+                  Edit
+                </span>
+                <span
+                  className="link-action"
+                  role="button"
+                  tabIndex={0}
+                  onClick={onDelete}
+                  style={{ fontSize: "0.78rem", color: "var(--danger)" }}
+                >
+                  Remove
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // How many events to show per section before a "Show more" button appears
 // — keeps the page from growing indefinitely as events pile up over time.
 const PAGE_SIZE = 6;
@@ -165,18 +493,37 @@ const PAGE_SIZE = 6;
 // deleted — it just stops being shown — so nothing is ever lost.
 const VISIBLE_WINDOW_MS = 24 * 60 * 60 * 1000;
 
-export default function Events({ isAdmin }: { isAdmin: boolean }) {
+const EVENTS_DRAFT_KEY = "sideline-draft-event";
+const EMPTY_DRAFT = {
+  showForm: "",
+  editingId: "",
+  title: "",
+  description: "",
+  eventDate: "",
+  eventTime: "",
+  location: "",
+  format: "",
+  hostedBy: "",
+  externalUrl: "",
+  capacity: "",
+  waitlistEnabled: "",
+  posterPlaceholder: "",
+};
+
+export default function Events({ isAdmin, playerId }: { isAdmin: boolean; playerId: string }) {
   const [events, setEvents] = useState<EventRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [showForm, setShowForm] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [eventDate, setEventDate] = useState("");
-  const [eventTime, setEventTime] = useState("");
-  const [location, setLocation] = useState("");
+  // Draft-persisted admin form fields — survives the Android "Choose a
+  // file" tab reload and a backgrounded-tab discard on Safari/Chrome, same
+  // fix as Notices and FAQ (see useDraft.ts). File objects can't be
+  // persisted this way, so posterFile/existingPosterPath/removePoster are
+  // kept as ordinary state below instead.
+  const [draft, setDraft, clearDraft] = useDraft(EVENTS_DRAFT_KEY, EMPTY_DRAFT);
+  const showForm = draft.showForm === "1";
+  const editingId = draft.editingId || null;
+
   const [posterFile, setPosterFile] = useState<File | null>(null);
   const [existingPosterPath, setExistingPosterPath] = useState<string | null>(null);
   const [removePoster, setRemovePoster] = useState(false);
@@ -185,6 +532,7 @@ export default function Events({ isAdmin }: { isAdmin: boolean }) {
 
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [ticketEvent, setTicketEvent] = useState<EventRow | null>(null);
 
   // Upcoming and Past are paginated separately, since they're really two
   // different lists shown in one place.
@@ -215,42 +563,62 @@ export default function Events({ isAdmin }: { isAdmin: boolean }) {
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setLightboxUrl(null);
+      if (e.key === "Escape") {
+        setLightboxUrl(null);
+        setTicketEvent(null);
+      }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  function resetForm() {
-    setEditingId(null);
-    setTitle("");
-    setDescription("");
-    setEventDate("");
-    setEventTime("");
-    setLocation("");
-    setPosterFile(null);
+  // If a reload happens mid-edit (the whole point of the draft persisting
+  // through it), existingPosterPath can't have survived — it's File-bucket
+  // state, not draft state. Re-derive it from the matching event once the
+  // list has loaded, same pattern as Notices.tsx's attachment restore.
+  useEffect(() => {
+    if (!editingId || events.length === 0) return;
+    const ev = events.find((e) => e.id === editingId);
+    if (ev) setExistingPosterPath(ev.poster_path);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingId, events]);
+
+  function closeForm() {
+    clearDraft();
     setExistingPosterPath(null);
+    setPosterFile(null);
     setRemovePoster(false);
     setSaveError(null);
   }
 
   function openCreateForm() {
-    resetForm();
-    setShowForm(true);
+    setDraft({ ...EMPTY_DRAFT, showForm: "1" });
+    setExistingPosterPath(null);
+    setPosterFile(null);
+    setRemovePoster(false);
+    setSaveError(null);
   }
 
   function openEditForm(e: EventRow) {
-    setEditingId(e.id);
-    setTitle(e.title);
-    setDescription(e.description ?? "");
-    setEventDate(e.event_date);
-    setEventTime(e.event_time ?? "");
-    setLocation(e.location ?? "");
+    setDraft({
+      showForm: "1",
+      editingId: e.id,
+      title: e.title,
+      description: e.description ?? "",
+      eventDate: e.event_date,
+      eventTime: e.event_time ?? "",
+      location: e.location ?? "",
+      format: e.format ?? "",
+      hostedBy: e.hosted_by ?? "",
+      externalUrl: e.external_url ?? "",
+      capacity: e.capacity != null ? String(e.capacity) : "",
+      waitlistEnabled: e.waitlist_enabled ? "1" : "",
+      posterPlaceholder: e.poster_placeholder ?? "",
+    });
     setExistingPosterPath(e.poster_path);
     setPosterFile(null);
     setRemovePoster(false);
     setSaveError(null);
-    setShowForm(true);
   }
 
   function handlePosterChange(ev: ChangeEvent<HTMLInputElement>) {
@@ -262,16 +630,22 @@ export default function Events({ isAdmin }: { isAdmin: boolean }) {
   }
 
   async function handleSave() {
-    if (!title.trim() || !eventDate) return;
+    if (!draft.title.trim() || !draft.eventDate) return;
     setSaving(true);
     setSaveError(null);
 
     const payload = {
-      title: title.trim(),
-      description: description.trim() || null,
-      event_date: eventDate,
-      event_time: eventTime || null,
-      location: location.trim() || null,
+      title: draft.title.trim(),
+      description: draft.description.trim() || null,
+      event_date: draft.eventDate,
+      event_time: draft.eventTime || null,
+      location: draft.location.trim() || null,
+      format: draft.format.trim() || null,
+      hosted_by: draft.hostedBy.trim() || null,
+      external_url: draft.externalUrl.trim() || null,
+      capacity: draft.capacity.trim() ? Number(draft.capacity) : null,
+      waitlist_enabled: draft.waitlistEnabled === "1",
+      poster_placeholder: (draft.posterPlaceholder || null) as EventPosterPlaceholder | null,
     };
 
     let eventId = editingId;
@@ -326,8 +700,7 @@ export default function Events({ isAdmin }: { isAdmin: boolean }) {
       }
     }
 
-    resetForm();
-    setShowForm(false);
+    closeForm();
     setSaving(false);
     load();
   }
@@ -360,6 +733,8 @@ export default function Events({ isAdmin }: { isAdmin: boolean }) {
   });
   const past = visibleEvents.filter((e) => !upcoming.includes(e));
 
+  const hasRealPoster = (existingPosterPath && !removePoster) || !!posterFile;
+
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -367,7 +742,7 @@ export default function Events({ isAdmin }: { isAdmin: boolean }) {
         {isAdmin && (
           <button
             style={{ marginTop: 0, width: "auto", padding: "8px 16px" }}
-            onClick={() => (showForm ? setShowForm(false) : openCreateForm())}
+            onClick={() => (showForm ? closeForm() : openCreateForm())}
           >
             {showForm ? "Cancel" : "Add event"}
           </button>
@@ -379,8 +754,8 @@ export default function Events({ isAdmin }: { isAdmin: boolean }) {
           <label style={{ marginTop: 0 }}>Title</label>
           <input
             type="text"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
+            value={draft.title}
+            onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))}
             placeholder="e.g. Club dinner, Saturday round robin"
             style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)" }}
           />
@@ -388,32 +763,91 @@ export default function Events({ isAdmin }: { isAdmin: boolean }) {
           <label>Date</label>
           <input
             type="date"
-            value={eventDate}
-            onChange={(e) => setEventDate(e.target.value)}
+            value={draft.eventDate}
+            onChange={(e) => setDraft((d) => ({ ...d, eventDate: e.target.value }))}
             style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)" }}
           />
 
           <label>Time (optional)</label>
           <input
             type="time"
-            value={eventTime}
-            onChange={(e) => setEventTime(e.target.value)}
+            value={draft.eventTime}
+            onChange={(e) => setDraft((d) => ({ ...d, eventTime: e.target.value }))}
             style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)" }}
           />
 
           <label>Location (optional)</label>
           <input
             type="text"
-            value={location}
-            onChange={(e) => setLocation(e.target.value)}
+            value={draft.location}
+            onChange={(e) => setDraft((d) => ({ ...d, location: e.target.value }))}
             placeholder="e.g. The clubhouse"
             style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)" }}
           />
 
+          <label>Format (optional)</label>
+          <input
+            type="text"
+            list="event-format-options"
+            value={draft.format}
+            onChange={(e) => setDraft((d) => ({ ...d, format: e.target.value }))}
+            placeholder="e.g. Competition, Social, Trivia Night"
+            style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)" }}
+          />
+          <datalist id="event-format-options">
+            <option value="Competition" />
+            <option value="Social" />
+            <option value="Trivia Night" />
+            <option value="Ladder" />
+            <option value="Tournament" />
+            <option value="Coaching" />
+            <option value="Round Robin" />
+          </datalist>
+
+          <label>Hosted by (optional)</label>
+          <input
+            type="text"
+            value={draft.hostedBy}
+            onChange={(e) => setDraft((d) => ({ ...d, hostedBy: e.target.value }))}
+            placeholder="e.g. Committee, Coach Sam"
+            style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)" }}
+          />
+
+          <label>External link (optional)</label>
+          <input
+            type="url"
+            value={draft.externalUrl}
+            onChange={(e) => setDraft((d) => ({ ...d, externalUrl: e.target.value }))}
+            placeholder="e.g. a sign-up form or entry page"
+            style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)" }}
+          />
+
+          <label>Capacity (optional)</label>
+          <input
+            type="number"
+            min={1}
+            value={draft.capacity}
+            onChange={(e) => setDraft((d) => ({ ...d, capacity: e.target.value }))}
+            placeholder="Leave blank for no limit"
+            style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)" }}
+          />
+
+          {draft.capacity.trim() && (
+            <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
+              <input
+                type="checkbox"
+                checked={draft.waitlistEnabled === "1"}
+                onChange={(e) => setDraft((d) => ({ ...d, waitlistEnabled: e.target.checked ? "1" : "" }))}
+                style={{ width: "auto" }}
+              />
+              Allow a waitlist once full
+            </label>
+          )}
+
           <label>Description (optional)</label>
           <textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
+            value={draft.description}
+            onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))}
             rows={3}
             style={{
               width: "100%",
@@ -434,24 +868,32 @@ export default function Events({ isAdmin }: { isAdmin: boolean }) {
                 alt=""
                 style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 8, border: "1px solid var(--border)" }}
               />
-              <span
-                className="link-action"
-                role="button"
-                tabIndex={0}
-                onClick={() => setRemovePoster(true)}
-              >
+              <span className="link-action" role="button" tabIndex={0} onClick={() => setRemovePoster(true)}>
                 Remove poster
               </span>
             </div>
           )}
-          {posterFile && (
-            <p className="stat-meta" style={{ marginTop: 0 }}>Selected: {posterFile.name}</p>
-          )}
+          {posterFile && <p className="stat-meta" style={{ marginTop: 0 }}>Selected: {posterFile.name}</p>}
           <input type="file" accept="image/*" onChange={handlePosterChange} />
+
+          {!hasRealPoster && (
+            <>
+              <label>Placeholder (until a poster's added)</label>
+              <select
+                value={draft.posterPlaceholder}
+                onChange={(e) => setDraft((d) => ({ ...d, posterPlaceholder: e.target.value }))}
+                style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)" }}
+              >
+                <option value="">No placeholder (plain calendar icon)</option>
+                <option value="trophy">🏆 Trophy — competition</option>
+                <option value="social">🍷 Wine glass — social</option>
+              </select>
+            </>
+          )}
 
           {saveError && <p className="error">{saveError}</p>}
 
-          <button disabled={saving || !title.trim() || !eventDate} onClick={handleSave}>
+          <button disabled={saving || !draft.title.trim() || !draft.eventDate} onClick={handleSave}>
             {saving ? "Saving…" : editingId ? "Save changes" : "Create event"}
           </button>
         </div>
@@ -476,36 +918,14 @@ export default function Events({ isAdmin }: { isAdmin: boolean }) {
           {events
             .filter((e) => e.event_date === selectedDate)
             .map((e) => (
-              <div className="match-row" key={e.id} style={{ alignItems: "flex-start" }}>
-                {e.poster_path && (
-                  <img
-                    src={posterUrl(e.poster_path)}
-                    alt=""
-                    onClick={() => setLightboxUrl(posterUrl(e.poster_path!))}
-                    style={{
-                      width: 48,
-                      height: 48,
-                      objectFit: "cover",
-                      borderRadius: 8,
-                      marginRight: 12,
-                      cursor: "zoom-in",
-                      flexShrink: 0,
-                    }}
-                  />
-                )}
-                <div>
-                  <div className="opponent">{e.title}</div>
-                  <div className="meta">
-                    {formatEventTime(e.event_time) ? formatEventTime(e.event_time) : "All day"}
-                    {e.location ? ` · ${e.location}` : ""}
-                  </div>
-                  {e.description && (
-                    <div className="meta" style={{ marginTop: 4 }}>
-                      {e.description}
-                    </div>
-                  )}
-                </div>
-              </div>
+              <EventRowCard
+                key={e.id}
+                event={e}
+                isAdmin={isAdmin}
+                onOpen={() => setTicketEvent(e)}
+                onEdit={() => openEditForm(e)}
+                onDelete={() => handleDelete(e.id)}
+              />
             ))}
         </div>
       )}
@@ -514,59 +934,14 @@ export default function Events({ isAdmin }: { isAdmin: boolean }) {
         <h2>Upcoming</h2>
         {upcoming.length === 0 && <p className="stat-meta">No upcoming events yet.</p>}
         {upcoming.slice(0, visibleUpcoming).map((e) => (
-          <div className="match-row" key={e.id} style={{ alignItems: "flex-start" }}>
-            {e.poster_path && (
-              <img
-                src={posterUrl(e.poster_path)}
-                alt=""
-                onClick={() => setLightboxUrl(posterUrl(e.poster_path!))}
-                style={{
-                  width: 48,
-                  height: 48,
-                  objectFit: "cover",
-                  borderRadius: 8,
-                  marginRight: 12,
-                  cursor: "zoom-in",
-                  flexShrink: 0,
-                }}
-              />
-            )}
-            <div style={{ flex: 1 }}>
-              <div className="opponent">{e.title}</div>
-              <div className="meta">
-                {formatEventDate(e.event_date)}
-                {formatEventTime(e.event_time) ? ` · ${formatEventTime(e.event_time)}` : ""}
-                {e.location ? ` · ${e.location}` : ""}
-              </div>
-              {e.description && (
-                <div className="meta" style={{ marginTop: 4 }}>
-                  {e.description}
-                </div>
-              )}
-            </div>
-            {isAdmin && (
-              <div style={{ display: "flex", gap: 6 }}>
-                <span
-                  className="link-action"
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => openEditForm(e)}
-                  style={{ fontSize: "0.78rem" }}
-                >
-                  Edit
-                </span>
-                <span
-                  className="link-action"
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => handleDelete(e.id)}
-                  style={{ fontSize: "0.78rem", color: "var(--danger)" }}
-                >
-                  Remove
-                </span>
-              </div>
-            )}
-          </div>
+          <EventRowCard
+            key={e.id}
+            event={e}
+            isAdmin={isAdmin}
+            onOpen={() => setTicketEvent(e)}
+            onEdit={() => openEditForm(e)}
+            onDelete={() => handleDelete(e.id)}
+          />
         ))}
         {upcoming.length > visibleUpcoming && (
           <button
@@ -587,28 +962,15 @@ export default function Events({ isAdmin }: { isAdmin: boolean }) {
         <div className="card">
           <h2>Past</h2>
           {past.slice(0, visiblePast).map((e) => (
-            <div className="match-row" key={e.id}>
-              {e.poster_path && (
-                <img
-                  src={posterUrl(e.poster_path)}
-                  alt=""
-                  onClick={() => setLightboxUrl(posterUrl(e.poster_path!))}
-                  style={{
-                    width: 40,
-                    height: 40,
-                    objectFit: "cover",
-                    borderRadius: 8,
-                    marginRight: 12,
-                    cursor: "zoom-in",
-                    flexShrink: 0,
-                  }}
-                />
-              )}
-              <div>
-                <div className="opponent">{e.title}</div>
-                <div className="meta">{formatEventDate(e.event_date)}</div>
-              </div>
-            </div>
+            <EventRowCard
+              key={e.id}
+              event={e}
+              isAdmin={isAdmin}
+              compact
+              onOpen={() => setTicketEvent(e)}
+              onEdit={() => openEditForm(e)}
+              onDelete={() => handleDelete(e.id)}
+            />
           ))}
           {past.length > visiblePast && (
             <button
@@ -624,6 +986,26 @@ export default function Events({ isAdmin }: { isAdmin: boolean }) {
             </button>
           )}
         </div>
+      )}
+
+      {ticketEvent && (
+        <EventTicketModal
+          event={ticketEvent}
+          isAdmin={isAdmin}
+          playerId={playerId}
+          onClose={() => setTicketEvent(null)}
+          onZoom={(url) => setLightboxUrl(url)}
+          onEdit={() => {
+            const e = ticketEvent;
+            setTicketEvent(null);
+            openEditForm(e);
+          }}
+          onDelete={() => {
+            const id = ticketEvent.id;
+            setTicketEvent(null);
+            handleDelete(id);
+          }}
+        />
       )}
 
       {lightboxUrl && (

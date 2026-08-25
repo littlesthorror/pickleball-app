@@ -307,7 +307,7 @@ export default function App() {
                     <Leaderboard onSelectPlayer={(id, name) => setViewingPlayer({ id, name })} />
                   )}
                   {tab === "club-stats" && <ClubStats />}
-                  {tab === "events" && <Events isAdmin={effectiveIsAdmin} />}
+                  {tab === "events" && <Events isAdmin={effectiveIsAdmin} playerId={player.id} />}
                   {tab === "notices" && <Notices isAdmin={effectiveIsAdmin} />}
                   {tab === "faq" && <FAQ isAdmin={effectiveIsAdmin} />}
                   {tab === "match-entry" && effectiveIsAdmin && <MatchEntry />}

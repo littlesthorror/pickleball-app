@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Sideline — Event Details Mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=IBM+Plex+Mono:wght@500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#F5F7F4;
+    --ink:#10262B;
+    --ink-soft:#4A6068;
+    --court:#0E4749;
+    --court-soft:#164F51;
+    --accent:#D6E24C;
+    --accent-dark:#9FAE33;
+    --coral:#E0553A;
+    --line:#D3E1DB;
+    --backdrop:rgba(9,26,29,0.86);
+    --radius:20px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:'Inter',sans-serif;
+    min-height:100vh;
+  }
+  .page{
+    max-width:520px;
+    margin:0 auto;
+    padding:40px 20px 80px;
+  }
+  h1{
+    font-family:'Bricolage Grotesque',sans-serif;
+    font-weight:700;
+    font-size:clamp(28px,6vw,36px);
+    margin:0 0 4px;
+    letter-spacing:-0.02em;
+  }
+  .subhead{
+    color:var(--ink-soft);
+    margin:0 0 28px;
+    font-size:15px;
+  }
+  .event-list{display:flex;flex-direction:column;gap:12px;}
+  .event-card{
+    width:100%;
+    text-align:left;
+    background:#fff;
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:12px 16px;
+    display:flex;
+    align-items:center;
+    gap:14px;
+    cursor:pointer;
+    font-family:inherit;
+    transition:transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  .event-card:hover{transform:translateY(-2px);box-shadow:0 8px 20px rgba(14,71,73,0.08);}
+  .event-card:focus-visible{outline:3px solid var(--court);outline-offset:2px;}
+  .event-card__thumb{
+    width:44px;height:44px;border-radius:10px;flex-shrink:0;
+    display:flex;align-items:center;justify-content:center;
+    font-size:19px;color:#fff;
+  }
+  .event-card__body{flex:1;min-width:0;}
+  .event-card__title{
+    font-family:'Bricolage Grotesque',sans-serif;
+    font-weight:600;
+    font-size:16px;
+    margin:0 0 3px;
+    color:var(--ink);
+  }
+  .event-card__when{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:12px;
+    color:var(--court);
+  }
+  .event-card__chevron{color:var(--ink-soft);font-size:20px;flex-shrink:0;}
+
+  /* ticket modal */
+  .modal-backdrop{
+    position:fixed;inset:0;
+    background:var(--backdrop);
+    display:flex;align-items:center;justify-content:center;
+    padding:24px;
+    opacity:0;pointer-events:none;
+    transition:opacity 0.2s ease;
+    z-index:50;
+  }
+  .modal-backdrop.open{opacity:1;pointer-events:auto;}
+
+  .ticket{
+    width:min(420px,100%);
+    max-height:88vh;
+    overflow-y:auto;
+    background:#fff;
+    border-radius:var(--radius);
+    position:relative;
+    transform:translateY(12px) scale(0.98);
+    transition:transform 0.2s ease;
+    box-shadow:0 30px 60px rgba(0,0,0,0.3);
+  }
+  .modal-backdrop.open .ticket{transform:translateY(0) scale(1);}
+
+  .close-btn{
+    position:absolute;top:14px;right:14px;
+    width:32px;height:32px;
+    border-radius:50%;
+    border:none;
+    background:rgba(0,0,0,0.35);
+    color:#fff;
+    font-size:20px;
+    line-height:1;
+    cursor:pointer;
+    z-index:3;
+  }
+  .close-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+
+  /* poster */
+  .poster{
+    position:relative;
+    width:100%;
+    aspect-ratio:16/9;
+    border-radius:var(--radius) var(--radius) 0 0;
+    overflow:hidden;
+    cursor:zoom-in;
+    display:flex;align-items:center;justify-content:center;
+    color:#fff;
+  }
+  .poster__icon{font-size:56px;opacity:0.95;}
+  .poster__pill{
+    position:absolute;
+    font-size:10.5px;
+    background:rgba(0,0,0,0.38);
+    color:#fff;
+    padding:5px 10px;
+    border-radius:20px;
+    display:flex;gap:5px;align-items:center;
+    letter-spacing:0.01em;
+  }
+  .poster__pill--label{top:12px;left:12px;}
+  .poster__pill--hint{bottom:12px;right:12px;}
+
+  .ticket__top{
+    background:linear-gradient(160deg,var(--court),var(--court-soft));
+    color:#fff;
+    padding:24px 26px 30px;
+  }
+  .ticket__meta{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11.5px;
+    letter-spacing:0.08em;
+    text-transform:uppercase;
+    color:var(--accent);
+    margin-bottom:10px;
+  }
+  .ticket__title{
+    font-family:'Bricolage Grotesque',sans-serif;
+    font-size:clamp(22px,5vw,27px);
+    font-weight:700;
+    margin:0 0 14px;
+    letter-spacing:-0.01em;
+    padding-right:30px;
+  }
+  .ticket__when,.ticket__where{
+    font-size:14px;
+    display:flex;
+    gap:8px;
+    align-items:baseline;
+    margin-top:6px;
+    color:rgba(255,255,255,0.92);
+  }
+  .ticket__when strong,.ticket__where strong{
+    font-family:'IBM Plex Mono',monospace;
+    font-weight:600;
+    color:#fff;
+  }
+
+  .ticket__perforation{
+    position:relative;
+    height:0;
+    border-top:2px dashed rgba(14,71,73,0.25);
+    margin:0 22px;
+  }
+  .notch{
+    position:absolute;
+    top:-13px;
+    width:26px;height:26px;
+    border-radius:50%;
+    background:var(--backdrop);
+  }
+  .notch--left{left:-35px;}
+  .notch--right{right:-35px;}
+
+  .ticket__bottom{padding:26px 26px 30px;}
+  .row{
+    display:flex;
+    justify-content:space-between;
+    gap:16px;
+    padding:9px 0;
+    border-bottom:1px solid var(--line);
+    font-size:14.5px;
+  }
+  .row:first-child{padding-top:2px;}
+  .row__label{
+    color:var(--ink-soft);
+    font-size:12.5px;
+    text-transform:uppercase;
+    letter-spacing:0.06em;
+    padding-top:2px;
+  }
+  .row__value{font-weight:600;text-align:right;}
+
+  .ticket__desc{
+    font-size:14.5px;
+    line-height:1.55;
+    color:var(--ink-soft);
+    margin:16px 0 22px;
+  }
+
+  .spots{margin-bottom:22px;}
+  .spots__label{
+    display:flex;justify-content:space-between;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:12.5px;
+    margin-bottom:7px;
+  }
+  .spots__bar{
+    height:8px;border-radius:5px;
+    background:var(--line);
+    overflow:hidden;
+  }
+  .spots__fill{
+    height:100%;
+    background:var(--accent-dark);
+    border-radius:5px;
+    transition:width 0.3s ease;
+  }
+  .spots__fill.full{background:var(--coral);}
+
+  .rsvp-btn{
+    width:100%;
+    padding:14px;
+    border:none;
+    border-radius:12px;
+    background:var(--accent);
+    color:var(--court);
+    font-family:'Bricolage Grotesque',sans-serif;
+    font-weight:700;
+    font-size:15.5px;
+    cursor:pointer;
+    transition:background 0.15s ease;
+  }
+  .rsvp-btn:hover{background:var(--accent-dark);}
+  .rsvp-btn:focus-visible{outline:3px solid var(--court);outline-offset:2px;}
+  .rsvp-btn.waitlist{background:var(--coral);color:#fff;}
+  .rsvp-btn.waitlist:hover{background:#c2492f;}
+  .rsvp-btn.disabled{
+    background:var(--line);
+    color:var(--ink-soft);
+    cursor:not-allowed;
+  }
+
+  /* lightbox */
+  .lightbox-backdrop{
+    position:fixed;inset:0;
+    background:rgba(5,12,14,0.94);
+    display:flex;align-items:center;justify-content:center;
+    padding:24px;
+    opacity:0;pointer-events:none;
+    transition:opacity 0.2s ease;
+    z-index:60;
+  }
+  .lightbox-backdrop.open{opacity:1;pointer-events:auto;}
+  .lightbox-img{
+    width:min(560px,92vw);
+    aspect-ratio:4/5;
+    border-radius:14px;
+    display:flex;align-items:center;justify-content:center;
+    color:#fff;
+    font-size:110px;
+    box-shadow:0 30px 80px rgba(0,0,0,0.5);
+    position:relative;
+  }
+  .lightbox-caption{
+    position:absolute;bottom:16px;left:16px;right:16px;
+    font-family:'Inter',sans-serif;
+    font-size:12.5px;
+    color:rgba(255,255,255,0.85);
+    background:rgba(0,0,0,0.35);
+    padding:8px 12px;border-radius:10px;
+  }
+  .lightbox-close{
+    position:absolute;top:20px;right:20px;
+    width:38px;height:38px;border-radius:50%;
+    border:none;background:rgba(255,255,255,0.16);
+    color:#fff;font-size:22px;cursor:pointer;
+  }
+  .lightbox-close:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+
+  @media (prefers-reduced-motion: reduce){
+    *{transition:none !important;}
+  }
+</style>
+</head>
+<body>
+
+<div class="page">
+  <h1>Upcoming events</h1>
+  <p class="subhead">Tap an event to see the full details</p>
+  <div class="event-list" id="eventList"></div>
+</div>
+
+<div class="modal-backdrop" id="backdrop">
+  <div class="ticket" role="dialog" aria-modal="true" aria-labelledby="ticketTitle">
+    <button class="close-btn" id="closeBtn" aria-label="Close event details">×</button>
+    <div class="poster" id="poster">
+      <span class="poster__pill poster__pill--label">Poster placeholder</span>
+      <span class="poster__icon" id="posterIcon"></span>
+      <span class="poster__pill poster__pill--hint">⤢ Tap to enlarge</span>
+    </div>
+    <div class="ticket__top">
+      <div class="ticket__meta" id="ticketMeta"></div>
+      <h2 class="ticket__title" id="ticketTitle"></h2>
+      <div class="ticket__when">📅 <strong id="ticketWhen"></strong></div>
+      <div class="ticket__where">📍 <strong id="ticketWhere"></strong></div>
+    </div>
+    <div class="ticket__perforation">
+      <span class="notch notch--left"></span>
+      <span class="notch notch--right"></span>
+    </div>
+    <div class="ticket__bottom">
+      <div class="row"><span class="row__label">Format</span><span class="row__value" id="ticketFormat"></span></div>
+      <div class="row"><span class="row__label">Hosted by</span><span class="row__value" id="ticketHost"></span></div>
+      <p class="ticket__desc" id="ticketDesc"></p>
+      <div class="spots">
+        <div class="spots__label"><span id="spotsText"></span></div>
+        <div class="spots__bar"><div class="spots__fill" id="spotsFill"></div></div>
+      </div>
+      <button class="rsvp-btn" id="rsvpBtn">I'm in</button>
+    </div>
+  </div>
+</div>
+
+<div class="lightbox-backdrop" id="lightboxBackdrop">
+  <div class="lightbox-img" id="lightboxImg">
+    <button class="lightbox-close" id="lightboxClose" aria-label="Close poster image">×</button>
+    <span id="lightboxIcon"></span>
+    <span class="lightbox-caption">Full poster would display here — swap in the real event flyer image</span>
+  </div>
+</div>
+
+<script>
+const events = [
+  {
+    title: "Saturday Social Round Robin",
+    meta: "Social",
+    when: "Sat 29 Aug · 09:00–11:00",
+    where: "Courts 1–4, Sideline Clubhouse",
+    format: "Doubles round robin",
+    host: "Dave M.",
+    desc: "Casual round robin to kick off the weekend. All levels welcome — we mix teams so everyone gets a game with someone new.",
+    spotsFilled: 16,
+    spotsTotal: 20,
+    waitlistEnabled: true,
+    posterIcon: "🏓",
+    posterGradient: "linear-gradient(135deg,#0E4749,#3E8E7E)"
+  },
+  {
+    title: "Ladder Night — Week 6",
+    meta: "Ladder",
+    when: "Tue 1 Sep · 18:30–20:30",
+    where: "Courts 1–2, Sideline Clubhouse",
+    format: "Doubles ladder (ranked)",
+    host: "Priya K.",
+    desc: "Weekly ladder matches count toward your rating. Check the ladder board before you arrive — pairings lock at 18:15 sharp.",
+    spotsFilled: 12,
+    spotsTotal: 16,
+    waitlistEnabled: true,
+    posterIcon: "📈",
+    posterGradient: "linear-gradient(135deg,#123A44,#2E6E7A)"
+  },
+  {
+    title: "Club Championships — Semi Finals",
+    meta: "Tournament",
+    when: "Sat 12 Sep · 10:00–13:00",
+    where: "Show Court, Sideline Clubhouse",
+    format: "Doubles knockout",
+    host: "Committee",
+    desc: "The top four pairs from qualifying face off. Spectators welcome — bring a chair, we'll have the urn on.",
+    spotsFilled: 4,
+    spotsTotal: 4,
+    waitlistEnabled: true,
+    posterIcon: "🏆",
+    posterGradient: "linear-gradient(135deg,#0E4749,#9FAE33)"
+  },
+  {
+    title: "Beginners Clinic",
+    meta: "Coaching",
+    when: "Thu 3 Sep · 18:00–19:00",
+    where: "Court 3, Sideline Clubhouse",
+    format: "Group coaching session",
+    host: "Sam T.",
+    desc: "A relaxed intro to rules, scoring and basic shots. Loaner paddles available — just bring trainers.",
+    spotsFilled: 10,
+    spotsTotal: 10,
+    waitlistEnabled: false,
+    posterIcon: "🎾",
+    posterGradient: "linear-gradient(135deg,#164F51,#E0553A)"
+  }
+];
+
+const listEl = document.getElementById('eventList');
+events.forEach((ev) => {
+  const btn = document.createElement('button');
+  btn.className = 'event-card';
+  btn.innerHTML = `
+    <span class="event-card__thumb" style="background:${ev.posterGradient}">${ev.posterIcon}</span>
+    <span class="event-card__body">
+      <p class="event-card__title">${ev.title}</p>
+      <p class="event-card__when">${ev.when}</p>
+    </span>
+    <span class="event-card__chevron">›</span>
+  `;
+  btn.addEventListener('click', () => openTicket(ev));
+  listEl.appendChild(btn);
+});
+
+const backdrop = document.getElementById('backdrop');
+const closeBtn = document.getElementById('closeBtn');
+const rsvpBtn = document.getElementById('rsvpBtn');
+const poster = document.getElementById('poster');
+const lightboxBackdrop = document.getElementById('lightboxBackdrop');
+const lightboxClose = document.getElementById('lightboxClose');
+let lastFocused = null;
+
+function openTicket(ev){
+  lastFocused = document.activeElement;
+  document.getElementById('ticketMeta').textContent = ev.meta;
+  document.getElementById('ticketTitle').textContent = ev.title;
+  document.getElementById('ticketWhen').textContent = ev.when;
+  document.getElementById('ticketWhere').textContent = ev.where;
+  document.getElementById('ticketFormat').textContent = ev.format;
+  document.getElementById('ticketHost').textContent = ev.host;
+  document.getElementById('ticketDesc').textContent = ev.desc;
+
+  poster.style.background = ev.posterGradient;
+  document.getElementById('posterIcon').textContent = ev.posterIcon;
+  document.getElementById('lightboxIcon').textContent = ev.posterIcon;
+  lightboxBackdrop.querySelector('.lightbox-img').style.background = ev.posterGradient;
+
+  const full = ev.spotsFilled >= ev.spotsTotal;
+  const fill = document.getElementById('spotsFill');
+  fill.style.width = Math.min(100, (ev.spotsFilled/ev.spotsTotal)*100) + '%';
+  fill.classList.toggle('full', full);
+
+  rsvpBtn.classList.remove('disabled','waitlist');
+  if (!full){
+    document.getElementById('spotsText').textContent = `${ev.spotsFilled}/${ev.spotsTotal} spots filled`;
+    rsvpBtn.textContent = "I'm in";
+  } else if (ev.waitlistEnabled){
+    document.getElementById('spotsText').textContent = `Full — waitlist open`;
+    rsvpBtn.textContent = "Join waitlist";
+    rsvpBtn.classList.add('waitlist');
+  } else {
+    document.getElementById('spotsText').textContent = `Fully booked`;
+    rsvpBtn.textContent = "Fully booked";
+    rsvpBtn.classList.add('disabled');
+  }
+
+  backdrop.classList.add('open');
+  closeBtn.focus();
+}
+
+function closeTicket(){
+  backdrop.classList.remove('open');
+  if (lastFocused) lastFocused.focus();
+}
+function openLightbox(){ lightboxBackdrop.classList.add('open'); lightboxClose.focus(); }
+function closeLightbox(){ lightboxBackdrop.classList.remove('open'); closeBtn.focus(); }
+
+closeBtn.addEventListener('click', closeTicket);
+backdrop.addEventListener('click', (e) => { if (e.target === backdrop) closeTicket(); });
+poster.addEventListener('click', openLightbox);
+lightboxClose.addEventListener('click', closeLightbox);
+lightboxBackdrop.addEventListener('click', (e) => { if (e.target === lightboxBackdrop) closeLightbox(); });
+
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  if (lightboxBackdrop.classList.contains('open')) closeLightbox();
+  else if (backdrop.classList.contains('open')) closeTicket();
+});
+
+rsvpBtn.addEventListener('click', () => {
+  if (rsvpBtn.classList.contains('disabled')) return;
+  rsvpBtn.textContent = rsvpBtn.classList.contains('waitlist') ? "You're on the waitlist ✓" : "You're in ✓";
+  rsvpBtn.classList.add('disabled');
+});
+</script>
+
+</body>
+</html>

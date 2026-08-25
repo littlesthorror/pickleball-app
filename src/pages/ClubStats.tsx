@@ -1,7 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Tooltip,
+  Legend,
+  Filler,
+} from "chart.js";
+import { Line } from "react-chartjs-2";
 import { supabase } from "../supabaseClient";
 import Avatar from "../components/Avatar";
 import type { PlayerStatus } from "../types";
+
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, Filler);
 
 interface MatchTeams {
   team_a_player_1_id: string;
@@ -14,12 +27,29 @@ interface HistoryRow {
   player_id: string;
   played_at: string;
   won: boolean;
+  // Added for the Top 7 trajectory chart below — the player's rating as
+  // it stood right after this match.
+  post_rating: number;
 }
 
 // A "streak" of 1 isn't really a streak — this is the minimum consecutive
 // wins (most recent games first) before a player shows up in the Longest
 // active win streak block.
 const MIN_STREAK = 2;
+
+// How many of the club's current top-rated players to track on the
+// trajectory chart — recomputed live from current ratings each render, so
+// it's always whoever's actually in the top 7 today, not a fixed list.
+const TOP_N = 7;
+
+// Distinct, readable-on-white line colours for up to 7 players at once —
+// the app's own navy/orange brand pair lead, then five more distinguishable
+// hues fill out the rest.
+const TRAJECTORY_COLORS = ["#e05f00", "#0f2547", "#3c92f2", "#16a34a", "#a855f7", "#be123c", "#0891b2"];
+
+const MS_PER_DAY = 1000 * 60 * 60 * 24;
+
+type RangeMonths = 3 | 6 | 12;
 
 // Deliberately descriptive only — no rankings, no "who's winning," nothing
 // that turns into a second leaderboard. Just "here's what the club has
@@ -31,6 +61,7 @@ export default function ClubStats() {
   const [history, setHistory] = useState<HistoryRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [rangeMonths, setRangeMonths] = useState<RangeMonths>(6);
 
   useEffect(() => {
     Promise.all([
@@ -39,7 +70,7 @@ export default function ClubStats() {
         .select("team_a_player_1_id,team_a_player_2_id,team_b_player_1_id,team_b_player_2_id")
         .eq("status", "confirmed"),
       supabase.from("player_status").select("*").eq("is_active", true),
-      supabase.from("player_match_history").select("player_id, played_at, won"),
+      supabase.from("player_match_history").select("player_id, played_at, won, post_rating"),
     ]).then(([matchesRes, playersRes, historyRes]) => {
       if (matchesRes.error) setError(matchesRes.error.message);
       else setMatches((matchesRes.data ?? []) as MatchTeams[]);
@@ -140,6 +171,69 @@ export default function ClubStats() {
     };
   }, [matches, players, history]);
 
+  // Whoever's currently rated highest, right now — recomputed every render
+  // from live ratings rather than stored anywhere, so the chart below
+  // always reflects the current top 7 even as standings shift week to
+  // week. Provisional players are excluded, same rule the Leaderboard uses
+  // for its "ranked by rating" view — their ratings aren't settled enough
+  // yet to call them a top performer.
+  const topPlayers = useMemo(
+    () =>
+      [...players]
+        .filter((p) => !p.is_provisional)
+        .sort((a, b) => b.rating - a.rating)
+        .slice(0, TOP_N),
+    [players]
+  );
+
+  // Builds a multi-line dataset of each top-7 player's rating right after
+  // every confirmed match they played within the selected window. Chart.js
+  // is used with a plain linear x-axis (days since the earliest point in
+  // view) rather than its time scale, since that needs a date-adapter
+  // package this project doesn't otherwise depend on — the tick/tooltip
+  // callbacks below convert those day-offsets back into real dates.
+  const trajectory = useMemo(() => {
+    if (topPlayers.length === 0) return null;
+    const topIds = new Set(topPlayers.map((p) => p.id));
+    const cutoff = new Date();
+    cutoff.setMonth(cutoff.getMonth() - rangeMonths);
+    const cutoffMs = cutoff.getTime();
+
+    const relevant = history.filter((h) => topIds.has(h.player_id) && new Date(h.played_at).getTime() >= cutoffMs);
+    if (relevant.length === 0) return null;
+
+    const minTime = Math.min(...relevant.map((h) => new Date(h.played_at).getTime()));
+
+    const byPlayer = new Map<string, { x: number; y: number }[]>();
+    for (const h of relevant) {
+      const days = (new Date(h.played_at).getTime() - minTime) / MS_PER_DAY;
+      const list = byPlayer.get(h.player_id) ?? [];
+      list.push({ x: days, y: h.post_rating });
+      byPlayer.set(h.player_id, list);
+    }
+
+    const datasets = topPlayers
+      .map((p, i) => {
+        const points = (byPlayer.get(p.id) ?? []).sort((a, b) => a.x - b.x);
+        if (points.length === 0) return null;
+        const color = TRAJECTORY_COLORS[i % TRAJECTORY_COLORS.length];
+        return {
+          label: p.display_name,
+          data: points,
+          borderColor: color,
+          backgroundColor: color,
+          pointRadius: 2,
+          pointHoverRadius: 4,
+          borderWidth: 2,
+          tension: 0.25,
+        };
+      })
+      .filter((d): d is NonNullable<typeof d> => d !== null);
+
+    if (datasets.length === 0) return null;
+    return { datasets, minTime };
+  }, [history, topPlayers, rangeMonths]);
+
   if (loading) return <p>Loading club stats…</p>;
   if (error) return <p className="error">{error}</p>;
 
@@ -164,6 +258,74 @@ export default function ClubStats() {
             <div className="opponent">Newest member</div>
             <div className="score" style={{ fontWeight: 600 }}>{stats.newest.display_name}</div>
           </div>
+        )}
+      </div>
+
+      <div className="card">
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+          <h2 style={{ marginBottom: 0 }}>Top 7 players — rating trajectory</h2>
+          <div className="toggle-group">
+            <button disabled={rangeMonths === 3} onClick={() => setRangeMonths(3)}>
+              3m
+            </button>
+            <button disabled={rangeMonths === 6} onClick={() => setRangeMonths(6)}>
+              6m
+            </button>
+            <button disabled={rangeMonths === 12} onClick={() => setRangeMonths(12)}>
+              1y
+            </button>
+          </div>
+        </div>
+        <p className="stat-meta" style={{ marginBottom: 12 }}>
+          Whoever's currently rated highest, updated automatically as the standings change.
+        </p>
+        {trajectory ? (
+          <div style={{ height: 280 }}>
+            <Line
+              data={{ datasets: trajectory.datasets }}
+              options={{
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                  legend: {
+                    display: true,
+                    position: "bottom",
+                    labels: { boxWidth: 10, font: { size: 11 }, color: "#667085" },
+                  },
+                  tooltip: {
+                    callbacks: {
+                      title: (items) => {
+                        if (!items.length) return "";
+                        const t = trajectory.minTime + Number(items[0].parsed.x) * MS_PER_DAY;
+                        return new Date(t).toLocaleDateString(undefined, {
+                          day: "numeric",
+                          month: "short",
+                          year: "numeric",
+                        });
+                      },
+                    },
+                  },
+                },
+                scales: {
+                  x: {
+                    type: "linear",
+                    grid: { display: false },
+                    ticks: {
+                      color: "#667085",
+                      maxTicksLimit: 6,
+                      callback: (value) => {
+                        const t = trajectory.minTime + Number(value) * MS_PER_DAY;
+                        return new Date(t).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+                      },
+                    },
+                  },
+                  y: { grid: { color: "#eef1f6" }, ticks: { color: "#667085" } },
+                },
+              }}
+            />
+          </div>
+        ) : (
+          <p className="stat-meta">Not enough recent match history yet to plot this.</p>
         )}
       </div>
 

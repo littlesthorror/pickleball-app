@@ -770,6 +770,210 @@ textarea {
   text-decoration: underline;
 }
 
+/* ── Event ticket modal ─────────────────────────────────────────────── */
+/* Adapted from Ben's mockup (2026-08-15) — same ticket shape/structure
+   (poster, gradient header, perforated divider, spots bar), restyled with
+   the app's existing navy/orange palette instead of the mockup's own
+   teal/lime one. */
+.ticket-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 26, 51, 0.82);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 58;
+}
+
+.ticket-card {
+  width: 100%;
+  max-width: 420px;
+  max-height: 88vh;
+  overflow-y: auto;
+  background: var(--card);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.35);
+  position: relative;
+}
+
+.ticket-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.4);
+  color: #fff;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  z-index: 2;
+  margin: 0;
+  padding: 0;
+}
+
+.ticket-poster {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  cursor: zoom-in;
+  background-size: cover;
+  background-position: center;
+}
+
+.ticket-poster-icon {
+  font-size: 52px;
+}
+
+.ticket-poster-hint {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  font-size: 0.68rem;
+  background: rgba(0, 0, 0, 0.4);
+  color: #fff;
+  padding: 4px 9px;
+  border-radius: 20px;
+}
+
+.ticket-header {
+  background: linear-gradient(160deg, var(--navy-900), var(--navy-700));
+  color: #fff;
+  padding: 22px 24px 26px;
+}
+
+.ticket-meta {
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--orange-500);
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.ticket-title {
+  font-size: 1.45rem;
+  font-weight: 800;
+  margin: 0 0 12px;
+  letter-spacing: -0.01em;
+  padding-right: 28px;
+}
+
+.ticket-when {
+  font-size: 0.88rem;
+  color: rgba(255, 255, 255, 0.92);
+  margin-top: 5px;
+}
+
+.ticket-when strong {
+  color: #fff;
+}
+
+.ticket-perforation {
+  position: relative;
+  height: 0;
+  border-top: 2px dashed var(--border);
+  margin: 0 20px;
+}
+
+.ticket-notch {
+  position: absolute;
+  top: -12px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  /* Matches .ticket-overlay's background exactly, so it reads as a
+     punched-through circle rather than a visible dot. */
+  background: rgba(10, 26, 51, 0.82);
+}
+
+.ticket-notch-left {
+  left: -32px;
+}
+
+.ticket-notch-right {
+  right: -32px;
+}
+
+.ticket-body {
+  padding: 22px 24px 26px;
+}
+
+.ticket-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.88rem;
+}
+
+.ticket-row-label {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.ticket-row-value {
+  font-weight: 600;
+  text-align: right;
+}
+
+.ticket-spots-bar {
+  height: 8px;
+  border-radius: 5px;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.ticket-spots-fill {
+  height: 100%;
+  border-radius: 5px;
+  background: var(--orange-600);
+  transition: width 0.3s ease;
+}
+
+.ticket-spots-fill.full {
+  background: var(--danger);
+}
+
+/* ── Compact, legible event list rows ──────────────────────────────── */
+.event-row-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  transition: transform 0.1s ease;
+}
+
+.event-row-card:hover {
+  transform: translateY(-1px);
+}
+
+.event-row-thumb {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 19px;
+  color: #fff;
+  background-size: cover;
+  background-position: center;
+}
+
 /* ── Sky-blue button variant ────────────────────────────────────────── */
 .btn-sky {
   background: var(--sky-500);

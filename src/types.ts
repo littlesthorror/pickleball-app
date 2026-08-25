@@ -65,6 +65,11 @@ export interface NewMatchInput {
   team_b_score: number;
 }
 
+// 'trophy' = navy background, for competitions/tournaments/ladders.
+// 'social' = orange background, for socials/coaching/casual sessions.
+// Shown in place of a real poster until one's been uploaded.
+export type EventPosterPlaceholder = "trophy" | "social";
+
 export interface EventRow {
   id: string;
   title: string;
@@ -73,10 +78,25 @@ export interface EventRow {
   event_time: string | null;
   location: string | null;
   // Path within the "notices" storage bucket (reused rather than a
-  // dedicated bucket) — e.g. "events/<id>/poster.jpg". Null if no poster
-  // has been uploaded for this event.
+  // dedicated bucket) — e.g. "events/<id>/poster-<ts>-<rand>.jpg". Null
+  // if no poster has been uploaded for this event.
   poster_path: string | null;
   created_by: string | null;
+  created_at: string;
+  // All added 2026-08-15 for the ticket-style event detail popup.
+  format: string | null;
+  hosted_by: string | null;
+  external_url: string | null;
+  capacity: number | null;
+  waitlist_enabled: boolean;
+  poster_placeholder: EventPosterPlaceholder | null;
+}
+
+export interface EventRsvpRow {
+  id: string;
+  event_id: string;
+  player_id: string;
+  status: "going" | "waitlist";
   created_at: string;
 }
 
@@ -87,6 +107,10 @@ export interface FaqItem {
   sort_order: number;
   created_by: string | null;
   created_at: string;
+  // Added 2026-08-25 for optional image attachments on FAQ answers — path
+  // within the "notices" storage bucket (reused, same as Notices/Events),
+  // e.g. "faq/<id>/image-<ts>-<rand>.jpg". Null if no image was attached.
+  image_path: string | null;
 }
 
 export interface NoticeAttachment {

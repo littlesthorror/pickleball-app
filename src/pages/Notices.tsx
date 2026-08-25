@@ -2,8 +2,11 @@ import { useEffect, useState } from "react";
 import type { ChangeEvent } from "react";
 import { supabase } from "../supabaseClient";
 import { linkify } from "../lib/linkify";
+import { useDraft } from "../lib/useDraft";
 import Lightbox from "../components/Lightbox";
 import type { NoticeAttachment, NoticeRow } from "../types";
+
+const NOTICE_DRAFT_KEY = "sideline-draft-notice";
 
 // Named "Notices" rather than "Notifications" in the UI — this is a posted
 // noticeboard (notes + files like team sheets), not push notifications, so
@@ -33,10 +36,22 @@ export default function Notices({ isAdmin }: { isAdmin: boolean }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [showForm, setShowForm] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [title, setTitle] = useState("");
-  const [body, setBody] = useState("");
+  // showForm/editingId/title/body live in one sessionStorage-backed draft
+  // — see useDraft.ts — so the form survives a tab reload (Android's
+  // file-picker hand-off, backgrounded-tab discard on Safari/Chrome)
+  // instead of silently losing what was typed. Attachments can't be
+  // persisted this way (a File can't survive a reload), so if one WAS in
+  // progress when the tab reloads, it needs re-picking — see the restore
+  // effect below for how existingAttachments gets its data back on an
+  // edit-in-progress reload.
+  const [draft, setDraft, clearDraft] = useDraft(NOTICE_DRAFT_KEY, {
+    showForm: "",
+    editingId: "",
+    title: "",
+    body: "",
+  });
+  const showForm = draft.showForm === "1";
+  const editingId = draft.editingId || null;
   // Attachments already saved on the notice being edited (only relevant
   // when editingId is set) — marked for removal rather than deleted right
   // away, so cancelling the edit doesn't lose anything.
@@ -72,36 +87,41 @@ export default function Notices({ isAdmin }: { isAdmin: boolean }) {
 
   useEffect(load, []);
 
+  // If a tab reload happened mid-edit (the case this whole draft system
+  // exists for), the restored draft has editingId + title/body back, but
+  // existingAttachments was only ever in-memory — this re-populates it
+  // from the notice's last-saved attachments once the list has loaded.
+  // Any newly-picked-but-not-yet-uploaded file is still lost, same as any
+  // reload mid-upload always was; there's no way around that for a raw
+  // File reference.
+  useEffect(() => {
+    if (!editingId || notices.length === 0) return;
+    const notice = notices.find((n) => n.id === editingId);
+    if (notice) setExistingAttachments(attachmentsFor(notice));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingId, notices]);
+
   function openCreateForm() {
-    setEditingId(null);
-    setTitle("");
-    setBody("");
+    setDraft({ showForm: "1", editingId: "", title: "", body: "" });
     setExistingAttachments([]);
     setRemovedPaths(new Set());
     setNewFiles([]);
     setSaveError(null);
-    setShowForm(true);
   }
 
   function openEditForm(notice: NoticeRow) {
-    setEditingId(notice.id);
-    setTitle(notice.title);
-    setBody(notice.body ?? "");
+    setDraft({ showForm: "1", editingId: notice.id, title: notice.title, body: notice.body ?? "" });
     setExistingAttachments(attachmentsFor(notice));
     setRemovedPaths(new Set());
     setNewFiles([]);
     setSaveError(null);
-    setShowForm(true);
   }
 
   function resetForm() {
-    setEditingId(null);
-    setTitle("");
-    setBody("");
+    clearDraft();
     setExistingAttachments([]);
     setRemovedPaths(new Set());
     setNewFiles([]);
-    setShowForm(false);
   }
 
   function handleFilesChosen(e: ChangeEvent<HTMLInputElement>) {
@@ -126,7 +146,7 @@ export default function Notices({ isAdmin }: { isAdmin: boolean }) {
   }
 
   async function handleSave() {
-    if (!title.trim()) return;
+    if (!draft.title.trim()) return;
     setSaving(true);
     setSaveError(null);
 
@@ -152,7 +172,7 @@ export default function Notices({ isAdmin }: { isAdmin: boolean }) {
     if (editingId) {
       const { error } = await supabase
         .from("notices")
-        .update({ title: title.trim(), body: body.trim() || null, attachments })
+        .update({ title: draft.title.trim(), body: draft.body.trim() || null, attachments })
         .eq("id", editingId);
 
       if (error) {
@@ -167,8 +187,8 @@ export default function Notices({ isAdmin }: { isAdmin: boolean }) {
       }
     } else {
       const { error } = await supabase.from("notices").insert({
-        title: title.trim(),
-        body: body.trim() || null,
+        title: draft.title.trim(),
+        body: draft.body.trim() || null,
         attachments,
         created_by: userId,
       });
@@ -227,16 +247,16 @@ export default function Notices({ isAdmin }: { isAdmin: boolean }) {
           <label style={{ marginTop: 0 }}>Title</label>
           <input
             type="text"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
+            value={draft.title}
+            onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))}
             placeholder="e.g. Saturday team sheet"
             style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)" }}
           />
 
           <label>Note (optional)</label>
           <textarea
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
+            value={draft.body}
+            onChange={(e) => setDraft((d) => ({ ...d, body: e.target.value }))}
             rows={3}
             style={{ fontFamily: "inherit", fontSize: "1rem", resize: "vertical" }}
           />
@@ -324,7 +344,7 @@ export default function Notices({ isAdmin }: { isAdmin: boolean }) {
 
           {saveError && <p className="error">{saveError}</p>}
 
-          <button disabled={saving || !title.trim()} onClick={handleSave}>
+          <button disabled={saving || !draft.title.trim()} onClick={handleSave}>
             {saving ? (editingId ? "Saving…" : "Posting…") : editingId ? "Save changes" : "Post notice"}
           </button>
         </div>
