@@ -81,6 +81,9 @@ export default function Login() {
       <button onClick={handleSignIn} style={{ width: "auto", padding: "12px 28px" }}>
         Sign in with Google
       </button>
+      <p className="stat-meta" style={{ marginTop: 6, marginBottom: 0 }}>
+        Preferred — quickest way in
+      </p>
 
       <div style={{ display: "flex", alignItems: "center", gap: 10, width: 260, margin: "20px 0" }}>
         <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
