@@ -4,6 +4,11 @@
   --navy-800: #0f2547;
   --navy-700: #163460;
   --navy-500: #2c4d80;
+  /* Matches the "Share my card" button — used as the one shared "selected/
+     primary action" blue so the active nav tab and that button read as the
+     same accent rather than two near-identical darks. Added 2026-08-27 at
+     Ben's request. */
+  --navy-active: #001d51;
   --orange-600: #e05f00;
   --orange-500: #ff7a1a;
   --orange-100: #ffe7d1;
@@ -204,7 +209,7 @@ body {
 }
 
 .nav button:disabled {
-  background: var(--navy-900);
+  background: var(--navy-active);
   color: #fff;
   cursor: default;
 }
@@ -252,8 +257,8 @@ body {
 }
 
 .nav button.nav-btn-special:disabled {
-  background: var(--navy-500);
-  border-color: var(--navy-500);
+  background: var(--navy-active);
+  border-color: var(--navy-active);
   color: #fff;
 }
 

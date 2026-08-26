@@ -516,7 +516,7 @@ export default function Dashboard({
         {isOwnProfile && (
           <button
             onClick={() => setShowShareCard(true)}
-            style={{ background: "#001D51" }}
+            style={{ background: "var(--navy-active)" }}
           >
             Share my card
           </button>
