@@ -63,6 +63,7 @@ export default function AdminManagement({ currentUserId }: { currentUserId: stri
   // Draft text for each player's role title, keyed by player id — lets
   // each card have its own editable field without a form per player.
   const [roleDrafts, setRoleDrafts] = useState<Record<string, string>>({});
+  const [nameDrafts, setNameDrafts] = useState<Record<string, string>>({});
 
   // Client-side error logs (2026-08-25) — see src/lib/errorLogging.ts.
   const [errorLogs, setErrorLogs] = useState<ClientErrorLog[]>([]);
@@ -185,6 +186,28 @@ export default function AdminManagement({ currentUserId }: { currentUserId: stri
     const random = Math.random().toString(36).slice(2, 10).toUpperCase();
     setInviteCodeInput(random);
     setCodeSaved(false);
+  }
+
+  // Lets an admin correct a member's display name (typo, name change,
+  // maiden/married name, etc.) without them needing to do it themselves.
+  // Added 2026-08-27. Only the name changes — this doesn't touch their
+  // login/email, avatar, or any match history, which is all keyed off
+  // their player id, not their name.
+  async function saveName(player: PlayerStatus) {
+    const value = (nameDrafts[player.id] ?? player.display_name).trim();
+    if (!value) {
+      alert("Name can't be empty.");
+      return;
+    }
+    if (value === player.display_name) return;
+    setBusyId(player.id);
+    const { error } = await supabase.from("players").update({ display_name: value }).eq("id", player.id);
+    setBusyId(null);
+    if (error) {
+      alert(`Couldn't update name: ${error.message}`);
+      return;
+    }
+    load();
   }
 
   async function saveRole(player: PlayerStatus) {
@@ -526,6 +549,29 @@ export default function AdminManagement({ currentUserId }: { currentUserId: stri
                 {p.role_title && ` · ${p.role_title}`}
               </div>
             </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+            <input
+              type="text"
+              value={nameDrafts[p.id] ?? p.display_name}
+              onChange={(e) => setNameDrafts((prev) => ({ ...prev, [p.id]: e.target.value }))}
+              placeholder="Display name"
+              style={{
+                flex: 1,
+                padding: "8px 10px",
+                borderRadius: 8,
+                border: "1px solid var(--border)",
+                fontSize: "0.85rem",
+              }}
+            />
+            <button
+              disabled={busyId === p.id || (nameDrafts[p.id] ?? p.display_name).trim() === p.display_name}
+              onClick={() => saveName(p)}
+              style={{ flex: "0 0 auto", width: "auto", marginTop: 0, padding: "8px 14px", fontSize: "0.85rem" }}
+            >
+              Save
+            </button>
           </div>
 
           <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
