@@ -246,64 +246,70 @@ export default function App() {
                   it disappeared entirely while viewing a clubmate's profile
                   (via the leaderboard click-through), leaving only a small
                   "back" link as the way out. Fixed 2026-08-05. */}
-              <div className="nav">
-                <button disabled={tab === "dashboard"} onClick={() => changeTab("dashboard")}>
-                  Dashboard
-                </button>
-                <button disabled={tab === "leaderboard"} onClick={() => changeTab("leaderboard")}>
-                  Leaderboard
-                </button>
-                <button disabled={tab === "club-stats"} onClick={() => changeTab("club-stats")}>
-                  Club stats
-                </button>
-                <button
-                  disabled={tab === "events"}
-                  onClick={() => changeTab("events")}
-                  style={{ position: "relative" }}
-                >
-                  Events
-                  {hasNewEvent && (
-                    <span
-                      style={{
-                        position: "absolute",
-                        top: 4,
-                        right: 4,
-                        width: 8,
-                        height: 8,
-                        borderRadius: "50%",
-                        background: "var(--orange-600)",
-                      }}
-                    />
-                  )}
-                </button>
-                <button
-                  disabled={tab === "notices"}
-                  onClick={() => changeTab("notices")}
-                  style={{ position: "relative" }}
-                >
-                  Notices
-                  {hasNewNotice && (
-                    <span
-                      style={{
-                        position: "absolute",
-                        top: 4,
-                        right: 4,
-                        width: 8,
-                        height: 8,
-                        borderRadius: "50%",
-                        background: "var(--orange-600)",
-                      }}
-                    />
-                  )}
-                </button>
-                <button disabled={tab === "faq"} onClick={() => changeTab("faq")}>
-                  FAQ
-                </button>
-                {(showCompetitionsTab || effectiveIsAdmin) && (
-                  <button disabled={tab === "competitions"} onClick={() => changeTab("competitions")}>
-                    Competitions
+              <div className="nav-wrap">
+                <div className="nav">
+                  <button disabled={tab === "dashboard"} onClick={() => changeTab("dashboard")}>
+                    Dashboard
                   </button>
-                )}
+                  <button disabled={tab === "leaderboard"} onClick={() => changeTab("leaderboard")}>
+                    Leaderboard
+                  </button>
+                  <button disabled={tab === "club-stats"} onClick={() => changeTab("club-stats")}>
+                    Club stats
+                  </button>
+                  <button
+                    disabled={tab === "events"}
+                    onClick={() => changeTab("events")}
+                    style={{ position: "relative" }}
+                  >
+                    Events
+                    {hasNewEvent && (
+                      <span
+                        style={{
+                          position: "absolute",
+                          top: 4,
+                          right: 4,
+                          width: 8,
+                          height: 8,
+                          borderRadius: "50%",
+                          background: "var(--orange-600)",
+                        }}
+                      />
+                    )}
+                  </button>
+                  <button
+                    disabled={tab === "notices"}
+                    onClick={() => changeTab("notices")}
+                    style={{ position: "relative" }}
+                  >
+                    Notices
+                    {hasNewNotice && (
+                      <span
+                        style={{
+                          position: "absolute",
+                          top: 4,
+                          right: 4,
+                          width: 8,
+                          height: 8,
+                          borderRadius: "50%",
+                          background: "var(--orange-600)",
+                        }}
+                      />
+                    )}
+                  </button>
+                  <button disabled={tab === "faq"} onClick={() => changeTab("faq")}>
+                    FAQ
+                  </button>
+                  {(showCompetitionsTab || effectiveIsAdmin) && (
+                    <button
+                      className="nav-btn-special"
+                      disabled={tab === "competitions"}
+                      onClick={() => changeTab("competitions")}
+                    >
+                      🏆 Competitions
+                    </button>
+                  )}
+                </div>
               </div>
 
               {effectiveIsAdmin && (

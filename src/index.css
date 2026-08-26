@@ -156,6 +156,27 @@ body {
   display: none;
 }
 
+/* Wraps a .nav row so we can show a right-edge fade hint when there are
+   more tabs than fit on screen — the .nav itself can't have this as a
+   fixed overlay because it's the element that scrolls. Added 2026-08-26
+   after Ben reported the newer tabs (e.g. Competitions) looking "chopped
+   off" — the row was always scrollable, just with no visual cue. */
+.nav-wrap {
+  position: relative;
+}
+
+.nav-wrap::after {
+  content: "";
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  bottom: 6px;
+  width: 28px;
+  background: linear-gradient(to right, transparent, var(--card));
+  pointer-events: none;
+  border-radius: 0 calc(var(--radius-md) - 1px) calc(var(--radius-md) - 1px) 0;
+}
+
 .nav button {
   flex: 0 0 auto;
   width: auto;
@@ -180,6 +201,21 @@ body {
   background: var(--navy-900);
   color: #fff;
   cursor: default;
+}
+
+/* Marks a nav tab as a special/temporary addition (e.g. Competitions,
+   which only some clubs will have running at a given time) with a blue
+   stroke outline so it stands out from the regular tabs. Added 2026-08-26. */
+.nav button.nav-btn-special {
+  border: 2px solid var(--navy-500);
+  color: var(--navy-500);
+  padding: 7px 12px;
+}
+
+.nav button.nav-btn-special:disabled {
+  background: var(--navy-500);
+  border-color: var(--navy-500);
+  color: #fff;
 }
 
 /* ── Typography ─────────────────────────────────────────────────────── */

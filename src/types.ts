@@ -144,12 +144,20 @@ export interface NoticeRow {
 // win/loss/points-difference, football-table style.
 export type CompetitionStatus = "setup" | "groups" | "knockout" | "completed";
 
+// "standard" = 2 points for a win, 0 for a loss (as it's always worked).
+// "social" = 2 points for a win, plus the losing team still picks up 1
+// point if they scored more than 6 in the game — rewards a competitive
+// loss instead of a blowout. Chosen per-competition at creation. Added
+// 2026-08-26.
+export type ScoringSystem = "standard" | "social";
+
 export interface CompetitionRow {
   id: string;
   name: string;
   event_date: string | null;
   status: CompetitionStatus;
   advance_per_group: number;
+  scoring_system: ScoringSystem;
   created_by: string | null;
   created_at: string;
 }

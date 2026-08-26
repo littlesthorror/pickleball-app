@@ -10,6 +10,7 @@ import type {
   CompetitionMatchRow,
   KnockoutRound,
   PlayerStatus,
+  ScoringSystem,
 } from "../types";
 
 const KNOCKOUT_ROUNDS: { value: KnockoutRound; label: string }[] = [
@@ -38,6 +39,7 @@ export default function Competitions({ isAdmin, currentUserId }: { isAdmin: bool
   const [newName, setNewName] = useState("");
   const [newDate, setNewDate] = useState("");
   const [newAdvance, setNewAdvance] = useState("2");
+  const [newScoring, setNewScoring] = useState<ScoringSystem>("standard");
   const [creating, setCreating] = useState(false);
 
   function loadCompetitions() {
@@ -77,6 +79,7 @@ export default function Competitions({ isAdmin, currentUserId }: { isAdmin: bool
         name: newName.trim(),
         event_date: newDate || null,
         advance_per_group: Number(newAdvance) || 2,
+        scoring_system: newScoring,
         created_by: currentUserId,
       })
       .select("id")
@@ -89,8 +92,30 @@ export default function Competitions({ isAdmin, currentUserId }: { isAdmin: bool
     setNewName("");
     setNewDate("");
     setNewAdvance("2");
+    setNewScoring("standard");
     await loadCompetitions();
     setSelectedId(data.id);
+  }
+
+  // Deletes a competition outright. The competitions table's child tables
+  // (teams, groups, matches, results) all use `on delete cascade` FKs, so
+  // this single delete cleans up everything with no orphaned rows — it
+  // does NOT touch the underlying `matches` rows those competition_matches
+  // linked to, so games already played still count toward players' normal
+  // ratings/history even after the competition record itself is removed.
+  // Added 2026-08-26 after Ben couldn't find a way to remove a test
+  // competition.
+  async function handleDeleteCompetition(id: string) {
+    const target = competitions.find((c) => c.id === id);
+    if (!target) return;
+    if (!confirm(`Delete "${target.name}"? This removes its teams, groups, and bracket — permanently.`)) return;
+    const { error } = await supabase.from("competitions").delete().eq("id", id);
+    if (error) {
+      setError(error.message);
+      return;
+    }
+    setSelectedId((prev) => (prev === id ? null : prev));
+    await loadCompetitions();
   }
 
   const selected = competitions.find((c) => c.id === selectedId) ?? null;
@@ -139,6 +164,16 @@ export default function Competitions({ isAdmin, currentUserId }: { isAdmin: bool
             onChange={(e) => setNewAdvance(e.target.value)}
             style={{ maxWidth: 100 }}
           />
+          <label>Scoring system</label>
+          <select value={newScoring} onChange={(e) => setNewScoring(e.target.value as ScoringSystem)}>
+            <option value="standard">Standard — 2 points for a win</option>
+            <option value="social">Social — 2 for a win, +1 consolation point for a close loss (7+)</option>
+          </select>
+          <p className="stat-meta" style={{ marginTop: 4 }}>
+            {newScoring === "social"
+              ? "The losing team still picks up 1 point if they scored more than 6 in the game."
+              : "Only the winning team scores group-stage points."}
+          </p>
           <button disabled={creating || !newName.trim()} onClick={handleCreate} style={{ marginTop: 16 }}>
             {creating ? "Creating…" : "Create competition"}
           </button>
@@ -159,6 +194,7 @@ export default function Competitions({ isAdmin, currentUserId }: { isAdmin: bool
           isAdmin={isAdmin}
           currentUserId={currentUserId}
           onCompetitionChanged={loadCompetitions}
+          onDelete={handleDeleteCompetition}
         />
       )}
     </div>
@@ -171,12 +207,14 @@ function CompetitionDetail({
   isAdmin,
   currentUserId,
   onCompetitionChanged,
+  onDelete,
 }: {
   competition: CompetitionRow;
   players: PlayerStatus[];
   isAdmin: boolean;
   currentUserId: string;
   onCompetitionChanged: () => void;
+  onDelete: (id: string) => void;
 }) {
   const [teams, setTeams] = useState<CompetitionTeamRow[]>([]);
   const [groups, setGroups] = useState<CompetitionGroupRow[]>([]);
@@ -245,13 +283,25 @@ function CompetitionDetail({
   return (
     <div>
       {error && <p className="error">{error}</p>}
-      <h2 style={{ marginBottom: 4 }}>{competition.name}</h2>
-      <p className="stat-meta" style={{ marginTop: 0 }}>
-        {competition.event_date
-          ? new Date(competition.event_date).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" })
-          : "No date set"}{" "}
-        · Status: <strong>{competition.status}</strong>
-      </p>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+        <div>
+          <h2 style={{ marginBottom: 4 }}>{competition.name}</h2>
+          <p className="stat-meta" style={{ marginTop: 0 }}>
+            {competition.event_date
+              ? new Date(competition.event_date).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" })
+              : "No date set"}{" "}
+            · Status: <strong>{competition.status}</strong>
+          </p>
+        </div>
+        {isAdmin && (
+          <button
+            style={{ flexShrink: 0, background: "transparent", color: "var(--danger)", border: "1px solid var(--border)" }}
+            onClick={() => onDelete(competition.id)}
+          >
+            Delete competition
+          </button>
+        )}
+      </div>
 
       {competition.status === "setup" && (
         <SetupStage
@@ -272,6 +322,7 @@ function CompetitionDetail({
           matches={matches}
           teamLabel={teamLabel}
           advancePerGroup={competition.advance_per_group}
+          scoringSystem={competition.scoring_system}
         />
       )}
 
@@ -587,16 +638,23 @@ function GroupStandingsSection({
   matches,
   teamLabel,
   advancePerGroup,
+  scoringSystem,
 }: {
   groups: CompetitionGroupRow[];
   groupTeams: CompetitionGroupTeamRow[];
   matches: (CompetitionMatchRow & { matches: { team_a_score: number; team_b_score: number } | null })[];
   teamLabel: (id: string) => string;
   advancePerGroup: number;
+  scoringSystem: ScoringSystem;
 }) {
   return (
     <div className="card">
       <h3 style={{ marginTop: 0 }}>Group standings</h3>
+      {scoringSystem === "social" && (
+        <p className="stat-meta" style={{ marginTop: -4 }}>
+          Social scoring: 2 points for a win, plus 1 point for the losing team if they scored more than 6.
+        </p>
+      )}
       {groups.map((g) => {
         const teamIds = groupTeams.filter((gt) => gt.group_id === g.id).map((gt) => gt.team_id);
         const played = matches
@@ -607,7 +665,7 @@ function GroupStandingsSection({
             teamAScore: m.matches!.team_a_score,
             teamBScore: m.matches!.team_b_score,
           }));
-        const standings = computeGroupStandings(teamIds, played);
+        const standings = computeGroupStandings(teamIds, played, scoringSystem);
         return (
           <div key={g.id} style={{ marginBottom: 20 }}>
             <strong>{g.name}</strong>
@@ -704,7 +762,15 @@ function GroupFixturesSection({
           {matches
             .filter((m) => m.group_id === g.id)
             .map((m) => (
-              <FixtureRow key={m.id} match={m} teamLabel={teamLabel} isAdmin={isAdmin} currentUserId={currentUserId} onChanged={onChanged} />
+              <FixtureRow
+                key={m.id}
+                match={m}
+                teamLabel={teamLabel}
+                isAdmin={isAdmin}
+                currentUserId={currentUserId}
+                onChanged={onChanged}
+                locked={competition.status === "completed"}
+              />
             ))}
         </div>
       ))}
@@ -727,19 +793,100 @@ function FixtureRow({
   isAdmin,
   currentUserId,
   onChanged,
+  locked,
 }: {
   match: CompetitionMatchRow & { matches: { team_a_score: number; team_b_score: number } | null };
   teamLabel: (id: string) => string;
   isAdmin: boolean;
   currentUserId: string;
   onChanged: () => void;
+  locked: boolean;
 }) {
   const [scoreA, setScoreA] = useState("");
   const [scoreB, setScoreB] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
 
   const played = !!match.matches;
+
+  function startEdit() {
+    setScoreA(String(match.matches!.team_a_score));
+    setScoreB(String(match.matches!.team_b_score));
+    setError(null);
+    setEditing(true);
+  }
+
+  function cancelEdit() {
+    setEditing(false);
+    setError(null);
+  }
+
+  // Corrects an already-saved score before the competition wraps up. Reuses
+  // the same edit-match edge function as Game History's "Edit score" (see
+  // GameHistory.tsx) — it replays the whole confirmed match history from
+  // the corrected score onward, so ratings stay correct for everyone, not
+  // just these four players. Added 2026-08-26 after Ben mis-saved a score
+  // during testing and had no way to fix it.
+  async function saveEdit() {
+    const teamAScore = Number(scoreA);
+    const teamBScore = Number(scoreB);
+    if (scoreA === "" || scoreB === "" || teamAScore < 0 || teamBScore < 0 || teamAScore === teamBScore) {
+      setError("Enter both scores (they can't be equal).");
+      return;
+    }
+    if (!match.match_id) {
+      setError("Couldn't find the linked match to edit.");
+      return;
+    }
+    if (
+      !confirm(
+        `Change the score to ${teamAScore}–${teamBScore}? Ratings get recalculated from the corrected match history afterward.`
+      )
+    ) {
+      return;
+    }
+
+    setSubmitting(true);
+    setError(null);
+
+    const { error: editError } = await supabase.functions.invoke("edit-match", {
+      body: { match_id: match.match_id, team_a_score: teamAScore, team_b_score: teamBScore },
+    });
+
+    if (editError) {
+      // Same reasoning as GameHistory's saveEdit: a confirmed match's edit
+      // triggers a full recompute that can outlast the client's request
+      // timeout even though it finishes successfully — recheck the real
+      // saved score before treating this as a genuine failure.
+      const { data: recheck } = await supabase
+        .from("matches")
+        .select("team_a_score, team_b_score")
+        .eq("id", match.match_id)
+        .single();
+      if (!(recheck?.team_a_score === teamAScore && recheck?.team_b_score === teamBScore)) {
+        setSubmitting(false);
+        setError(editError.message);
+        return;
+      }
+    }
+
+    // The score change may have flipped the winner — keep the bracket/
+    // standings' winner_team_id in sync with the corrected score.
+    const winnerTeamId = teamAScore > teamBScore ? match.team_a_id : match.team_b_id;
+    const { error: linkError } = await supabase
+      .from("competition_matches")
+      .update({ winner_team_id: winnerTeamId })
+      .eq("id", match.id);
+
+    setSubmitting(false);
+    if (linkError) {
+      setError(linkError.message);
+      return;
+    }
+    setEditing(false);
+    onChanged();
+  }
 
   async function submit() {
     if (scoreA === "" || scoreB === "" || Number(scoreA) < 0 || Number(scoreB) < 0 || Number(scoreA) === Number(scoreB)) {
@@ -814,11 +961,18 @@ function FixtureRow({
       <div className="opponent">
         {teamLabel(match.team_a_id)} vs {teamLabel(match.team_b_id)}
       </div>
-      {played ? (
-        <div className="score">
-          {match.matches!.team_a_score}–{match.matches!.team_b_score}
+      {played && !editing ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div className="score">
+            {match.matches!.team_a_score}–{match.matches!.team_b_score}
+          </div>
+          {isAdmin && !locked && (
+            <span className="link-action" style={{ fontSize: "0.8rem" }} onClick={startEdit}>
+              Edit
+            </span>
+          )}
         </div>
-      ) : isAdmin ? (
+      ) : (played && editing) || (!played && isAdmin) ? (
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <input
             type="number"
@@ -835,9 +989,22 @@ function FixtureRow({
             onChange={(e) => setScoreB(e.target.value)}
             style={{ width: 56, padding: "6px 8px" }}
           />
-          <button disabled={submitting} onClick={submit} style={{ width: "auto", marginTop: 0, padding: "6px 12px", fontSize: "0.8rem" }}>
+          <button
+            disabled={submitting}
+            onClick={played ? saveEdit : submit}
+            style={{ width: "auto", marginTop: 0, padding: "6px 12px", fontSize: "0.8rem" }}
+          >
             {submitting ? "…" : "Save"}
           </button>
+          {played && (
+            <span
+              className="link-action"
+              style={{ fontSize: "0.8rem", opacity: submitting ? 0.5 : 1, pointerEvents: submitting ? "none" : "auto" }}
+              onClick={cancelEdit}
+            >
+              Cancel
+            </span>
+          )}
         </div>
       ) : (
         <div className="score">—</div>
@@ -965,7 +1132,15 @@ function KnockoutSection({
           <div key={value} style={{ marginBottom: 16 }}>
             <strong>{label}</strong>
             {roundMatches.map((m) => (
-              <FixtureRow key={m.id} match={m} teamLabel={teamLabel} isAdmin={isAdmin} currentUserId={currentUserId} onChanged={onChanged} />
+              <FixtureRow
+                key={m.id}
+                match={m}
+                teamLabel={teamLabel}
+                isAdmin={isAdmin}
+                currentUserId={currentUserId}
+                onChanged={onChanged}
+                locked={competition.status === "completed"}
+              />
             ))}
           </div>
         );

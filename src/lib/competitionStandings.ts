@@ -3,10 +3,18 @@
 // club's real rating engine underneath (see competition_matches.match_id),
 // this is purely "who tops the group" for the day.
 //
-// Points: 2 for a win, 0 for a loss — pickleball games always have a
-// winner, there's no draw case to handle. Ties broken by points
-// difference, then total points scored, same order most club/regional
-// group stages use.
+// Two scoring systems, chosen per-competition (see CompetitionRow.scoring_system):
+//   "standard" — 2 for a win, 0 for a loss. Pickleball games always have a
+//     winner, so there's no draw case to handle.
+//   "social" — 2 for a win, and the losing team still picks up 1 point if
+//     they scored more than 6 in the game (i.e. it was a competitive game,
+//     not a blowout). Added 2026-08-26 at Ben's request.
+// Ties broken by points difference, then total points scored, same order
+// most club/regional group stages use.
+
+import type { ScoringSystem } from "../types";
+
+const SOCIAL_CONSOLATION_THRESHOLD = 6;
 
 export interface GroupStandingRow {
   teamId: string;
@@ -26,7 +34,11 @@ export interface PlayedGroupMatch {
   teamBScore: number;
 }
 
-export function computeGroupStandings(teamIds: string[], playedMatches: PlayedGroupMatch[]): GroupStandingRow[] {
+export function computeGroupStandings(
+  teamIds: string[],
+  playedMatches: PlayedGroupMatch[],
+  scoringSystem: ScoringSystem = "standard"
+): GroupStandingRow[] {
   const rows = new Map<string, GroupStandingRow>();
   for (const id of teamIds) {
     rows.set(id, { teamId: id, played: 0, won: 0, lost: 0, pointsFor: 0, pointsAgainst: 0, diff: 0, pts: 0 });
@@ -48,10 +60,16 @@ export function computeGroupStandings(teamIds: string[], playedMatches: PlayedGr
       a.won++;
       a.pts += 2;
       b.lost++;
+      if (scoringSystem === "social" && m.teamBScore > SOCIAL_CONSOLATION_THRESHOLD) {
+        b.pts += 1;
+      }
     } else {
       b.won++;
       b.pts += 2;
       a.lost++;
+      if (scoringSystem === "social" && m.teamAScore > SOCIAL_CONSOLATION_THRESHOLD) {
+        a.pts += 1;
+      }
     }
   }
 
