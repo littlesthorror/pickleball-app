@@ -653,7 +653,7 @@ function QuickMatchEntry({
 
             <div className="score-row" style={{ marginTop: 16 }}>
               <div>
-                <label style={{ color: "var(--orange-500)" }}>Team A score</label>
+                <label style={{ color: "var(--navy-500)" }}>Team A score</label>
                 <input
                   type="number"
                   min={0}
@@ -662,7 +662,7 @@ function QuickMatchEntry({
                 />
               </div>
               <div>
-                <label style={{ color: "var(--orange-500)" }}>Team B score</label>
+                <label style={{ color: "var(--navy-500)" }}>Team B score</label>
                 <input
                   type="number"
                   min={0}
