@@ -18,6 +18,7 @@ import Notices from "./pages/Notices";
 import Competitions from "./pages/Competitions";
 import type { PlayerStatus } from "./types";
 import { getCurrentSeason, isWithinNewSeasonWindow } from "./lib/seasons";
+import { logError } from "./lib/errorLogging";
 
 // One-line "new season" banner, shown for the first few days of each
 // tracked season (see isWithinNewSeasonWindow) — purely time-window based,
@@ -162,21 +163,52 @@ export default function App() {
     if (!player || !hasNewNotice) return;
     const now = new Date().toISOString();
     setLastSeenNotices(now);
-    supabase.from("players").update({ last_seen_notices_at: now }).eq("id", player.id);
+    // Note: supabase-js resolves this with { error } on an API-level failure
+    // (RLS denial, bad request, etc.) rather than rejecting the promise — a
+    // bare fire-and-forget call here would silently swallow that forever,
+    // which is exactly what let the "always has a red dot" bug go
+    // undetected. Logging the error explicitly (2026-08-26) makes any real
+    // failure show up in the admin error log instead of vanishing.
+    supabase
+      .from("players")
+      .update({ last_seen_notices_at: now })
+      .eq("id", player.id)
+      .then(({ error }) => {
+        if (error) logError(`markNoticesSeen: ${error.message}`, undefined, "markNoticesSeen");
+      });
   }
 
   function markEventsSeen() {
     if (!player || !hasNewEvent) return;
     const now = new Date().toISOString();
     setLastSeenEvents(now);
-    supabase.from("players").update({ last_seen_events_at: now }).eq("id", player.id);
+    supabase
+      .from("players")
+      .update({ last_seen_events_at: now })
+      .eq("id", player.id)
+      .then(({ error }) => {
+        if (error) logError(`markEventsSeen: ${error.message}`, undefined, "markEventsSeen");
+      });
   }
+
+  // Marks Notices/Events "seen" whenever they're the active tab and there's
+  // something new — covers a normal nav-bar click, but also two gaps a plain
+  // changeTab()-only call missed: (1) landing directly on "notices"/"events"
+  // via a push-notification deep link, which sets `tab` straight from the
+  // URL hash and never goes through changeTab at all, and (2) the
+  // hasNewNotice/hasNewEvent fetch resolving *after* the user has already
+  // switched tabs, which used to leave the dot permanently stuck on with no
+  // way to re-trigger it (the nav button disables itself once its tab is
+  // active).
+  useEffect(() => {
+    if (tab === "notices") markNoticesSeen();
+    if (tab === "events") markEventsSeen();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, hasNewNotice, hasNewEvent, player?.id]);
 
   function changeTab(next: Tab) {
     setViewingPlayer(null);
     setTab(next);
-    if (next === "notices") markNoticesSeen();
-    if (next === "events") markEventsSeen();
   }
 
   function togglePreview() {

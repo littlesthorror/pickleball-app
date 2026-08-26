@@ -14,7 +14,7 @@ const seen = new Set<string>();
 const MAX_LOGS_PER_LOAD = 20;
 let loggedCount = 0;
 
-async function logError(message: string, stack: string | undefined, source: string) {
+export async function logError(message: string, stack: string | undefined, source: string) {
   if (loggedCount >= MAX_LOGS_PER_LOAD) return;
   const key = `${source}:${message}:${stack?.slice(0, 200) ?? ""}`;
   if (seen.has(key)) return;
