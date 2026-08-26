@@ -13,7 +13,7 @@ import { supabase } from "../supabaseClient";
 import Avatar from "../components/Avatar";
 import ShareCard from "../components/ShareCard";
 import { computeBadges } from "../lib/badges";
-import type { MonthlyFinish } from "../lib/badges";
+import type { MonthlyFinish, CompetitionPlacement } from "../lib/badges";
 import { isBirthdayToday } from "../lib/birthday";
 import { getTier, getNextTier } from "../lib/tiers";
 import { getCurrentSeason, getTrackedSeasons } from "../lib/seasons";
@@ -78,6 +78,9 @@ export default function Dashboard({
   const [player, setPlayer] = useState<PlayerStatus | null>(null);
   const [history, setHistory] = useState<PlayerMatchHistoryRow[]>([]);
   const [monthlyFinishes, setMonthlyFinishes] = useState<MonthlyFinish[]>([]);
+  // Competition placements (1st/2nd) this player's team earned — feeds the
+  // Competition winner/runner-up badges. Added 2026-08-27.
+  const [competitionPlacements, setCompetitionPlacements] = useState<CompetitionPlacement[]>([]);
   const [nextEvent, setNextEvent] = useState<EventRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -152,6 +155,38 @@ export default function Dashboard({
           (data ?? []).map((r) => ({ yearMonth: r.year_month as string, rank: r.rank as number }))
         );
       });
+
+    // Competition winner/runner-up badges — find every team this player
+    // was on, then any 1st/2nd place result for those teams. Two steps
+    // (rather than one join) since competition_teams doesn't have a
+    // single "player_id" column to filter on directly — a player could be
+    // either player1 or player2 on a team.
+    supabase
+      .from("competition_teams")
+      .select("id")
+      .or(`player1_id.eq.${playerId},player2_id.eq.${playerId}`)
+      .then(({ data: teamRows, error: teamsError }) => {
+        if (cancelled || teamsError || !teamRows || teamRows.length === 0) return;
+        const teamIds = teamRows.map((t) => t.id as string);
+        supabase
+          .from("competition_results")
+          .select("placement, created_at, competitions(name)")
+          .in("team_id", teamIds)
+          .in("placement", [1, 2])
+          .then(({ data: resultRows, error: resultsError }) => {
+            if (cancelled || resultsError || !resultRows) return;
+            setCompetitionPlacements(
+              resultRows
+                .filter((r) => r.competitions)
+                .map((r) => ({
+                  placement: r.placement as 1 | 2,
+                  competitionName: (r.competitions as unknown as { name: string }).name,
+                  achievedAt: r.created_at as string,
+                }))
+            );
+          });
+      });
+
     return () => {
       cancelled = true;
     };
@@ -294,7 +329,13 @@ export default function Dashboard({
   }, [player, history, xAxis]);
 
   const badges = useMemo(() => {
-    const computed = computeBadges(history, player?.games_played ?? 0, player?.date_joined ?? "", monthlyFinishes);
+    const computed = computeBadges(
+      history,
+      player?.games_played ?? 0,
+      player?.date_joined ?? "",
+      monthlyFinishes,
+      competitionPlacements
+    );
     // Most recently earned first — badges with no known date (shouldn't
     // happen in practice) sort to the end rather than the top.
     return [...computed].sort((a, b) => {
@@ -303,7 +344,7 @@ export default function Dashboard({
       if (!b.achievedAt) return -1;
       return new Date(b.achievedAt).getTime() - new Date(a.achievedAt).getTime();
     });
-  }, [history, player, monthlyFinishes]);
+  }, [history, player, monthlyFinishes, competitionPlacements]);
 
   // 30-day change and personal best — both derived from the same history
   // array already loaded for the chart, so no extra query needed. Mirrors

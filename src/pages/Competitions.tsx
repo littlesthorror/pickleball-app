@@ -295,15 +295,48 @@ function CompetitionDetail({
   return (
     <div>
       {error && <p className="error">{error}</p>}
-      <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+      {/* Title banner — made bold/gradient 2026-08-27 at Ben's request
+          ("50s v 18 just doesn't really pop"). Reuses the same navy
+          gradient as the app header / Share card so it reads as a
+          consistent "special moment" treatment rather than a one-off
+          style, with the status as a small pill instead of plain text. */}
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          gap: 12,
+          background: "linear-gradient(135deg, var(--navy-900), var(--navy-700))",
+          borderRadius: "var(--radius-md)",
+          padding: "18px 20px",
+        }}
+      >
         <div style={{ minWidth: 0 }}>
-          <h2 style={{ marginBottom: 4 }}>{competition.name}</h2>
-          <p className="stat-meta" style={{ marginTop: 0 }}>
+          <h2 style={{ margin: 0, color: "#fff", fontSize: "1.5rem", lineHeight: 1.2 }}>
+            🏆 {competition.name}
+          </h2>
+          <p style={{ margin: "8px 0 0", color: "rgba(255,255,255,0.75)", fontSize: "0.85rem" }}>
             {competition.event_date
               ? new Date(competition.event_date).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" })
-              : "No date set"}{" "}
-            · Status: <strong>{competition.status}</strong>
+              : "No date set"}
           </p>
+          <span
+            style={{
+              display: "inline-block",
+              marginTop: 8,
+              padding: "3px 10px",
+              borderRadius: 999,
+              background: "var(--orange-500)",
+              color: "#fff",
+              fontWeight: 700,
+              fontSize: "0.72rem",
+              textTransform: "uppercase",
+              letterSpacing: "0.04em",
+            }}
+          >
+            {competition.status}
+          </span>
         </div>
         {isAdmin && (
           <button
@@ -313,9 +346,9 @@ function CompetitionDetail({
               marginTop: 0,
               padding: "8px 14px",
               fontSize: "0.85rem",
-              background: "transparent",
-              color: "var(--danger)",
-              border: "1px solid var(--border)",
+              background: "rgba(255,255,255,0.1)",
+              color: "#fff",
+              border: "1px solid rgba(255,255,255,0.3)",
             }}
             onClick={() => onDelete(competition.id)}
           >

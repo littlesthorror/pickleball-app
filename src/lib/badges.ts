@@ -9,6 +9,16 @@ export interface MonthlyFinish {
   rank: number;
 }
 
+// One row per Competitions placement (1st or 2nd) this player's team
+// earned — fetched from competition_results, joined through
+// competition_teams to find teams this player was on. Added 2026-08-27 at
+// Ben's request for "Competition Winner"/"Competition Runner Up" badges.
+export interface CompetitionPlacement {
+  placement: 1 | 2;
+  competitionName: string;
+  achievedAt: string;
+}
+
 export interface Badge {
   id: string;
   emoji: string;
@@ -31,7 +41,8 @@ export function computeBadges(
   history: PlayerMatchHistoryRow[],
   gamesPlayed: number,
   dateJoined: string,
-  monthlyFinishes: MonthlyFinish[] = []
+  monthlyFinishes: MonthlyFinish[] = [],
+  competitionPlacements: CompetitionPlacement[] = []
 ): Badge[] {
   const badges: Badge[] = [];
 
@@ -405,6 +416,39 @@ export function computeBadges(
         top3Finishes.length === 1 ? "" : "s"
       }, most recently ${monthLabel(latest.yearMonth)}.`,
       achievedAt: new Date(Number(latest.yearMonth.slice(0, 4)), Number(latest.yearMonth.slice(5, 7)), 0).toISOString(),
+    });
+  }
+
+  // "Competition winner" / "Competition runner-up" — added 2026-08-27 at
+  // Ben's request, alongside the redesigned competition title banner.
+  // Fires from competition_results (placement 1 or 2) for any team this
+  // player was part of. Aggregate + most-recent, same pattern as the Top
+  // 10/Top 3 finish badges above — shows the count if it's happened more
+  // than once, but always names the latest one.
+  const wins = competitionPlacements
+    .filter((p) => p.placement === 1)
+    .sort((a, b) => (a.achievedAt < b.achievedAt ? 1 : -1));
+  const runnerUps = competitionPlacements
+    .filter((p) => p.placement === 2)
+    .sort((a, b) => (a.achievedAt < b.achievedAt ? 1 : -1));
+  if (wins.length > 0) {
+    const latest = wins[0];
+    badges.push({
+      id: "competition-winner",
+      emoji: "🏆",
+      label: "Competition winner",
+      description: `Won ${latest.competitionName}${wins.length > 1 ? ` — ${wins.length} times so far` : ""}.`,
+      achievedAt: latest.achievedAt,
+    });
+  }
+  if (runnerUps.length > 0) {
+    const latest = runnerUps[0];
+    badges.push({
+      id: "competition-runner-up",
+      emoji: "🥈",
+      label: "Competition runner-up",
+      description: `Runner-up in ${latest.competitionName}${runnerUps.length > 1 ? ` — ${runnerUps.length} times so far` : ""}.`,
+      achievedAt: latest.achievedAt,
     });
   }
 
