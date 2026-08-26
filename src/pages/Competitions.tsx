@@ -40,6 +40,7 @@ export default function Competitions({ isAdmin, currentUserId }: { isAdmin: bool
   const [newDate, setNewDate] = useState("");
   const [newAdvance, setNewAdvance] = useState("2");
   const [newScoring, setNewScoring] = useState<ScoringSystem>("standard");
+  const [newDoubleRoundRobin, setNewDoubleRoundRobin] = useState(false);
   const [creating, setCreating] = useState(false);
 
   function loadCompetitions() {
@@ -80,6 +81,7 @@ export default function Competitions({ isAdmin, currentUserId }: { isAdmin: bool
         event_date: newDate || null,
         advance_per_group: Number(newAdvance) || 2,
         scoring_system: newScoring,
+        double_round_robin: newDoubleRoundRobin,
         created_by: currentUserId,
       })
       .select("id")
@@ -93,6 +95,7 @@ export default function Competitions({ isAdmin, currentUserId }: { isAdmin: bool
     setNewDate("");
     setNewAdvance("2");
     setNewScoring("standard");
+    setNewDoubleRoundRobin(false);
     await loadCompetitions();
     setSelectedId(data.id);
   }
@@ -174,6 +177,15 @@ export default function Competitions({ isAdmin, currentUserId }: { isAdmin: bool
               ? "The losing team still picks up 1 point if they scored more than 6 in the game."
               : "Only the winning team scores group-stage points."}
           </p>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 16, cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={newDoubleRoundRobin}
+              onChange={(e) => setNewDoubleRoundRobin(e.target.checked)}
+              style={{ width: "auto" }}
+            />
+            Teams play each other twice (double round robin)
+          </label>
           <button disabled={creating || !newName.trim()} onClick={handleCreate} style={{ marginTop: 16 }}>
             {creating ? "Creating…" : "Create competition"}
           </button>
@@ -489,11 +501,12 @@ function SetupStage({
 
     const fixtureRows = groups.flatMap((g) => {
       const teamIds = groupTeams.filter((gt) => gt.group_id === g.id).map((gt) => gt.team_id);
-      return generateGroupFixtures(teamIds).map((f) => ({
+      return generateGroupFixtures(teamIds, competition.double_round_robin).map((f) => ({
         competition_id: competition.id,
         group_id: g.id,
         team_a_id: f.teamAId,
         team_b_id: f.teamBId,
+        leg: f.leg,
       }));
     });
 
@@ -969,6 +982,11 @@ function FixtureRow({
     <div className="match-row" style={{ flexWrap: "wrap" }}>
       <div className="opponent">
         {teamLabel(match.team_a_id)} vs {teamLabel(match.team_b_id)}
+        {match.group_id && match.leg === 2 && (
+          <span className="stat-meta" style={{ marginLeft: 6 }}>
+            (2nd meeting)
+          </span>
+        )}
       </div>
       {played && !editing ? (
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>

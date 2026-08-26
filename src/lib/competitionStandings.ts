@@ -85,12 +85,23 @@ export function computeGroupStandings(
 }
 
 // Every unique pairing within a group — a full round robin, each team
-// plays every other team in its group exactly once.
-export function generateGroupFixtures(teamIds: string[]): { teamAId: string; teamBId: string }[] {
-  const fixtures: { teamAId: string; teamBId: string }[] = [];
+// plays every other team in its group once (or twice, for a double round
+// robin — see CompetitionRow.double_round_robin). The second leg swaps
+// which team is listed first, purely so the two fixtures don't render as
+// identical-looking duplicates; it has no effect on scoring. Added
+// 2026-08-27 at Ben's request ("we normally have teams play each other
+// twice").
+export function generateGroupFixtures(
+  teamIds: string[],
+  doubleRoundRobin = false
+): { teamAId: string; teamBId: string; leg: number }[] {
+  const fixtures: { teamAId: string; teamBId: string; leg: number }[] = [];
   for (let i = 0; i < teamIds.length; i++) {
     for (let j = i + 1; j < teamIds.length; j++) {
-      fixtures.push({ teamAId: teamIds[i], teamBId: teamIds[j] });
+      fixtures.push({ teamAId: teamIds[i], teamBId: teamIds[j], leg: 1 });
+      if (doubleRoundRobin) {
+        fixtures.push({ teamAId: teamIds[j], teamBId: teamIds[i], leg: 2 });
+      }
     }
   }
   return fixtures;

@@ -168,9 +168,15 @@ body {
 .nav-wrap::after {
   content: "";
   position: absolute;
-  top: 6px;
-  right: 6px;
-  bottom: 6px;
+  /* Inset by 1px, not the row's 6px inner padding — .nav-wrap's box is
+     identical to .nav's own outer (border) box, so a 1px inset (matching
+     .nav's border-width) sits the fade flush against that border instead
+     of floating 5px inboard of it, which was throwing off both its
+     position and its corner curve relative to the bar's real edge. Fixed
+     2026-08-27. */
+  top: 1px;
+  right: 1px;
+  bottom: 1px;
   width: 28px;
   background: linear-gradient(to right, transparent, var(--card));
   pointer-events: none;

@@ -158,6 +158,11 @@ export interface CompetitionRow {
   status: CompetitionStatus;
   advance_per_group: number;
   scoring_system: ScoringSystem;
+  // When true, group-stage fixtures are generated as a double round robin
+  // — every team plays every other team in its group twice instead of
+  // once. Chosen at creation, alongside scoring_system. Added 2026-08-27
+  // at Ben's request ("we normally have teams play each other twice").
+  double_round_robin: boolean;
   created_by: string | null;
   created_at: string;
 }
@@ -198,6 +203,11 @@ export interface CompetitionMatchRow {
   team_b_id: string;
   match_id: string | null;
   winner_team_id: string | null;
+  // Which meeting between this pair this is within the group stage (1 or
+  // 2) — only meaningful when the competition is a double round robin;
+  // always 1 for a single round robin or a knockout match. Added
+  // 2026-08-27.
+  leg: number;
   created_at: string;
 }
 
