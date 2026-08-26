@@ -1049,11 +1049,11 @@ function FixtureRow({
 
   return (
     <div className="match-row" style={{ flexWrap: "wrap" }}>
-      <div className="opponent">
+      <div className="opponent" style={{ flex: "1 1 100%" }}>
         {teamLabel(match.team_a_id)} vs {teamLabel(match.team_b_id)}
         {match.group_id && match.leg === 2 && (
-          <span className="stat-meta" style={{ marginLeft: 6 }}>
-            (2nd meeting)
+          <span className="stat-meta" style={{ display: "block", marginTop: 2, fontWeight: 400 }}>
+            2nd meeting
           </span>
         )}
       </div>
