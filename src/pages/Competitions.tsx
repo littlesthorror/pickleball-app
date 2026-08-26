@@ -283,8 +283,8 @@ function CompetitionDetail({
   return (
     <div>
       {error && <p className="error">{error}</p>}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
-        <div>
+      <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+        <div style={{ minWidth: 0 }}>
           <h2 style={{ marginBottom: 4 }}>{competition.name}</h2>
           <p className="stat-meta" style={{ marginTop: 0 }}>
             {competition.event_date
@@ -295,7 +295,16 @@ function CompetitionDetail({
         </div>
         {isAdmin && (
           <button
-            style={{ flexShrink: 0, background: "transparent", color: "var(--danger)", border: "1px solid var(--border)" }}
+            style={{
+              width: "auto",
+              flexShrink: 0,
+              marginTop: 0,
+              padding: "8px 14px",
+              fontSize: "0.85rem",
+              background: "transparent",
+              color: "var(--danger)",
+              border: "1px solid var(--border)",
+            }}
             onClick={() => onDelete(competition.id)}
           >
             Delete competition
