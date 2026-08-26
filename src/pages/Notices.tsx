@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import { supabase } from "../supabaseClient";
 import { linkify } from "../lib/linkify";
@@ -145,6 +145,31 @@ export default function Notices({ isAdmin }: { isAdmin: boolean }) {
     setNewFiles((prev) => prev.filter((_, i) => i !== index));
   }
 
+  // Wraps the current text selection in the body textarea with the given
+  // markers (e.g. "**" for bold, "*" for italic) — a lightweight
+  // formatting toolbar so admins don't need to know the markdown-style
+  // syntax linkify() renders (see lib/linkify.tsx). Added 2026-08-27 at
+  // Ben's request for bold/italic in Notices. Falls back to wrapping an
+  // empty pair of markers with the cursor left in between if nothing is
+  // selected, same as most simple markdown editors.
+  const bodyRef = useRef<HTMLTextAreaElement>(null);
+  function wrapSelection(marker: string) {
+    const el = bodyRef.current;
+    if (!el) return;
+    const start = el.selectionStart ?? draft.body.length;
+    const end = el.selectionEnd ?? draft.body.length;
+    const value = draft.body;
+    const selected = value.slice(start, end);
+    const newValue = value.slice(0, start) + marker + selected + marker + value.slice(end);
+    setDraft((d) => ({ ...d, body: newValue }));
+    requestAnimationFrame(() => {
+      el.focus();
+      const newStart = start + marker.length;
+      const newEnd = newStart + selected.length;
+      el.setSelectionRange(newStart, newEnd);
+    });
+  }
+
   async function handleSave() {
     if (!draft.title.trim()) return;
     setSaving(true);
@@ -254,12 +279,34 @@ export default function Notices({ isAdmin }: { isAdmin: boolean }) {
           />
 
           <label>Note (optional)</label>
+          <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+            <button
+              type="button"
+              onClick={() => wrapSelection("**")}
+              title="Bold"
+              style={{ width: "auto", marginTop: 0, padding: "4px 12px", fontWeight: 700 }}
+            >
+              B
+            </button>
+            <button
+              type="button"
+              onClick={() => wrapSelection("*")}
+              title="Italic"
+              style={{ width: "auto", marginTop: 0, padding: "4px 12px", fontStyle: "italic" }}
+            >
+              i
+            </button>
+          </div>
           <textarea
+            ref={bodyRef}
             value={draft.body}
             onChange={(e) => setDraft((d) => ({ ...d, body: e.target.value }))}
             rows={3}
             style={{ fontFamily: "inherit", fontSize: "1rem", resize: "vertical" }}
           />
+          <p className="stat-meta" style={{ marginTop: 4 }}>
+            Select some text and tap B or i to format it, or type **bold** / *italic* yourself.
+          </p>
 
           <label>Attachments (optional)</label>
           <input type="file" multiple onChange={handleFilesChosen} />
