@@ -306,7 +306,7 @@ export default function App() {
                       disabled={tab === "competitions"}
                       onClick={() => changeTab("competitions")}
                     >
-                      🏆 Comps
+                      🏆 Comp
                     </button>
                   )}
                 </div>

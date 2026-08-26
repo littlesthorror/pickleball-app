@@ -177,27 +177,6 @@ body {
   border-radius: 0 calc(var(--radius-md) - 1px) calc(var(--radius-md) - 1px) 0;
 }
 
-/* On mouse/trackpad devices (desktop), the horizontal-scroll approach
-   above breaks down: Safari (and most browsers) don't auto-convert a
-   plain vertical mouse-wheel scroll into horizontal movement, and there's
-   no touch-swipe gesture to fall back on — so a tab that doesn't fit can
-   become genuinely unreachable, not just hidden behind a scroll (reported
-   2026-08-27: Competitions unreachable in desktop Safari). Wrapping onto a
-   second line instead sidesteps the whole problem for these devices, since
-   every tab is always visible with nothing to scroll to. Touch devices
-   (phones/tablets) keep the single-row scrolling behavior, which already
-   works well there. */
-@media (hover: hover) and (pointer: fine) {
-  .nav {
-    flex-wrap: wrap;
-    overflow-x: visible;
-  }
-
-  .nav-wrap::after {
-    display: none;
-  }
-}
-
 .nav button {
   flex: 0 0 auto;
   width: auto;
@@ -231,6 +210,39 @@ body {
   border: 2px solid var(--navy-500);
   color: var(--navy-500);
   padding: 7px 12px;
+}
+
+/* On mouse/trackpad devices (desktop), the horizontal-scroll approach
+   used elsewhere breaks down: Safari (and most browsers) don't
+   auto-convert a plain vertical mouse-wheel scroll into horizontal
+   movement, and there's no touch-swipe gesture to fall back on — so a tab
+   that doesn't fit can become genuinely unreachable, not just hidden
+   behind a scroll (reported 2026-08-27: Competitions unreachable in
+   desktop Safari). Wrapping onto a second line sidesteps that, but
+   tightening the spacing here first means it rarely needs to — a full set
+   of tabs fits on one line at typical desktop widths. Touch devices
+   (phones/tablets) keep the single-row scrolling + full-size spacing from
+   above, which already works well there. This block must come after the
+   base .nav / .nav button rules above so the tighter values win. */
+@media (hover: hover) and (pointer: fine) {
+  .nav {
+    flex-wrap: wrap;
+    overflow-x: visible;
+    gap: 4px;
+  }
+
+  .nav-wrap::after {
+    display: none;
+  }
+
+  .nav button {
+    padding: 8px 10px;
+    font-size: 0.8rem;
+  }
+
+  .nav button.nav-btn-special {
+    padding: 6px 8px;
+  }
 }
 
 .nav button.nav-btn-special:disabled {
