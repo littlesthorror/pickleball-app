@@ -21,7 +21,7 @@ export default defineConfig({
         globPatterns: ["**/*.{js,css,html,ico,png,svg,jpg,jpeg,webp}"],
       },
       registerType: "autoUpdate",
-      includeAssets: ["logo.png"],
+      includeAssets: ["logo.png", "logo-192.png"],
       manifest: {
         name: "Sideline — Huntingdon Pickleball",
         short_name: "Sideline",
@@ -30,9 +30,16 @@ export default defineConfig({
         background_color: "#f6f7fb",
         display: "standalone",
         start_url: "/",
+        // The 192x192 entry used to point at logo.png (which is actually
+        // 512x512) — Chrome's installability check decodes each icon and
+        // can silently reject an entry whose real pixel size doesn't match
+        // its declared "sizes", so a mismatched icon is a real (if
+        // inconsistent-across-browsers/versions) reason the install prompt
+        // can fail to appear for some users. logo-192.png (2026-08-27) is a
+        // genuine 192x192 resize, so both entries now match their file.
         icons: [
           {
-            src: "/logo.png",
+            src: "/logo-192.png",
             sizes: "192x192",
             type: "image/png",
           },
