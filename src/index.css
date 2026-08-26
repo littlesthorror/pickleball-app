@@ -177,6 +177,27 @@ body {
   border-radius: 0 calc(var(--radius-md) - 1px) calc(var(--radius-md) - 1px) 0;
 }
 
+/* On mouse/trackpad devices (desktop), the horizontal-scroll approach
+   above breaks down: Safari (and most browsers) don't auto-convert a
+   plain vertical mouse-wheel scroll into horizontal movement, and there's
+   no touch-swipe gesture to fall back on — so a tab that doesn't fit can
+   become genuinely unreachable, not just hidden behind a scroll (reported
+   2026-08-27: Competitions unreachable in desktop Safari). Wrapping onto a
+   second line instead sidesteps the whole problem for these devices, since
+   every tab is always visible with nothing to scroll to. Touch devices
+   (phones/tablets) keep the single-row scrolling behavior, which already
+   works well there. */
+@media (hover: hover) and (pointer: fine) {
+  .nav {
+    flex-wrap: wrap;
+    overflow-x: visible;
+  }
+
+  .nav-wrap::after {
+    display: none;
+  }
+}
+
 .nav button {
   flex: 0 0 auto;
   width: auto;
