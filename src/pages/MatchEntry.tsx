@@ -595,7 +595,16 @@ function QuickMatchEntry({
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <h2 style={{ marginTop: 0, marginBottom: 0, fontSize: "1rem" }}>
-                Game {index + 1}
+                <span
+                  style={{
+                    display: "inline-block",
+                    border: "1.5px solid var(--navy-500)",
+                    borderRadius: 6,
+                    padding: "3px 10px",
+                  }}
+                >
+                  Game {index + 1}
+                </span>
                 {slot.status === "success" && <span style={{ color: "var(--success)" }}> ✓ confirmed</span>}
               </h2>
               <div style={{ display: "flex", gap: 12 }}>
@@ -610,7 +619,7 @@ function QuickMatchEntry({
               </div>
             </div>
 
-            <label style={{ marginTop: 16 }}>Team A</label>
+            <label style={{ marginTop: 16, color: "var(--orange-500)" }}>Team A</label>
             <PlayerSelect
               label="Player 1"
               players={players}
@@ -626,7 +635,7 @@ function QuickMatchEntry({
               disabledIds={selectedIds.filter((id) => id !== slot.teamAP2)}
             />
 
-            <label style={{ marginTop: 16 }}>Team B</label>
+            <label style={{ marginTop: 16, color: "var(--orange-500)" }}>Team B</label>
             <PlayerSelect
               label="Player 1"
               players={players}
@@ -644,7 +653,7 @@ function QuickMatchEntry({
 
             <div className="score-row" style={{ marginTop: 16 }}>
               <div>
-                <label>Team A score</label>
+                <label style={{ color: "var(--orange-500)" }}>Team A score</label>
                 <input
                   type="number"
                   min={0}
@@ -653,7 +662,7 @@ function QuickMatchEntry({
                 />
               </div>
               <div>
-                <label>Team B score</label>
+                <label style={{ color: "var(--orange-500)" }}>Team B score</label>
                 <input
                   type="number"
                   min={0}
