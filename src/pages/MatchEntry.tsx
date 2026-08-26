@@ -3,7 +3,7 @@ import { supabase } from "../supabaseClient";
 import { averageTeam, predictedWinProbability } from "../lib/predict";
 import type { PlayerStatus } from "../types";
 
-function PlayerSelect({
+export function PlayerSelect({
   label,
   players,
   value,
@@ -32,11 +32,12 @@ function PlayerSelect({
   );
 }
 
-// Shared by both entry modes — inserts one match row and confirms it via
-// the confirm-match edge function, with the same "recheck the actual
-// status before showing a scary error" false-failure handling used
-// throughout the app for edge function calls.
-async function submitOneMatch(match: {
+// Shared by both entry modes (and by Competitions.tsx, for group-stage /
+// knockout results) — inserts one match row and confirms it via the
+// confirm-match edge function, with the same "recheck the actual status
+// before showing a scary error" false-failure handling used throughout the
+// app for edge function calls.
+export async function submitOneMatch(match: {
   teamAP1: string;
   teamAP2: string;
   teamBP1: string;

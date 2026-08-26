@@ -15,6 +15,7 @@ import ClubStats from "./pages/ClubStats";
 import Events from "./pages/Events";
 import FAQ from "./pages/FAQ";
 import Notices from "./pages/Notices";
+import Competitions from "./pages/Competitions";
 import type { PlayerStatus } from "./types";
 import { getCurrentSeason, isWithinNewSeasonWindow } from "./lib/seasons";
 
@@ -31,6 +32,7 @@ type Tab =
   | "events"
   | "notices"
   | "faq"
+  | "competitions"
   | "match-entry"
   | "manage-admins"
   | "game-history"
@@ -55,6 +57,20 @@ export default function App() {
   // permissions (RLS, edge functions) are completely unaffected; this is a
   // look-but-don't-touch preview, not an actual demotion.
   const [previewAsPlayer, setPreviewAsPlayer] = useState(false);
+  // Global on/off switch for the Competitions tab (2026-08-26) — regular
+  // members only see it while a competition is actually being run; admins
+  // always see it so they can set the next one up ahead of time without
+  // needing to flip the switch on first. See AdminManagement.tsx for the
+  // toggle itself.
+  const [showCompetitionsTab, setShowCompetitionsTab] = useState(false);
+
+  useEffect(() => {
+    supabase
+      .from("club_settings")
+      .select("show_competitions_tab")
+      .maybeSingle()
+      .then(({ data }) => setShowCompetitionsTab(!!data?.show_competitions_tab));
+  }, []);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -283,6 +299,11 @@ export default function App() {
                 <button disabled={tab === "faq"} onClick={() => changeTab("faq")}>
                   FAQ
                 </button>
+                {(showCompetitionsTab || effectiveIsAdmin) && (
+                  <button disabled={tab === "competitions"} onClick={() => changeTab("competitions")}>
+                    Competitions
+                  </button>
+                )}
               </div>
 
               {effectiveIsAdmin && (
@@ -318,6 +339,9 @@ export default function App() {
                   {tab === "events" && <Events isAdmin={effectiveIsAdmin} playerId={player.id} />}
                   {tab === "notices" && <Notices isAdmin={effectiveIsAdmin} />}
                   {tab === "faq" && <FAQ isAdmin={effectiveIsAdmin} />}
+                  {tab === "competitions" && (showCompetitionsTab || effectiveIsAdmin) && (
+                    <Competitions isAdmin={effectiveIsAdmin} currentUserId={player.id} />
+                  )}
                   {tab === "match-entry" && effectiveIsAdmin && <MatchEntry />}
                   {tab === "manage-admins" && effectiveIsAdmin && (
                     <AdminManagement currentUserId={session.user.id} />

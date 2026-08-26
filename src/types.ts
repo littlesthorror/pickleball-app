@@ -136,3 +136,67 @@ export interface NoticeRow {
   created_by: string | null;
   created_at: string;
 }
+
+// Competitions (2026-08-26) — fixed-team doubles, group stage followed by
+// a knockout bracket. Every competition_matches row also has a real row in
+// `matches` once played (via match_id), so ratings flow through the same
+// Glicko-2 pipeline as any normal game; standings here are plain
+// win/loss/points-difference, football-table style.
+export type CompetitionStatus = "setup" | "groups" | "knockout" | "completed";
+
+export interface CompetitionRow {
+  id: string;
+  name: string;
+  event_date: string | null;
+  status: CompetitionStatus;
+  advance_per_group: number;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface CompetitionTeamRow {
+  id: string;
+  competition_id: string;
+  team_name: string | null;
+  player1_id: string;
+  player2_id: string;
+  created_at: string;
+}
+
+export interface CompetitionGroupRow {
+  id: string;
+  competition_id: string;
+  name: string;
+  sort_order: number;
+  created_at: string;
+}
+
+export interface CompetitionGroupTeamRow {
+  id: string;
+  group_id: string;
+  team_id: string;
+  created_at: string;
+}
+
+export type KnockoutRound = "quarterfinal" | "semifinal" | "third_place" | "final";
+
+export interface CompetitionMatchRow {
+  id: string;
+  competition_id: string;
+  group_id: string | null;
+  knockout_round: KnockoutRound | null;
+  knockout_slot: number | null;
+  team_a_id: string;
+  team_b_id: string;
+  match_id: string | null;
+  winner_team_id: string | null;
+  created_at: string;
+}
+
+export interface CompetitionResultRow {
+  id: string;
+  competition_id: string;
+  team_id: string;
+  placement: number;
+  created_at: string;
+}

@@ -53,6 +53,13 @@ export default function AdminManagement({ currentUserId }: { currentUserId: stri
   const [savingCode, setSavingCode] = useState(false);
   const [codeSaved, setCodeSaved] = useState(false);
 
+  // Competitions tab visibility (2026-08-26) — off by default so it
+  // doesn't clutter navigation between events; admins always see the tab
+  // regardless of this setting, so they can set the next one up ahead of
+  // time.
+  const [showCompetitionsTab, setShowCompetitionsTab] = useState(false);
+  const [savingCompetitionsTab, setSavingCompetitionsTab] = useState(false);
+
   // Draft text for each player's role title, keyed by player id — lets
   // each card have its own editable field without a form per player.
   const [roleDrafts, setRoleDrafts] = useState<Record<string, string>>({});
@@ -84,12 +91,28 @@ export default function AdminManagement({ currentUserId }: { currentUserId: stri
   function loadInviteCode() {
     supabase
       .from("club_settings")
-      .select("invite_code")
+      .select("invite_code, show_competitions_tab")
       .single()
       .then(({ data }) => {
         setInviteCode(data?.invite_code ?? null);
         setInviteCodeInput(data?.invite_code ?? "");
+        setShowCompetitionsTab(!!data?.show_competitions_tab);
       });
+  }
+
+  async function toggleCompetitionsTab() {
+    const next = !showCompetitionsTab;
+    setSavingCompetitionsTab(true);
+    const { error } = await supabase
+      .from("club_settings")
+      .update({ show_competitions_tab: next, updated_at: new Date().toISOString() })
+      .eq("id", true);
+    setSavingCompetitionsTab(false);
+    if (error) {
+      alert(`Couldn't update: ${error.message}`);
+      return;
+    }
+    setShowCompetitionsTab(next);
   }
 
   function loadErrorLogs() {
@@ -370,6 +393,25 @@ export default function AdminManagement({ currentUserId }: { currentUserId: stri
             Saved — the previous code no longer works.
           </p>
         )}
+      </div>
+
+      <div className="card">
+        <h2 style={{ marginTop: 0 }}>Competitions tab</h2>
+        <p className="stat-meta" style={{ marginTop: 0 }}>
+          Off by default so it doesn't clutter navigation between events. Turn it on for regular members while a
+          competition is being run — admins can always see and set up competitions either way.
+        </p>
+        <button
+          disabled={savingCompetitionsTab}
+          onClick={toggleCompetitionsTab}
+          style={
+            showCompetitionsTab
+              ? {}
+              : { background: "transparent", color: "var(--navy-500)", border: "1px solid var(--border)" }
+          }
+        >
+          {savingCompetitionsTab ? "…" : showCompetitionsTab ? "Visible to everyone — turn off" : "Hidden from members — turn on"}
+        </button>
       </div>
 
       <div className="card">

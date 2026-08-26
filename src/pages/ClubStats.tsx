@@ -51,6 +51,20 @@ const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
 type RangeMonths = 3 | 6 | 12;
 
+// How far back "past competitions" looks — Ben's ask was specifically
+// "within the past 12-15 months" rather than forever, so older
+// competitions quietly age out of this list instead of piling up.
+const COMPETITION_HISTORY_MONTHS = 15;
+
+const PLACEMENT_MEDAL: Record<number, string> = { 1: "🥇", 2: "🥈", 3: "🥉" };
+
+interface PastCompetition {
+  id: string;
+  name: string;
+  event_date: string | null;
+  placements: { placement: number; teamLabel: string }[];
+}
+
 // Deliberately descriptive only — no rankings, no "who's winning," nothing
 // that turns into a second leaderboard. Just "here's what the club has
 // been up to," computed client-side since a club's match volume is small
@@ -62,6 +76,7 @@ export default function ClubStats() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [rangeMonths, setRangeMonths] = useState<RangeMonths>(6);
+  const [pastCompetitions, setPastCompetitions] = useState<PastCompetition[]>([]);
 
   useEffect(() => {
     Promise.all([
@@ -80,6 +95,62 @@ export default function ClubStats() {
       else setHistory((historyRes.data ?? []) as HistoryRow[]);
       setLoading(false);
     });
+  }, []);
+
+  // Past competitions (2026-08-26) — completed competitions from the last
+  // 12-15 months, with their final placements. Fetched separately from the
+  // main stats above since it's an unrelated dataset with its own loading
+  // lifecycle; a failure here shouldn't block the rest of the page.
+  useEffect(() => {
+    const cutoff = new Date();
+    cutoff.setMonth(cutoff.getMonth() - COMPETITION_HISTORY_MONTHS);
+    const cutoffIso = cutoff.toISOString().slice(0, 10);
+
+    supabase
+      .from("competitions")
+      .select("id, name, event_date, competition_results(placement, team_id)")
+      .eq("status", "completed")
+      .or(`event_date.gte.${cutoffIso},event_date.is.null`)
+      .order("event_date", { ascending: false })
+      .then(async ({ data, error }) => {
+        if (error || !data || data.length === 0) return;
+
+        const teamIds = Array.from(
+          new Set(data.flatMap((c) => (c.competition_results ?? []).map((r) => r.team_id)))
+        );
+        if (teamIds.length === 0) return;
+
+        const { data: teams } = await supabase
+          .from("competition_teams")
+          .select("id, team_name, player1_id, player2_id")
+          .in("id", teamIds);
+        const playerIds = Array.from(
+          new Set((teams ?? []).flatMap((t) => [t.player1_id, t.player2_id]))
+        );
+        const { data: teamPlayers } = await supabase
+          .from("players")
+          .select("id, display_name")
+          .in("id", playerIds);
+        const nameById = new Map((teamPlayers ?? []).map((p) => [p.id, p.display_name]));
+        const teamById = new Map((teams ?? []).map((t) => [t.id, t]));
+
+        function teamLabel(teamId: string): string {
+          const t = teamById.get(teamId);
+          if (!t) return "?";
+          return t.team_name || `${nameById.get(t.player1_id) ?? "?"} & ${nameById.get(t.player2_id) ?? "?"}`;
+        }
+
+        setPastCompetitions(
+          data.map((c) => ({
+            id: c.id,
+            name: c.name,
+            event_date: c.event_date,
+            placements: (c.competition_results ?? [])
+              .map((r) => ({ placement: r.placement, teamLabel: teamLabel(r.team_id) }))
+              .sort((a, b) => a.placement - b.placement),
+          }))
+        );
+      });
   }, []);
 
   const stats = useMemo(() => {
@@ -377,6 +448,32 @@ export default function ClubStats() {
           <div className="score">{stats.topPair ? stats.topPair.count : "—"}</div>
         </div>
       </div>
+
+      {pastCompetitions.length > 0 && (
+        <div className="card">
+          <h2>Past competitions</h2>
+          <p className="stat-meta" style={{ marginBottom: 12 }}>
+            Last {COMPETITION_HISTORY_MONTHS} months.
+          </p>
+          {pastCompetitions.map((c) => (
+            <div key={c.id} style={{ marginBottom: 16 }}>
+              <div style={{ fontWeight: 700 }}>{c.name}</div>
+              <div className="stat-meta" style={{ marginTop: 0, marginBottom: 6 }}>
+                {c.event_date
+                  ? new Date(c.event_date).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" })
+                  : ""}
+              </div>
+              {c.placements.map((p) => (
+                <div className="match-row" key={p.placement}>
+                  <div className="opponent">
+                    {PLACEMENT_MEDAL[p.placement] ?? `${p.placement}th`} {p.teamLabel}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
