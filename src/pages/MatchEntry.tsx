@@ -280,17 +280,19 @@ function SingleMatchEntry({
     const b2 = byId(teamBP2)?.display_name ?? "?";
     setBanner(`Match confirmed — ${a1} & ${a2} ${teamAScore}–${teamBScore} ${b1} & ${b2}`);
 
-    // Keep the same four players selected — only the scores clear — so
-    // entering the next game between the same group is a two-field job.
+    // Clear everything — players included — on a successful submit
+    // (changed 2026-08-27 at Ben's request). Previously the four players
+    // stayed selected so a same-group rematch was just a two-field job,
+    // but he'd rather start fresh each time; "Clear players" above still
+    // exists for mid-entry resets, this just makes it automatic on submit.
+    clearPlayers();
     setTeamAScore("");
     setTeamBScore("");
     setSubmitting(false);
 
     // Refresh ratings in the background so the win-probability prediction
-    // for the next game (if it's the same players again) is accurate.
+    // for the next game is accurate.
     onPlayersChanged();
-
-    teamAScoreRef.current?.focus();
   }
 
   return (
