@@ -301,8 +301,8 @@ export default function Notices({ isAdmin }: { isAdmin: boolean }) {
             ref={bodyRef}
             value={draft.body}
             onChange={(e) => setDraft((d) => ({ ...d, body: e.target.value }))}
-            rows={3}
-            style={{ fontFamily: "inherit", fontSize: "1rem", resize: "vertical" }}
+            rows={6}
+            style={{ fontFamily: "inherit", fontSize: "1rem", resize: "vertical", minHeight: 140 }}
           />
           <p className="stat-meta" style={{ marginTop: 4 }}>
             Select some text and tap B or i to format it, or type **bold** / *italic* yourself.
