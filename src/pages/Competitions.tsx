@@ -756,6 +756,16 @@ function GroupFixturesSection({
   onChanged: () => void;
 }) {
   const [advancing, setAdvancing] = useState(false);
+  // Which group's fixtures are shown at once. With several groups of up
+  // to 8 teams each (a full "World Cup" style setup), stacking every
+  // group's fixture list on one page made this card enormous — added
+  // 2026-08-27 at Ben's request so only one group's games show at a time.
+  // Only relevant once there's more than one group; a single-group
+  // competition just shows everything, same as before.
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const activeGroupId =
+    selectedGroupId && groups.some((g) => g.id === selectedGroupId) ? selectedGroupId : groups[0]?.id ?? null;
+  const groupsToShow = groups.length > 1 ? groups.filter((g) => g.id === activeGroupId) : groups;
 
   async function advanceToKnockout() {
     const unplayed = matches.filter((m) => m.group_id && !m.matches).length;
@@ -778,8 +788,25 @@ function GroupFixturesSection({
   return (
     <div className="card">
       <h3 style={{ marginTop: 0 }}>Group games</h3>
-      {groups.map((g) => (
-        <div key={g.id} style={{ marginBottom: 16 }}>
+      {groups.length > 1 && (
+        <>
+          <label style={{ marginTop: 0 }}>Group</label>
+          <select value={activeGroupId ?? ""} onChange={(e) => setSelectedGroupId(e.target.value)}>
+            {groups.map((g) => {
+              const groupMatches = matches.filter((m) => m.group_id === g.id);
+              const unplayed = groupMatches.filter((m) => !m.matches).length;
+              return (
+                <option key={g.id} value={g.id}>
+                  {g.name}
+                  {unplayed > 0 ? ` (${unplayed} unplayed)` : " (all played)"}
+                </option>
+              );
+            })}
+          </select>
+        </>
+      )}
+      {groupsToShow.map((g) => (
+        <div key={g.id} style={{ marginBottom: 16, marginTop: groups.length > 1 ? 16 : 0 }}>
           <strong>{g.name}</strong>
           {matches
             .filter((m) => m.group_id === g.id)
@@ -809,6 +836,34 @@ function GroupFixturesSection({
   );
 }
 
+// Same sessionStorage-backed protection as Quick Entry's slots (see
+// MatchEntry.tsx) — typing a score into a fixture on a long "Group games"
+// page, then switching apps/tabs before hitting Save, was losing that
+// typing on reload. Keyed per fixture (not one shared key) since many
+// fixtures can each have their own in-progress score at once. Only used
+// for NOT-yet-played fixtures — an already-played score being corrected
+// via "Edit" is a much shorter-lived flow, not worth the extra
+// persistence. Added 2026-08-27.
+const FIXTURE_DRAFT_PREFIX = "sideline-draft-fixture-";
+
+function loadFixtureScoreDraft(matchId: string): { scoreA: string; scoreB: string } {
+  try {
+    const raw = sessionStorage.getItem(FIXTURE_DRAFT_PREFIX + matchId);
+    if (raw) return JSON.parse(raw) as { scoreA: string; scoreB: string };
+  } catch {
+    // malformed or unavailable storage — fall through to a blank draft
+  }
+  return { scoreA: "", scoreB: "" };
+}
+
+function clearFixtureScoreDraft(matchId: string) {
+  try {
+    sessionStorage.removeItem(FIXTURE_DRAFT_PREFIX + matchId);
+  } catch {
+    // ignore
+  }
+}
+
 function FixtureRow({
   match,
   teamLabel,
@@ -824,13 +879,26 @@ function FixtureRow({
   onChanged: () => void;
   locked: boolean;
 }) {
-  const [scoreA, setScoreA] = useState("");
-  const [scoreB, setScoreB] = useState("");
+  const played = !!match.matches;
+  const [scoreA, setScoreA] = useState(() => (played ? "" : loadFixtureScoreDraft(match.id).scoreA));
+  const [scoreB, setScoreB] = useState(() => (played ? "" : loadFixtureScoreDraft(match.id).scoreB));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
 
-  const played = !!match.matches;
+  // Mirrors the not-yet-submitted score to sessionStorage on every change.
+  useEffect(() => {
+    if (played) return; // only draft new entries, not in-progress edits of a played score
+    if (scoreA === "" && scoreB === "") {
+      clearFixtureScoreDraft(match.id);
+      return;
+    }
+    try {
+      sessionStorage.setItem(FIXTURE_DRAFT_PREFIX + match.id, JSON.stringify({ scoreA, scoreB }));
+    } catch {
+      // storage full/unavailable — not worth surfacing an error for a convenience feature
+    }
+  }, [scoreA, scoreB, match.id, played]);
 
   function startEdit() {
     setScoreA(String(match.matches!.team_a_score));
@@ -975,6 +1043,7 @@ function FixtureRow({
       setError(linkError.message);
       return;
     }
+    clearFixtureScoreDraft(match.id);
     onChanged();
   }
 
