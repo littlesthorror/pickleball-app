@@ -419,6 +419,28 @@ function emptySlot(): GameSlot {
 
 const QUICK_SLOT_COUNT = 4;
 
+// Same sessionStorage-backed persistence as Notices/Events/FAQ's useDraft
+// (see lib/useDraft.ts) — protects against exactly the same "text lost
+// when the tab gets backgrounded/reloaded" issue, just applied by hand
+// here since useDraft's generic shape (a flat object of string fields) is
+// built for single forms, not an array of 4 game slots. Added 2026-08-27
+// after Ben asked whether Quick Entry had the same protection as
+// Notices/Events.
+const QUICK_ENTRY_DRAFT_KEY = "sideline-draft-quick-entry";
+
+function loadQuickEntryDraft(): GameSlot[] {
+  try {
+    const raw = sessionStorage.getItem(QUICK_ENTRY_DRAFT_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as GameSlot[];
+      if (Array.isArray(parsed) && parsed.length === QUICK_SLOT_COUNT) return parsed;
+    }
+  } catch {
+    // malformed or unavailable storage — fall through to a fresh draft
+  }
+  return Array.from({ length: QUICK_SLOT_COUNT }, emptySlot);
+}
+
 // Lets an admin fill in up to 4 games — each with its own 4 players and
 // score — then submit them all in one go, instead of doing the
 // insert-and-wait cycle 4 separate times. Added 2026-08-26 at Ben's
@@ -440,11 +462,22 @@ function QuickMatchEntry({
   players: PlayerStatus[];
   onPlayersChanged: () => void;
 }) {
-  const [slots, setSlots] = useState<GameSlot[]>(() =>
-    Array.from({ length: QUICK_SLOT_COUNT }, emptySlot)
-  );
+  const [slots, setSlots] = useState<GameSlot[]>(loadQuickEntryDraft);
   const [submitting, setSubmitting] = useState(false);
   const [summary, setSummary] = useState<string | null>(null);
+
+  // Mirrors slots to sessionStorage on every change, same protection
+  // Notices/Events already have — survives the tab getting backgrounded
+  // and reloaded (e.g. switching apps mid-entry), which plain React state
+  // does not.
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(QUICK_ENTRY_DRAFT_KEY, JSON.stringify(slots));
+    } catch {
+      // storage full/unavailable — not worth surfacing an error for a
+      // convenience feature
+    }
+  }, [slots]);
 
   const byId = (id: string) => players.find((p) => p.id === id);
 
