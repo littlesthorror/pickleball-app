@@ -1,14 +1,20 @@
-// Supabase Edge Function — admin-only. Resets one player's rating back to
-// a fresh start (1500 / RD 350 / volatility 0.06 / 0 games) WITHOUT
-// touching any historical match rows. Old matches stay exactly as they
-// were in the database — this only marks a "reset point" on the player's
-// own rating record, so their own dashboard/leaderboard entry only counts
-// games from here forward. Every other player who's played against them
-// keeps their correct, untouched history from those old matches.
+// Supabase Edge Function — admin-only. Rebuilds EVERY player's rating
+// from the complete confirmed match history, replayed from scratch in
+// chronological order. See replay.ts for the full explanation (including
+// how it respects each player's reset-history point, and how the final
+// write is applied atomically).
 //
-// Call with { "player_id": "..." }.
+// Two ways this gets triggered:
+// 1. Directly, from a "Recompute history" button on Admin management —
+//    a general-purpose "make sure everything's consistent" tool.
+// 2. Automatically from delete-match, whenever a CONFIRMED match gets
+//    deleted — since only a full replay can correctly remove that game's
+//    effect on everything computed after it.
+//
+// Call with no body.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { recomputeAllRatings } from "./replay.ts";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -48,25 +54,9 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "admins only" }), { status: 403, headers: corsHeaders });
     }
 
-    const { player_id } = await req.json();
-    if (!player_id) {
-      return new Response(JSON.stringify({ error: "player_id is required" }), { status: 400, headers: corsHeaders });
-    }
-
-    const { error } = await supabase
-      .from("player_ratings")
-      .update({
-        rating: 1500,
-        rd: 350,
-        volatility: 0.06,
-        games_played: 0,
-        reset_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .eq("player_id", player_id);
-
-    if (error) {
-      return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: corsHeaders });
+    const result = await recomputeAllRatings(supabase);
+    if (!result.ok) {
+      return new Response(JSON.stringify({ error: result.error }), { status: 500, headers: corsHeaders });
     }
 
     return new Response(JSON.stringify({ ok: true }), { status: 200, headers: corsHeaders });

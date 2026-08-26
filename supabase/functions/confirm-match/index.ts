@@ -31,7 +31,25 @@ const supabase = createClient(
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 );
 
+// Added 2026-08-27 — this function was missing CORS/preflight handling
+// entirely (no OPTIONS branch, no Access-Control-* headers on any
+// response). Supabase support flagged this as the likely cause of an
+// admin's "Failed to send a request to the Edge Function" errors on
+// Android Chrome. Worth noting it doesn't fully explain why it only broke
+// for them and not other browsers/devices calling the same function — a
+// genuinely missing preflight response should fail identically for any
+// spec-compliant browser — but it's a real gap regardless (every response
+// below was missing CORS headers) and Supabase's own docs recommend
+// exactly this, so fixing it here removes the variable either way.
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
 Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
   try {
     // verify_jwt (set at deploy time) already guarantees the caller is
     // signed in — but any signed-in player could otherwise call this
@@ -45,7 +63,7 @@ Deno.serve(async (req) => {
     const { data: callerData } = await callerClient.auth.getUser();
     const callerId = callerData?.user?.id;
     if (!callerId) {
-      return new Response(JSON.stringify({ error: "not signed in" }), { status: 401 });
+      return new Response(JSON.stringify({ error: "not signed in" }), { status: 401, headers: corsHeaders });
     }
     const { data: callerPlayer } = await supabase
       .from("players")
@@ -53,13 +71,14 @@ Deno.serve(async (req) => {
       .eq("id", callerId)
       .single();
     if (!callerPlayer?.is_admin) {
-      return new Response(JSON.stringify({ error: "admins only" }), { status: 403 });
+      return new Response(JSON.stringify({ error: "admins only" }), { status: 403, headers: corsHeaders });
     }
 
     const { match_id } = await req.json();
     if (!match_id) {
       return new Response(JSON.stringify({ error: "match_id is required" }), {
         status: 400,
+        headers: corsHeaders,
       });
     }
 
@@ -72,12 +91,13 @@ Deno.serve(async (req) => {
     if (matchError || !match) {
       return new Response(JSON.stringify({ error: "match not found" }), {
         status: 404,
+        headers: corsHeaders,
       });
     }
     if (match.status !== "pending") {
       return new Response(
         JSON.stringify({ error: `match is already ${match.status}` }),
-        { status: 409 }
+        { status: 409, headers: corsHeaders }
       );
     }
 
@@ -96,7 +116,7 @@ Deno.serve(async (req) => {
     if (ratingsError || !ratings || ratings.length !== 4) {
       return new Response(
         JSON.stringify({ error: "couldn't load all four players' ratings" }),
-        { status: 500 }
+        { status: 500, headers: corsHeaders }
       );
     }
 
@@ -178,10 +198,11 @@ Deno.serve(async (req) => {
       })
       .eq("id", match_id);
 
-    return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    return new Response(JSON.stringify({ ok: true }), { status: 200, headers: corsHeaders });
   } catch (err) {
     return new Response(JSON.stringify({ error: String(err) }), {
       status: 500,
+      headers: corsHeaders,
     });
   }
 });
