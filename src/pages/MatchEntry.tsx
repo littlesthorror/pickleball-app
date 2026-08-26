@@ -601,6 +601,7 @@ function QuickMatchEntry({
                     border: "1.5px solid var(--navy-500)",
                     borderRadius: 6,
                     padding: "3px 10px",
+                    textTransform: "uppercase",
                   }}
                 >
                   Game {index + 1}
