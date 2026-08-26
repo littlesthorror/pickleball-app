@@ -64,6 +64,10 @@ export default function AdminManagement({ currentUserId }: { currentUserId: stri
   // each card have its own editable field without a form per player.
   const [roleDrafts, setRoleDrafts] = useState<Record<string, string>>({});
   const [nameDrafts, setNameDrafts] = useState<Record<string, string>>({});
+  // Which player's name is currently being edited (pencil-icon toggle,
+  // added 2026-08-27 to replace the always-visible name input with a
+  // cleaner "tap to edit" row per Ben's request — only one at a time).
+  const [editingNameId, setEditingNameId] = useState<string | null>(null);
 
   // Client-side error logs (2026-08-25) — see src/lib/errorLogging.ts.
   const [errorLogs, setErrorLogs] = useState<ClientErrorLog[]>([]);
@@ -199,7 +203,10 @@ export default function AdminManagement({ currentUserId }: { currentUserId: stri
       alert("Name can't be empty.");
       return;
     }
-    if (value === player.display_name) return;
+    if (value === player.display_name) {
+      setEditingNameId(null);
+      return;
+    }
     setBusyId(player.id);
     const { error } = await supabase.from("players").update({ display_name: value }).eq("id", player.id);
     setBusyId(null);
@@ -207,7 +214,13 @@ export default function AdminManagement({ currentUserId }: { currentUserId: stri
       alert(`Couldn't update name: ${error.message}`);
       return;
     }
+    setEditingNameId(null);
     load();
+  }
+
+  function cancelEditName(player: PlayerStatus) {
+    setNameDrafts((prev) => ({ ...prev, [player.id]: player.display_name }));
+    setEditingNameId(null);
   }
 
   async function saveRole(player: PlayerStatus) {
@@ -540,8 +553,86 @@ export default function AdminManagement({ currentUserId }: { currentUserId: stri
         <div className="card" key={p.id}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
             <Avatar name={p.display_name} url={p.avatar_url} size={40} />
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 700 }}>{p.display_name}</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              {editingNameId === p.id ? (
+                // Inline edit mode — replaces the old always-visible name
+                // input row with a pencil-icon toggle (2026-08-27, per
+                // Ben: "rather than another text bar, a pencil icon next
+                // to the name" is neater). Enter saves, Escape cancels.
+                <div style={{ display: "flex", gap: 8 }}>
+                  <input
+                    type="text"
+                    autoFocus
+                    value={nameDrafts[p.id] ?? p.display_name}
+                    onChange={(e) => setNameDrafts((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") saveName(p);
+                      if (e.key === "Escape") cancelEditName(p);
+                    }}
+                    placeholder="Display name"
+                    style={{
+                      flex: 1,
+                      minWidth: 0,
+                      padding: "6px 8px",
+                      borderRadius: 8,
+                      border: "1px solid var(--border)",
+                      fontSize: "0.9rem",
+                      fontWeight: 700,
+                    }}
+                  />
+                  <button
+                    disabled={busyId === p.id || (nameDrafts[p.id] ?? p.display_name).trim() === ""}
+                    onClick={() => saveName(p)}
+                    aria-label="Save name"
+                    style={{ flex: "0 0 auto", width: "auto", marginTop: 0, padding: "6px 10px", fontSize: "0.9rem" }}
+                  >
+                    ✓
+                  </button>
+                  <button
+                    disabled={busyId === p.id}
+                    onClick={() => cancelEditName(p)}
+                    aria-label="Cancel editing name"
+                    style={{
+                      flex: "0 0 auto",
+                      width: "auto",
+                      marginTop: 0,
+                      padding: "6px 10px",
+                      fontSize: "0.9rem",
+                      background: "transparent",
+                      color: "var(--navy-500)",
+                      border: "1px solid var(--border)",
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ) : (
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <div style={{ fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {p.display_name}
+                  </div>
+                  <button
+                    onClick={() => {
+                      setNameDrafts((prev) => ({ ...prev, [p.id]: p.display_name }));
+                      setEditingNameId(p.id);
+                    }}
+                    aria-label={`Edit ${p.display_name}'s name`}
+                    style={{
+                      flex: "0 0 auto",
+                      width: "auto",
+                      marginTop: 0,
+                      padding: "2px 6px",
+                      fontSize: "0.85rem",
+                      lineHeight: 1,
+                      background: "transparent",
+                      color: "var(--text-muted)",
+                      border: "none",
+                    }}
+                  >
+                    ✏️
+                  </button>
+                </div>
+              )}
               <div className="stat-meta" style={{ marginTop: 0 }}>
                 {p.games_played} games played
                 {!p.is_active && " · deactivated"}
@@ -549,29 +640,6 @@ export default function AdminManagement({ currentUserId }: { currentUserId: stri
                 {p.role_title && ` · ${p.role_title}`}
               </div>
             </div>
-          </div>
-
-          <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-            <input
-              type="text"
-              value={nameDrafts[p.id] ?? p.display_name}
-              onChange={(e) => setNameDrafts((prev) => ({ ...prev, [p.id]: e.target.value }))}
-              placeholder="Display name"
-              style={{
-                flex: 1,
-                padding: "8px 10px",
-                borderRadius: 8,
-                border: "1px solid var(--border)",
-                fontSize: "0.85rem",
-              }}
-            />
-            <button
-              disabled={busyId === p.id || (nameDrafts[p.id] ?? p.display_name).trim() === p.display_name}
-              onClick={() => saveName(p)}
-              style={{ flex: "0 0 auto", width: "auto", marginTop: 0, padding: "8px 14px", fontSize: "0.85rem" }}
-            >
-              Save
-            </button>
           </div>
 
           <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
