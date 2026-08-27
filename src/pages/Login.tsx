@@ -84,6 +84,19 @@ export default function Login() {
       <p className="stat-meta" style={{ marginTop: 6, marginBottom: 0 }}>
         Preferred — quickest way in
       </p>
+      {/* Nudges anyone without a Gmail/Google account towards making one,
+          rather than defaulting straight to the email magic-link option
+          below — added 2026-08-28 at Ben's request to steer more sign-ins
+          through Google. Opens Google's own account creation flow in a new
+          tab; nothing here touches auth state. */}
+      <a
+        href="https://accounts.google.com/signup"
+        target="_blank"
+        rel="noreferrer"
+        style={{ fontSize: "0.78rem", color: "var(--navy-500)", fontWeight: 600, marginTop: 4 }}
+      >
+        Don't have a Google account? Create one
+      </a>
 
       <div style={{ display: "flex", alignItems: "center", gap: 10, width: 260, margin: "20px 0" }}>
         <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
