@@ -164,11 +164,20 @@ export function computeBadges(
   //
   // Tiered like the games-played milestones: every threshold reached gets
   // its own badge, with the fire emoji count going up per tier (added
-  // 2026-08-10 at Ben's request).
-  const streakMilestones = [
+  // 2026-08-10 at Ben's request). The 15-game tier gets its own name and
+  // emoji instead of a fourth stacked flame — three flames was already
+  // about as far as that joke could go, so at 15 you've earned an actual
+  // fire engine (added 2026-08-28 at Ben's request).
+  const streakMilestones: { games: number; emoji: string; label?: string; description?: string }[] = [
     { games: 3, emoji: "🔥" },
     { games: 6, emoji: "🔥🔥" },
     { games: 10, emoji: "🔥🔥🔥" },
+    {
+      games: 15,
+      emoji: "🚒",
+      label: "On Fire",
+      description: "Reached a 15-game winning streak — someone call the fire brigade.",
+    },
   ];
   let longestStreak = 0;
   let current = 0;
@@ -193,8 +202,10 @@ export function computeBadges(
       badges.push({
         id: `streak-${milestone.games}`,
         emoji: milestone.emoji,
-        label: `${milestone.games}-game winning streak`,
-        description: `Reached a ${milestone.games}-game winning streak — your best run so far is ${longestStreak}.`,
+        label: milestone.label ?? `${milestone.games}-game winning streak`,
+        description:
+          milestone.description ??
+          `Reached a ${milestone.games}-game winning streak — your best run so far is ${longestStreak}.`,
         achievedAt: streakReachedAt.get(milestone.games) ?? null,
       });
     }
