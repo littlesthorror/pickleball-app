@@ -32,6 +32,13 @@ function formatRelative(iso: string) {
   });
 }
 
+// Shown as the card banner when a notice has no headline image of its
+// own — the club badge, so every notice still gets a real, on-brand
+// cover rather than a blank/missing top. Lives in public/ so Vite serves
+// it as a static asset at this exact path. Added 2026-08-27 at Ben's
+// request; object-fit: cover on .notice-cover crops it to 16:9.
+const DEFAULT_COVER_URL = "/notice-default-cover.jpg";
+
 const IMAGE_EXTENSIONS = ["jpg", "jpeg", "png", "gif", "webp", "avif", "heic"];
 
 function isImageFile(fileName: string) {
@@ -456,7 +463,8 @@ export default function Notices({ isAdmin }: { isAdmin: boolean }) {
           )}
           <input type="file" accept="image/*" onChange={handleCoverChange} />
           <p className="stat-meta" style={{ marginTop: 4 }}>
-            Shown as a banner across the top of the card — separate from the attachments below.
+            Shown as a banner across the top of the card — separate from the attachments below. If you don't add
+            one, the club badge is shown instead.
           </p>
 
           <label>Attachments (optional)</label>
@@ -561,18 +569,18 @@ export default function Notices({ isAdmin }: { isAdmin: boolean }) {
           const youtubeIds = n.body ? extractYouTubeIds(n.body) : [];
           return (
             <div key={n.id} className={`card notice-card${n.pinned ? " notice-card-pinned" : ""}`}>
-              {n.cover_path && <img className="notice-cover" src={fileUrl(n.cover_path)} alt="" />}
+              <img className="notice-cover" src={n.cover_path ? fileUrl(n.cover_path) : DEFAULT_COVER_URL} alt="" />
               <div className={n.pinned ? "notice-card-body-pinned" : undefined} style={{ padding: "16px 18px" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
-                  <div style={{ minWidth: 0 }}>
+                <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-start", gap: 8 }}>
+                  <div style={{ minWidth: 0, flex: "1 1 200px" }}>
                     {n.pinned && <div className="pin-badge">📌 Pinned</div>}
                     <div className="notice-title">{n.title}</div>
-                    <div className="meta">
-                      {formatRelative(n.created_at)} · {n.players?.display_name ?? "Admin"}
+                    <div className="notice-meta">
+                      {formatRelative(n.created_at)} · Posted by {n.players?.display_name ?? "Admin"}
                     </div>
                   </div>
                   {isAdmin && (
-                    <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "flex-end", gap: 2, flexShrink: 0 }}>
+                    <div style={{ display: "flex", gap: 2, flexShrink: 0, marginLeft: "auto" }}>
                       <button onClick={() => togglePinned(n)} style={{ ...actionBtnStyle, color: "var(--orange-600)" }}>
                         {n.pinned ? "Unpin" : "Pin"}
                       </button>

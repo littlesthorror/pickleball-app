@@ -797,9 +797,19 @@ textarea {
 
 /* ── Notice title (bigger than the body text below it) ─────────────── */
 .notice-title {
-  font-size: 1rem;
+  font-size: 1.2rem;
   font-weight: 700;
   color: var(--navy-900);
+}
+
+/* Date + author line under a notice title — deliberately more spaced out
+   and more muted than the standard .meta used elsewhere (leaderboard rows,
+   match rows), so it reads as a quiet byline rather than competing with
+   the title above it. Added 2026-08-27 at Ben's request. */
+.notice-meta {
+  color: #8a94a6;
+  font-size: 0.78rem;
+  margin-top: 8px;
 }
 
 /* ── Notices card redesign (2026-08-28) — one card per notice (cover
