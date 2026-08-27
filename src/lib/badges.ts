@@ -1,4 +1,5 @@
 import type { PlayerMatchHistoryRow } from "../types";
+import type { SeasonName } from "./seasons";
 
 // One row per calendar month this player finished in the club's Top 10 —
 // fetched from monthly_leaderboard_snapshots, which is only ever populated
@@ -17,6 +18,19 @@ export interface CompetitionPlacement {
   placement: 1 | 2;
   competitionName: string;
   achievedAt: string;
+}
+
+// One row per completed Season this player finished Top 10 in — derived
+// client-side from Dashboard.tsx's existing seasonEntries (already fetched
+// live via get_season_standings for the Seasons feature), filtered to
+// rank <= 10 and to seasons that have actually ended. Added 2026-08-28 at
+// Ben's request for "a summer badge, winter badge etc." — one badge per
+// season TYPE rather than per instance, same aggregate + most-recent
+// pattern as the monthly Top 10/Top 3 badges.
+export interface SeasonTop10Finish {
+  seasonName: SeasonName;
+  label: string; // e.g. "Autumn 2026" — the specific instance's display label
+  achievedAt: string; // ISO date the season ended, for "most recent" sorting
 }
 
 export interface Badge {
@@ -42,7 +56,8 @@ export function computeBadges(
   gamesPlayed: number,
   dateJoined: string,
   monthlyFinishes: MonthlyFinish[] = [],
-  competitionPlacements: CompetitionPlacement[] = []
+  competitionPlacements: CompetitionPlacement[] = [],
+  seasonTop10Finishes: SeasonTop10Finish[] = []
 ): Badge[] {
   const badges: Badge[] = [];
 
@@ -450,6 +465,33 @@ export function computeBadges(
       description: `Runner-up in ${latest.competitionName}${runnerUps.length > 1 ? ` — ${runnerUps.length} times so far` : ""}.`,
       achievedAt: latest.achievedAt,
     });
+  }
+
+  // "Spring/Summer/Autumn/Winter Top 10" — one badge per season TYPE, not
+  // per instance: a player who's Top 10'd in three different Summers gets
+  // one "Summer Top 10" badge naming the count and the most recent one,
+  // not three separate badges. Only fires for seasons that have actually
+  // finished (seasonTop10Finishes is pre-filtered for that upstream in
+  // Dashboard.tsx) so a live, still-changing standing never gets awarded
+  // early. Added 2026-08-28 at Ben's request.
+  const SEASON_EMOJI: Record<SeasonName, string> = { Spring: "🌸", Summer: "☀️", Autumn: "🍂", Winter: "❄️" };
+  const SEASON_ORDER: SeasonName[] = ["Spring", "Summer", "Autumn", "Winter"];
+  for (const seasonName of SEASON_ORDER) {
+    const finishes = seasonTop10Finishes
+      .filter((f) => f.seasonName === seasonName)
+      .sort((a, b) => (a.achievedAt < b.achievedAt ? 1 : -1));
+    if (finishes.length > 0) {
+      const latest = finishes[0];
+      badges.push({
+        id: `season-top10-${seasonName.toLowerCase()}`,
+        emoji: SEASON_EMOJI[seasonName],
+        label: `${seasonName} Top 10`,
+        description: `Finished the club's Top 10 for ${seasonName} — ${finishes.length} time${
+          finishes.length === 1 ? "" : "s"
+        }, most recently ${latest.label}.`,
+        achievedAt: latest.achievedAt,
+      });
+    }
   }
 
   return badges;

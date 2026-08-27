@@ -13,7 +13,7 @@ import { supabase } from "../supabaseClient";
 import Avatar from "../components/Avatar";
 import ShareCard from "../components/ShareCard";
 import { computeBadges } from "../lib/badges";
-import type { MonthlyFinish, CompetitionPlacement } from "../lib/badges";
+import type { MonthlyFinish, CompetitionPlacement, SeasonTop10Finish } from "../lib/badges";
 import { isBirthdayToday } from "../lib/birthday";
 import { getTier, getNextTier } from "../lib/tiers";
 import { getCurrentSeason, getTrackedSeasons } from "../lib/seasons";
@@ -328,13 +328,30 @@ export default function Dashboard({
     };
   }, [player, history, xAxis]);
 
+  // Seasonal Top 10 badges — derived from seasonEntries (already fetched
+  // live above for the Seasons history card), filtered to seasons that
+  // have actually finished (excludes the current in-progress one, whose
+  // rank can still change) and to Top 10 finishes only. Added 2026-08-28.
+  const seasonTop10Finishes = useMemo<SeasonTop10Finish[]>(
+    () =>
+      seasonEntries
+        .filter((e) => e.season.key !== currentSeason.key && e.rank <= 10)
+        .map((e) => ({
+          seasonName: e.season.name,
+          label: e.season.label,
+          achievedAt: e.season.nextStart.toISOString(),
+        })),
+    [seasonEntries, currentSeason]
+  );
+
   const badges = useMemo(() => {
     const computed = computeBadges(
       history,
       player?.games_played ?? 0,
       player?.date_joined ?? "",
       monthlyFinishes,
-      competitionPlacements
+      competitionPlacements,
+      seasonTop10Finishes
     );
     // Most recently earned first — badges with no known date (shouldn't
     // happen in practice) sort to the end rather than the top.
@@ -344,7 +361,7 @@ export default function Dashboard({
       if (!b.achievedAt) return -1;
       return new Date(b.achievedAt).getTime() - new Date(a.achievedAt).getTime();
     });
-  }, [history, player, monthlyFinishes, competitionPlacements]);
+  }, [history, player, monthlyFinishes, competitionPlacements, seasonTop10Finishes]);
 
   // 30-day change and personal best — both derived from the same history
   // array already loaded for the chart, so no extra query needed. Mirrors

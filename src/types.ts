@@ -135,6 +135,18 @@ export interface NoticeRow {
   attachments: NoticeAttachment[];
   created_by: string | null;
   created_at: string;
+  // Pins a notice to the top of the board, above unpinned ones (still
+  // newest-first within each group). Added 2026-08-27.
+  pinned: boolean;
+  // Optional headline/banner image, separate from `attachments` — shown as
+  // a 16:9 cover at the top of the card. Path within the "notices" storage
+  // bucket, e.g. "notices/<id>/cover-<ts>-<rand>.jpg". Added 2026-08-28 for
+  // the redesigned card layout.
+  cover_path: string | null;
+  // Only present when queried with the `players(display_name)` embed —
+  // who posted this notice, shown in the card's meta line. Optional since
+  // some queries (e.g. right after an insert) won't have joined it.
+  players?: { display_name: string } | null;
 }
 
 // Competitions (2026-08-26) — fixed-team doubles, group stage followed by

@@ -802,6 +802,71 @@ textarea {
   color: var(--navy-900);
 }
 
+/* ── Notices card redesign (2026-08-28) — one card per notice (cover
+   image + pinned styling + photo grid), replacing the old single-card
+   list-of-rows layout, matching Ben's mockup. ───────────────────────── */
+.notice-card {
+  padding: 0;
+  overflow: hidden;
+}
+
+.notice-card-pinned {
+  box-shadow: 0 0 0 1px var(--orange-500), var(--shadow-card);
+}
+
+.notice-card-body-pinned {
+  background: linear-gradient(180deg, var(--orange-100) 0%, rgba(255, 231, 209, 0) 90px);
+}
+
+.pin-badge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--orange-600);
+  margin-bottom: 4px;
+}
+
+.notice-cover {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  display: block;
+}
+
+.notice-photo-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.notice-photo-thumb {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: none;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.notice-photo-thumb:hover {
+  background: none;
+}
+
+.notice-photo-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
 /* ── Lightbox (Notices image attachments) ──────────────────────────── */
 .lightbox-overlay {
   position: fixed;
