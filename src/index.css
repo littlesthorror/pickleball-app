@@ -335,6 +335,17 @@ label {
   margin-bottom: 16px;
 }
 
+/* Admin member card (2026-08-28) — Ben's request: make admins clearly
+   distinguishable from standard players at a glance on the Manage admins
+   page. A blue stroke plus a faint blue wash layered over the themed card
+   background (rather than replacing it outright) so it still looks right
+   in both light and dark mode. */
+.card-admin {
+  border: 2px solid var(--sky-600);
+  background-color: var(--card);
+  background-image: linear-gradient(rgba(43, 120, 209, 0.08), rgba(43, 120, 209, 0.08));
+}
+
 /* ── Badges ─────────────────────────────────────────────────────────── */
 .badge {
   display: inline-flex;

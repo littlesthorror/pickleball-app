@@ -621,7 +621,7 @@ export default function AdminManagement({
       </div>
 
       {visiblePlayers.map((p) => (
-        <div className="card" key={p.id}>
+        <div className={`card${p.is_admin ? " card-admin" : ""}`} key={p.id}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
             <span
               role={onSelectPlayer ? "button" : undefined}
