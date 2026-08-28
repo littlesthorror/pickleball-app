@@ -59,6 +59,7 @@ Deno.serve(async (req) => {
         role_title: null,
         emergency_contact_name: null,
         emergency_contact_phone: null,
+        medical_info: null,
         dark_mode: false,
         notify_new_events: false,
         notify_new_notices: false,

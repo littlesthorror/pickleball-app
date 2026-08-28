@@ -47,6 +47,11 @@ export default function Profile({
   const [emergencyName, setEmergencyName] = useState(player.emergency_contact_name ?? "");
   const [emergencyPhone, setEmergencyPhone] = useState(player.emergency_contact_phone ?? "");
 
+  // Essential Medical Information (2026-08-28) — conditions, allergies,
+  // current medications. Same admin-only visibility as the emergency
+  // contact fields above, same save path.
+  const [medicalInfo, setMedicalInfo] = useState(player.medical_info ?? "");
+
   // Linked Google account email (2026-08-28) — read-only, purely so
   // someone on a shared/family device can confirm which account they're
   // signed in as without needing to ask an admin. Fetched once from the
@@ -134,6 +139,7 @@ export default function Profile({
         games_played: player.games_played,
         emergency_contact_name: player.emergency_contact_name,
         emergency_contact_phone: player.emergency_contact_phone,
+        medical_info: player.medical_info,
         google_email: googleEmail,
       },
       match_history: matches ?? [],
@@ -273,6 +279,7 @@ export default function Profile({
         profile_completed: true,
         emergency_contact_name: emergencyName.trim() || null,
         emergency_contact_phone: emergencyPhone.trim() || null,
+        medical_info: medicalInfo.trim() || null,
       })
       .eq("id", player.id);
 
@@ -409,6 +416,27 @@ export default function Profile({
           style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)" }}
         />
         <p className="stat-meta">Only ever visible to club admins — never shown to other members.</p>
+
+        <label>Essential Medical Information (optional)</label>
+        <textarea
+          value={medicalInfo}
+          onChange={(e) => setMedicalInfo(e.target.value)}
+          placeholder="Please include Medical Conditions, Allergies, Current Medications"
+          rows={3}
+          style={{
+            width: "100%",
+            padding: "10px 12px",
+            borderRadius: 8,
+            border: "1px solid var(--border)",
+            fontFamily: "inherit",
+            fontSize: "1rem",
+            resize: "vertical",
+          }}
+        />
+        <p className="stat-meta">
+          Only ever visible to club admins — never shown to other members. Important for us to know in case of
+          an emergency on court.
+        </p>
 
         {error && <p className="error">{error}</p>}
 

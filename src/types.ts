@@ -18,6 +18,10 @@ export interface Player {
   // 0044_add_account_settings_columns for the full rationale on each.
   emergency_contact_name: string | null;
   emergency_contact_phone: string | null;
+  // Optional — conditions, allergies, current medications. Admin-only
+  // visibility, same as the emergency contact fields above. Added
+  // 2026-08-28.
+  medical_info: string | null;
   dark_mode: boolean;
   notify_new_events: boolean;
   notify_new_notices: boolean;

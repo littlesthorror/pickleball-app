@@ -734,6 +734,26 @@ export default function AdminManagement({
                   {p.emergency_contact_phone ? ` · ${p.emergency_contact_phone}` : ""}
                 </div>
               )}
+              {/* Essential Medical Information (2026-08-28) — same
+                  admin-only visibility as emergency contact above, but
+                  called out with a highlighted background since it's
+                  safety-critical enough to warrant standing out rather
+                  than blending in as plain muted text. */}
+              {p.medical_info && (
+                <div
+                  style={{
+                    marginTop: 6,
+                    padding: "6px 10px",
+                    borderRadius: 8,
+                    background: "var(--orange-100)",
+                    color: "var(--orange-600)",
+                    fontSize: "0.8rem",
+                    fontWeight: 600,
+                  }}
+                >
+                  ⚕️ Medical info: {p.medical_info}
+                </div>
+              )}
             </div>
           </div>
 
