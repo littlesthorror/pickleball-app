@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { FunctionsHttpError } from "@supabase/supabase-js";
 import { supabase } from "../supabaseClient";
 import Avatar from "../components/Avatar";
-import type { PlayerStatus } from "../types";
+import type { LegacyBadgeRow, PlayerStatus } from "../types";
 
 const PAGE_SIZE = 20;
 const ERROR_LOG_LIMIT = 50;
@@ -74,6 +74,20 @@ export default function AdminManagement({ currentUserId }: { currentUserId: stri
   const [errorLogsLoading, setErrorLogsLoading] = useState(true);
   const [clearingLogs, setClearingLogs] = useState(false);
   const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
+
+  // Legacy badges (2026-08-28) — the one manually-grantable badge, for
+  // real achievements that predate this app's own records (see
+  // legacy_badges migration). Fetched once for every player, then grouped
+  // by player_id client-side rather than one query per card.
+  const [legacyBadges, setLegacyBadges] = useState<LegacyBadgeRow[]>([]);
+  const [openLegacyFormId, setOpenLegacyFormId] = useState<string | null>(null);
+  const [legacyDraft, setLegacyDraft] = useState({
+    emoji: "🏆",
+    label: "",
+    description: "",
+    achievedAt: new Date().toISOString().slice(0, 10),
+  });
+  const [grantingBadge, setGrantingBadge] = useState(false);
 
   function load() {
     setLoading(true);
@@ -147,9 +161,51 @@ export default function AdminManagement({ currentUserId }: { currentUserId: stri
     loadErrorLogs();
   }
 
+  function loadLegacyBadges() {
+    supabase
+      .from("legacy_badges")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .then(({ data, error }) => {
+        if (!error) setLegacyBadges((data ?? []) as LegacyBadgeRow[]);
+      });
+  }
+
   useEffect(load, []);
   useEffect(loadInviteCode, []);
   useEffect(loadErrorLogs, []);
+  useEffect(loadLegacyBadges, []);
+
+  async function grantLegacyBadge(player: PlayerStatus) {
+    if (!legacyDraft.label.trim() || !legacyDraft.description.trim()) return;
+    setGrantingBadge(true);
+    const { error } = await supabase.from("legacy_badges").insert({
+      player_id: player.id,
+      emoji: legacyDraft.emoji.trim() || "🏆",
+      label: legacyDraft.label.trim(),
+      description: legacyDraft.description.trim(),
+      achieved_at: legacyDraft.achievedAt,
+      granted_by: currentUserId,
+    });
+    setGrantingBadge(false);
+    if (error) {
+      alert(`Couldn't grant this badge: ${error.message}`);
+      return;
+    }
+    setLegacyDraft({ emoji: "🏆", label: "", description: "", achievedAt: new Date().toISOString().slice(0, 10) });
+    setOpenLegacyFormId(null);
+    loadLegacyBadges();
+  }
+
+  async function revokeLegacyBadge(badge: LegacyBadgeRow) {
+    if (!confirm(`Remove the "${badge.label}" badge from this player?`)) return;
+    const { error } = await supabase.from("legacy_badges").delete().eq("id", badge.id);
+    if (error) {
+      alert(`Couldn't remove this badge: ${error.message}`);
+      return;
+    }
+    loadLegacyBadges();
+  }
 
   // Admins first (highest priority to find quickly), then everyone else
   // alphabetically. Search filters by name before sorting/paginating.
@@ -672,6 +728,106 @@ export default function AdminManagement({ currentUserId }: { currentUserId: stri
             >
               Save
             </button>
+          </div>
+
+          {/* Legacy badges (2026-08-28) — manual grant for achievements that
+              predate this app's own records, e.g. an old competition run
+              before Competitions existed in-app. See legacy_badges
+              migration for why every other badge is computed, not granted. */}
+          <div style={{ marginBottom: 12 }}>
+            {legacyBadges.filter((b) => b.player_id === p.id).length > 0 && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+                {legacyBadges
+                  .filter((b) => b.player_id === p.id)
+                  .map((b) => (
+                    <span
+                      key={b.id}
+                      title={b.description}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4,
+                        padding: "3px 8px",
+                        borderRadius: 999,
+                        border: "1px solid var(--border)",
+                        fontSize: "0.78rem",
+                      }}
+                    >
+                      {b.emoji} {b.label}
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`Remove ${b.label} badge`}
+                        onClick={() => revokeLegacyBadge(b)}
+                        style={{ cursor: "pointer", color: "var(--text-muted)", marginLeft: 2 }}
+                      >
+                        ✕
+                      </span>
+                    </span>
+                  ))}
+              </div>
+            )}
+            {openLegacyFormId === p.id ? (
+              <div style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 10 }}>
+                <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                  <input
+                    type="text"
+                    value={legacyDraft.emoji}
+                    onChange={(e) => setLegacyDraft((d) => ({ ...d, emoji: e.target.value }))}
+                    placeholder="🏆"
+                    style={{ width: 56, flex: "0 0 auto", padding: "6px 8px", borderRadius: 8, border: "1px solid var(--border)", textAlign: "center" }}
+                  />
+                  <input
+                    type="text"
+                    value={legacyDraft.label}
+                    onChange={(e) => setLegacyDraft((d) => ({ ...d, label: e.target.value }))}
+                    placeholder="Badge name — e.g. 2024 Summer Champion"
+                    style={{ flex: 1, padding: "6px 8px", borderRadius: 8, border: "1px solid var(--border)" }}
+                  />
+                </div>
+                <textarea
+                  value={legacyDraft.description}
+                  onChange={(e) => setLegacyDraft((d) => ({ ...d, description: e.target.value }))}
+                  placeholder="Description shown on their Dashboard — e.g. Won the 2024 Summer Doubles Championship."
+                  rows={2}
+                  style={{ width: "100%", padding: "6px 8px", borderRadius: 8, border: "1px solid var(--border)", fontFamily: "inherit", marginBottom: 8, resize: "vertical" }}
+                />
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <input
+                    type="date"
+                    value={legacyDraft.achievedAt}
+                    onChange={(e) => setLegacyDraft((d) => ({ ...d, achievedAt: e.target.value }))}
+                    style={{ padding: "6px 8px", borderRadius: 8, border: "1px solid var(--border)" }}
+                  />
+                  <button
+                    disabled={grantingBadge || !legacyDraft.label.trim() || !legacyDraft.description.trim()}
+                    onClick={() => grantLegacyBadge(p)}
+                    style={{ flex: "0 0 auto", width: "auto", marginTop: 0, padding: "6px 12px", fontSize: "0.85rem" }}
+                  >
+                    {grantingBadge ? "Granting…" : "Grant badge"}
+                  </button>
+                  <button
+                    onClick={() => setOpenLegacyFormId(null)}
+                    style={{ flex: "0 0 auto", width: "auto", marginTop: 0, padding: "6px 12px", fontSize: "0.85rem", background: "transparent", color: "var(--navy-500)", border: "1px solid var(--border)" }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <span
+                className="link-action"
+                role="button"
+                tabIndex={0}
+                onClick={() => {
+                  setLegacyDraft({ emoji: "🏆", label: "", description: "", achievedAt: new Date().toISOString().slice(0, 10) });
+                  setOpenLegacyFormId(p.id);
+                }}
+                style={{ fontSize: "0.78rem" }}
+              >
+                🏅 Grant legacy badge
+              </span>
+            )}
           </div>
 
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>

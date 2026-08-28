@@ -115,6 +115,21 @@ export interface EventRow {
   is_private: boolean;
 }
 
+// Admin-granted "legacy badge" (2026-08-28) — see 0049_add_legacy_badges.sql
+// for why this exists: the one deliberate exception to every other badge
+// being purely computed from stored data, for real achievements (e.g. an
+// old club competition) that predate this app's own records.
+export interface LegacyBadgeRow {
+  id: string;
+  player_id: string;
+  emoji: string;
+  label: string;
+  description: string;
+  achieved_at: string;
+  granted_by: string | null;
+  created_at: string;
+}
+
 export interface EventRsvpRow {
   id: string;
   event_id: string;

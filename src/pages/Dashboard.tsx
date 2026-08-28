@@ -21,7 +21,7 @@ import { isBirthdayToday } from "../lib/birthday";
 import { getTier, getNextTier } from "../lib/tiers";
 import { getCurrentSeason, getTrackedSeasons } from "../lib/seasons";
 import type { Season } from "../lib/seasons";
-import type { EventRow, PlayerMatchHistoryRow, PlayerStatus } from "../types";
+import type { EventRow, LegacyBadgeRow, PlayerMatchHistoryRow, PlayerStatus } from "../types";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Filler);
 
@@ -84,6 +84,11 @@ export default function Dashboard({
   // Competition placements (1st/2nd) this player's team earned — feeds the
   // Competition winner/runner-up badges. Added 2026-08-27.
   const [competitionPlacements, setCompetitionPlacements] = useState<CompetitionPlacement[]>([]);
+  // Admin-granted legacy badges (2026-08-28) — see legacy_badges migration.
+  // Merged alongside the computed badges below, not part of computeBadges()
+  // itself, since these are the one manually-entered exception rather than
+  // derived from match/competition data.
+  const [legacyBadges, setLegacyBadges] = useState<LegacyBadgeRow[]>([]);
   const [nextEvent, setNextEvent] = useState<EventRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -161,6 +166,15 @@ export default function Dashboard({
         setMonthlyFinishes(
           (data ?? []).map((r) => ({ yearMonth: r.year_month as string, rank: r.rank as number }))
         );
+      });
+
+    supabase
+      .from("legacy_badges")
+      .select("*")
+      .eq("player_id", playerId)
+      .then(({ data, error }) => {
+        if (cancelled || error) return;
+        setLegacyBadges((data ?? []) as LegacyBadgeRow[]);
       });
 
     // Competition winner/runner-up badges — find every team this player
@@ -360,15 +374,24 @@ export default function Dashboard({
       competitionPlacements,
       seasonTop10Finishes
     );
+    // Admin-granted legacy badges (2026-08-28) merged in alongside the
+    // computed set — see legacy_badges migration for why these exist.
+    const legacy = legacyBadges.map((b) => ({
+      id: `legacy-${b.id}`,
+      emoji: b.emoji,
+      label: b.label,
+      description: b.description,
+      achievedAt: b.achieved_at,
+    }));
     // Most recently earned first — badges with no known date (shouldn't
     // happen in practice) sort to the end rather than the top.
-    return [...computed].sort((a, b) => {
+    return [...computed, ...legacy].sort((a, b) => {
       if (!a.achievedAt && !b.achievedAt) return 0;
       if (!a.achievedAt) return 1;
       if (!b.achievedAt) return -1;
       return new Date(b.achievedAt).getTime() - new Date(a.achievedAt).getTime();
     });
-  }, [history, player, monthlyFinishes, competitionPlacements, seasonTop10Finishes]);
+  }, [history, player, monthlyFinishes, competitionPlacements, seasonTop10Finishes, legacyBadges]);
 
   // 30-day change and personal best — both derived from the same history
   // array already loaded for the chart, so no extra query needed. Mirrors
