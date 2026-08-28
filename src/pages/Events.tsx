@@ -98,7 +98,11 @@ function posterVisual(
   };
 }
 
-const WEEKDAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"];
+// Monday-first, matching how the club actually thinks about its week
+// (2026-08-28) — previously used JS's native Sunday-first getDay(), which
+// made Saturday look like the last column when in practice it's the
+// second-to-last day of a Mon–Sun week.
+const WEEKDAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"];
 
 // Global month-view calendar — shows every event on the club calendar (not
 // just the "still visible" ones the lists below show) with a dot on any
@@ -131,7 +135,9 @@ function MonthCalendar({
   const year = viewDate.getFullYear();
   const month = viewDate.getMonth();
   const firstOfMonth = new Date(year, month, 1);
-  const startWeekday = firstOfMonth.getDay();
+  // getDay() is 0=Sunday..6=Saturday; shift so 0=Monday..6=Sunday to match
+  // the Monday-first WEEKDAY_LABELS above.
+  const startWeekday = (firstOfMonth.getDay() + 6) % 7;
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const todayStr = toDateStr(new Date());
 
@@ -176,6 +182,11 @@ function MonthCalendar({
           const dayEvents = eventsByDate.get(dateStr);
           const isToday = dateStr === todayStr;
           const isSelected = dateStr === selectedDate;
+          // A day with any still-private event gets the violet ring
+          // instead of the usual orange — a visual flag for admins that
+          // fades away on its own the moment "Keep post private" is
+          // turned off for that event. Added 2026-08-28.
+          const hasPrivate = dayEvents?.some((e) => e.is_private);
           return (
             <div
               key={i}
@@ -199,7 +210,9 @@ function MonthCalendar({
                   width: 26,
                   height: 26,
                   borderRadius: "50%",
-                  border: dayEvents ? "2px solid var(--orange-600)" : "2px solid transparent",
+                  border: dayEvents
+                    ? `2px solid ${hasPrivate ? "var(--private-600)" : "var(--orange-600)"}`
+                    : "2px solid transparent",
                   fontWeight: dayEvents || isToday || isSelected ? 700 : 400,
                 }}
               >
@@ -253,14 +266,26 @@ function EventRowCard({
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="opponent" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {event.is_private && (
-              <span title="Private — only admins can see this" style={{ marginRight: 4 }}>
-                🔒
-              </span>
-            )}
             {event.title}
           </div>
           <div className="meta">
+            {event.is_private && (
+              <span
+                title="Only admins can see this — disappears once Private is turned off"
+                style={{
+                  display: "inline-block",
+                  background: "var(--private-100)",
+                  color: "var(--private-600)",
+                  fontWeight: 700,
+                  fontSize: "0.68rem",
+                  padding: "1px 6px",
+                  borderRadius: 999,
+                  marginRight: 6,
+                }}
+              >
+                🔒 Private
+              </span>
+            )}
             {formatEventDate(event.event_date)}
             {formatEventTime(event.event_time) ? ` · ${formatEventTime(event.event_time)}` : ""}
             {event.location ? ` · ${event.location}` : ""}
@@ -436,14 +461,24 @@ function EventTicketModal({
 
         <div className="ticket-header">
           {event.format && <div className="ticket-meta">{event.format}</div>}
-          <h2 className="ticket-title">
-            {event.is_private && (
-              <span title="Private — only admins can see this" style={{ marginRight: 6 }}>
-                🔒
-              </span>
-            )}
-            {event.title}
-          </h2>
+          {event.is_private && (
+            <span
+              title="Only admins can see this — disappears once Private is turned off"
+              style={{
+                display: "inline-block",
+                background: "var(--private-600)",
+                color: "#fff",
+                fontWeight: 700,
+                fontSize: "0.7rem",
+                padding: "2px 8px",
+                borderRadius: 999,
+                marginBottom: 4,
+              }}
+            >
+              🔒 Private
+            </span>
+          )}
+          <h2 className="ticket-title">{event.title}</h2>
           <div className="ticket-when">
             📅 <strong>{formatEventDate(event.event_date)}</strong>
             {formatEventTime(event.event_time) ? ` · ${formatEventTime(event.event_time)}` : ""}
