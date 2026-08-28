@@ -13,6 +13,7 @@
 // that exclusion doesn't affect the actual build.
 
 import { precacheAndRoute } from "workbox-precaching";
+import { clientsClaim } from "workbox-core";
 
 declare const self: ServiceWorkerGlobalScope;
 
@@ -20,6 +21,27 @@ declare const self: ServiceWorkerGlobalScope;
 // is what makes the PWA actually work offline/cache-first, same as the
 // previous auto-generated service worker did.
 precacheAndRoute(self.__WB_MANIFEST);
+
+// (2026-08-28) Found while investigating why a deployed fix keeps showing
+// as "the old version" in a normal Chrome window but not in Incognito.
+// Cause: this file is hand-written (injectManifest strategy), so unlike
+// vite-plugin-pwa's default auto-generated service worker, nothing here
+// was calling self.skipWaiting()/clientsClaim(). Without them, a newly
+// installed service worker sits in the "waiting" state until every open
+// tab on the old version is fully closed — which for a normal browsing
+// habit (reloading the same tab, never actually closing it) can be
+// never. Incognito always starts with no existing controller, so it
+// always activates the newest worker immediately — that's the entire
+// reason it "worked" there and nowhere else.
+//
+// skipWaiting() activates the new worker as soon as it's installed;
+// clientsClaim() then hands it control of already-open tabs right away
+// instead of waiting for their next navigation. Together with the
+// "activated" listener already in main.tsx (which reloads the page once
+// this happens), a deployed change now actually reaches an open tab
+// automatically, rather than only ever showing up in a fresh session.
+self.skipWaiting();
+clientsClaim();
 
 self.addEventListener("push", (event: PushEvent) => {
   if (!event.data) return;
