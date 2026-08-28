@@ -1,6 +1,10 @@
 import type { Badge } from "./badges";
 import type { PlayerStatus } from "../types";
 import type { SeasonName } from "./seasons";
+import springBackdropUrl from "../assets/season-backdrops/spring.jpg";
+import summerBackdropUrl from "../assets/season-backdrops/summer.jpg";
+import autumnBackdropUrl from "../assets/season-backdrops/autumn.jpg";
+import winterBackdropUrl from "../assets/season-backdrops/winter.jpg";
 
 // Season Wrapped card (2026-08-28) — an end-of-season recap in the same
 // spirit as ShareCard/shareCardImage.ts (same canvas-drawing approach, same
@@ -32,17 +36,36 @@ export interface SeasonWrappedStats {
   badgesEarned: Badge[];
 }
 
-// One gradient + accent emoji per UK meteorological season (see
-// lib/seasons.ts) — chosen as fairly deep/rich tones throughout (not
-// pastel) specifically so plain white text reads cleanly on top without
-// needing the translucent dark wash that shareCardImage.ts layers over its
-// court photo for the same reason.
-const SEASON_THEME: Record<SeasonName, { emoji: string; gradient: [string, string]; deltaPositive: string; deltaNegative: string }> = {
-  Spring: { emoji: "🌸", gradient: ["#1f6d4a", "#c2478d"], deltaPositive: "#7be3ad", deltaNegative: "#ffb3b3" },
-  Summer: { emoji: "☀️", gradient: ["#e05f00", "#7a1f1f"], deltaPositive: "#8ef0b0", deltaNegative: "#ffc2c2" },
-  Autumn: { emoji: "🍂", gradient: ["#b5541f", "#3d1f0f"], deltaPositive: "#8ef0b0", deltaNegative: "#ffc2c2" },
-  Winter: { emoji: "❄️", gradient: ["#2c5c8a", "#0a1a33"], deltaPositive: "#8ef0b0", deltaNegative: "#ffc2c2" },
+// One gradient + accent emoji + photo backdrop per UK meteorological season
+// (see lib/seasons.ts). The gradient stops below are drawn as a translucent
+// wash (see hexToRgba/WASH_ALPHA) over each season's real club photo, the
+// same "photo behind a coloured overlay" treatment shareCardImage.ts uses
+// for its court photo — chosen at Ben's request, 2026-08-28: "can you use
+// them as backdrops beneath the coloured overlay" / "one photo per season".
+const SEASON_THEME: Record<
+  SeasonName,
+  { emoji: string; gradient: [string, string]; deltaPositive: string; deltaNegative: string; backdrop: string }
+> = {
+  Spring: { emoji: "🌸", gradient: ["#1f6d4a", "#c2478d"], deltaPositive: "#7be3ad", deltaNegative: "#ffb3b3", backdrop: springBackdropUrl },
+  Summer: { emoji: "☀️", gradient: ["#e05f00", "#7a1f1f"], deltaPositive: "#8ef0b0", deltaNegative: "#ffc2c2", backdrop: summerBackdropUrl },
+  Autumn: { emoji: "🍂", gradient: ["#b5541f", "#3d1f0f"], deltaPositive: "#8ef0b0", deltaNegative: "#ffc2c2", backdrop: autumnBackdropUrl },
+  Winter: { emoji: "❄️", gradient: ["#2c5c8a", "#0a1a33"], deltaPositive: "#8ef0b0", deltaNegative: "#ffc2c2", backdrop: winterBackdropUrl },
 };
+
+// How opaque the seasonal gradient wash is over the photo — high enough
+// that all the existing white text/pill contrast guarantees still hold
+// (this is the same 0.7-0.9-ish range shareCardImage.ts uses over its own
+// court photo), low enough that the photo itself is clearly visible rather
+// than just tinting a hint of texture through.
+const WASH_ALPHA = 0.68;
+
+function hexToRgba(hex: string, alpha: number) {
+  const clean = hex.replace("#", "");
+  const r = parseInt(clean.substring(0, 2), 16);
+  const g = parseInt(clean.substring(2, 4), 16);
+  const b = parseInt(clean.substring(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
 
 const AVATAR_PALETTE = ["#0f2547", "#e05f00", "#2c4d80", "#1a8f5e", "#7a3fb0", "#b0433f"];
 
@@ -106,9 +129,26 @@ export async function renderSeasonWrappedImage(player: PlayerStatus, stats: Seas
   ctx.save();
   ctx.clip();
 
+  // Photo backdrop — cover-fit, same centring math as shareCardImage.ts's
+  // court photo. Falls back to a flat fill of the gradient's first stop if
+  // the image can't load for any reason, so a broken asset never breaks the
+  // whole card.
+  try {
+    const backdrop = await loadImage(theme.backdrop);
+    const scale = Math.max(W / backdrop.width, H / backdrop.height);
+    const drawW = backdrop.width * scale;
+    const drawH = backdrop.height * scale;
+    ctx.drawImage(backdrop, (W - drawW) / 2, (H - drawH) / 2, drawW, drawH);
+  } catch {
+    ctx.fillStyle = theme.gradient[0];
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  // Coloured overlay on top of the photo — translucent version of the same
+  // per-season gradient, so the photo reads clearly through it.
   const gradient = ctx.createLinearGradient(0, 0, W, H);
-  gradient.addColorStop(0, theme.gradient[0]);
-  gradient.addColorStop(1, theme.gradient[1]);
+  gradient.addColorStop(0, hexToRgba(theme.gradient[0], WASH_ALPHA));
+  gradient.addColorStop(1, hexToRgba(theme.gradient[1], WASH_ALPHA));
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, W, H);
 
