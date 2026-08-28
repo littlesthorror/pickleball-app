@@ -48,6 +48,14 @@ function formatRelative(iso: string) {
   });
 }
 
+// True once a notice has actually been edited after posting — compares
+// with a minute of slack rather than exact equality, since created_at and
+// updated_at are set by two separate `now()` calls (column default vs. the
+// trigger) a few milliseconds apart on insert.
+function wasEdited(n: NoticeRow) {
+  return new Date(n.updated_at).getTime() - new Date(n.created_at).getTime() > 60_000;
+}
+
 // Shown as the card banner when a notice has no headline image of its
 // own — the club badge, so every notice still gets a real, on-brand
 // cover rather than a blank/missing top. Lives in public/ so Vite serves
@@ -972,6 +980,7 @@ export default function Notices({ isAdmin, playerId }: { isAdmin: boolean; playe
                     <div className="notice-title">{n.title}</div>
                     <div className="notice-meta">
                       {formatRelative(n.created_at)} · Posted by {n.players?.display_name ?? "Admin"}
+                      {wasEdited(n) && <> · <span style={{ opacity: 0.75 }}>Updated {formatRelative(n.updated_at)}</span></>}
                     </div>
                   </div>
                   {isAdmin && (

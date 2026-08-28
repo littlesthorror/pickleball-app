@@ -134,6 +134,30 @@ export interface LegacyBadgeRow {
   created_at: string;
 }
 
+// Partner-finder board (2026-08-28) — see 0051_add_partner_requests.sql.
+// Deliberately a Dashboard widget only, not a dedicated page/nav tab (Ben's
+// explicit preference).
+export interface PartnerRequestRow {
+  id: string;
+  player_id: string;
+  note: string;
+  play_date: string | null;
+  play_time: string | null;
+  created_at: string;
+  // Only present when queried with the `players(display_name, avatar_url)`
+  // embed — who posted this request.
+  players?: { display_name: string; avatar_url: string | null } | null;
+}
+
+export interface PartnerRequestInterestRow {
+  id: string;
+  request_id: string;
+  player_id: string;
+  created_at: string;
+  // Only present when queried with the `players(display_name)` embed.
+  players?: { display_name: string } | null;
+}
+
 export interface EventRsvpRow {
   id: string;
   event_id: string;
@@ -172,6 +196,11 @@ export interface NoticeRow {
   attachments: NoticeAttachment[];
   created_by: string | null;
   created_at: string;
+  // Auto-maintained by a DB trigger (0052_add_notices_updated_at.sql) — bumped
+  // on any edit (title/body/attachments/cover/pin/poll). Starts equal to
+  // created_at for a brand-new post. Shown as a subtle "Updated ..." note,
+  // only when it meaningfully differs from created_at. Added 2026-08-28.
+  updated_at: string;
   // Pins a notice to the top of the board, above unpinned ones (still
   // newest-first within each group). Added 2026-08-27.
   pinned: boolean;

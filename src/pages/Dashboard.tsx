@@ -12,6 +12,7 @@ import { Line } from "react-chartjs-2";
 import { supabase } from "../supabaseClient";
 import Avatar from "../components/Avatar";
 import ShareCard from "../components/ShareCard";
+import PartnerFinderCard from "../components/PartnerFinderCard";
 import SeasonWrappedCard from "../components/SeasonWrappedCard";
 import { computeBadges } from "../lib/badges";
 import type { MonthlyFinish, CompetitionPlacement, SeasonTop10Finish } from "../lib/badges";
@@ -648,6 +649,8 @@ export default function Dashboard({
           </div>
         </div>
       )}
+
+      {isOwnProfile && player && <PartnerFinderCard playerId={player.id} playerName={player.display_name} />}
 
       {badges.length > 0 && (
         <div className="card">
