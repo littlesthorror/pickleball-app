@@ -3,7 +3,8 @@ import type { ChangeEvent } from "react";
 import { supabase } from "../supabaseClient";
 import Avatar from "../components/Avatar";
 import { getExistingSubscription, isPushSupported, subscribeToPush, unsubscribeFromPush } from "../lib/push";
-import type { PlayerStatus } from "../types";
+import { downloadCsv } from "../lib/csvExport";
+import type { PlayerStatus, PlayerMatchHistoryRow } from "../types";
 
 // Used two ways: as a one-time "complete your profile" step right after
 // first Google sign-in (isFirstTime=true, no way to skip past it except
@@ -38,6 +39,169 @@ export default function Profile({
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Emergency contact (2026-08-28) — name + phone, editable here, but only
+  // ever shown to admins elsewhere (AdminManagement) — never to other
+  // regular members. Saved as part of the normal Save button below, same
+  // as name/DOB.
+  const [emergencyName, setEmergencyName] = useState(player.emergency_contact_name ?? "");
+  const [emergencyPhone, setEmergencyPhone] = useState(player.emergency_contact_phone ?? "");
+
+  // Linked Google account email (2026-08-28) — read-only, purely so
+  // someone on a shared/family device can confirm which account they're
+  // signed in as without needing to ask an admin. Fetched once from the
+  // auth session rather than the players table (email lives on
+  // auth.users, not public.players).
+  const [googleEmail, setGoogleEmail] = useState<string | null>(null);
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setGoogleEmail(data.user?.email ?? null));
+  }, []);
+
+  // Dark mode (2026-08-28) — saved to the account (not localStorage) so it
+  // follows you across devices. Applied instantly on toggle via onSaved,
+  // which App.tsx watches to flip a data-theme attribute — see App.tsx.
+  const [darkMode, setDarkMode] = useState(player.dark_mode);
+  const [darkModeSaving, setDarkModeSaving] = useState(false);
+  async function handleToggleDarkMode() {
+    const next = !darkMode;
+    setDarkMode(next);
+    setDarkModeSaving(true);
+    const { error: darkModeError } = await supabase.from("players").update({ dark_mode: next }).eq("id", player.id);
+    setDarkModeSaving(false);
+    if (darkModeError) {
+      setDarkMode(!next);
+      alert(`Couldn't update: ${darkModeError.message}`);
+      return;
+    }
+    onSaved({ ...player, dark_mode: next });
+  }
+
+  // Granular push categories (2026-08-28) — replaces the old single
+  // on/off switch. Each toggle writes straight to the players row (not
+  // gated behind the main Save button) since these feel like instant
+  // settings, same UX as the dark mode toggle above. Only meaningful once
+  // actually subscribed (see pushSubscribed below), so disabled until then.
+  const [notifyNewEvents, setNotifyNewEvents] = useState(player.notify_new_events);
+  const [notifyNewNotices, setNotifyNewNotices] = useState(player.notify_new_notices);
+  const [notifyBadgeEarned, setNotifyBadgeEarned] = useState(player.notify_badge_earned);
+  const [notifyRankChange, setNotifyRankChange] = useState(player.notify_rank_change);
+  const [categorySaving, setCategorySaving] = useState<string | null>(null);
+
+  async function handleToggleCategory(
+    key: "notify_new_events" | "notify_new_notices" | "notify_badge_earned" | "notify_rank_change",
+    current: boolean,
+    setter: (v: boolean) => void
+  ) {
+    const next = !current;
+    setter(next);
+    setCategorySaving(key);
+    const { error: catError } = await supabase.from("players").update({ [key]: next }).eq("id", player.id);
+    setCategorySaving(null);
+    if (catError) {
+      setter(current);
+      alert(`Couldn't update: ${catError.message}`);
+    }
+  }
+
+  // Download my data / delete my account (2026-08-28) — self-service GDPR
+  // requests. Download compiles everything readable under this account's
+  // own RLS access into one JSON file, client-side, no edge function
+  // needed. Delete calls a dedicated edge function (see
+  // supabase/functions/delete-account) since it needs the service role to
+  // ban the auth user — see that function's own comment for why this
+  // anonymizes + bans rather than actually deleting anything.
+  const [exportingData, setExportingData] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  async function handleDownloadMyData() {
+    setExportingData(true);
+    const [{ data: matches }, { data: rsvps }, { data: pollVotes }] = await Promise.all([
+      supabase.from("player_match_history").select("*").eq("player_id", player.id).order("game_number", { ascending: true }),
+      supabase.from("event_rsvps").select("event_id, status, created_at").eq("player_id", player.id),
+      supabase.from("notice_poll_votes").select("notice_id, option_index, created_at").eq("player_id", player.id),
+    ]);
+    setExportingData(false);
+
+    const exportData = {
+      exported_at: new Date().toISOString(),
+      profile: {
+        display_name: player.display_name,
+        date_joined: player.date_joined,
+        date_of_birth: player.date_of_birth,
+        role_title: player.role_title,
+        rating: player.rating,
+        games_played: player.games_played,
+        emergency_contact_name: player.emergency_contact_name,
+        emergency_contact_phone: player.emergency_contact_phone,
+        google_email: googleEmail,
+      },
+      match_history: matches ?? [],
+      event_rsvps: rsvps ?? [],
+      notice_poll_votes: pollVotes ?? [],
+    };
+
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `sideline-my-data-${player.display_name.replace(/\s+/g, "-")}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function handleDeleteAccount() {
+    if (
+      !confirm(
+        "Delete your Sideline account? Your name, photo, date of birth, and contact info will be permanently cleared, and you won't be able to sign back in. Your past match results stay on record (as anonymous history) since other members' stats depend on them. This can't be undone — continue?"
+      )
+    ) {
+      return;
+    }
+    setDeletingAccount(true);
+    setDeleteError(null);
+    const { data, error: invokeError } = await supabase.functions.invoke("delete-account", { body: {} });
+    setDeletingAccount(false);
+    if (invokeError || (data as { error?: string })?.error) {
+      setDeleteError(invokeError?.message ?? (data as { error?: string })?.error ?? "Something went wrong.");
+      return;
+    }
+    await supabase.auth.signOut();
+  }
+
+  // Export my match history (2026-08-28) — a plain CSV of every confirmed
+  // match this player's been part of, for people who'd rather keep their
+  // own record outside the app.
+  const [exportingCsv, setExportingCsv] = useState(false);
+  async function handleExportMatchHistory() {
+    setExportingCsv(true);
+    const { data, error: exportError } = await supabase
+      .from("player_match_history")
+      .select("*")
+      .eq("player_id", player.id)
+      .order("game_number", { ascending: true });
+    setExportingCsv(false);
+    if (exportError || !data) {
+      alert(`Couldn't export: ${exportError?.message ?? "no data returned"}`);
+      return;
+    }
+    const rows = data as PlayerMatchHistoryRow[];
+    downloadCsv(
+      `sideline-match-history-${player.display_name.replace(/\s+/g, "-")}.csv`,
+      ["Date", "Teammate", "Opponents", "Your score", "Opponent score", "Result", "Rating before", "Rating after", "Rating change"],
+      rows.map((h) => [
+        new Date(h.played_at).toLocaleDateString("en-GB"),
+        h.teammate_name,
+        h.opponent_names,
+        h.own_score,
+        h.opponent_score,
+        h.won ? "Win" : "Loss",
+        Math.round(h.pre_rating),
+        Math.round(h.post_rating),
+        Math.round(h.rating_delta),
+      ])
+    );
+  }
 
   // Push notifications (2026-08-25) — see src/lib/push.ts. Only relevant
   // once the account exists (not during first-time setup), and only in
@@ -107,6 +271,8 @@ export default function Profile({
         avatar_url: avatarUrl,
         profile_visible: profileVisible,
         profile_completed: true,
+        emergency_contact_name: emergencyName.trim() || null,
+        emergency_contact_phone: emergencyPhone.trim() || null,
       })
       .eq("id", player.id);
 
@@ -179,6 +345,15 @@ export default function Profile({
           style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)" }}
         />
 
+        {googleEmail && (
+          <>
+            <label>Signed in with</label>
+            <p className="stat-meta" style={{ marginTop: 0 }}>
+              {googleEmail} — useful to check on a shared or family device. Not editable here.
+            </p>
+          </>
+        )}
+
         <label>Date of birth (optional)</label>
         <input
           type="date"
@@ -217,6 +392,24 @@ export default function Profile({
           can still see you when entering match results.
         </p>
 
+        <label>Emergency contact name (optional)</label>
+        <input
+          type="text"
+          value={emergencyName}
+          onChange={(e) => setEmergencyName(e.target.value)}
+          placeholder="e.g. a partner or family member"
+          style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)" }}
+        />
+        <label>Emergency contact phone (optional)</label>
+        <input
+          type="tel"
+          value={emergencyPhone}
+          onChange={(e) => setEmergencyPhone(e.target.value)}
+          placeholder="e.g. 07700 900000"
+          style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)" }}
+        />
+        <p className="stat-meta">Only ever visible to club admins — never shown to other members.</p>
+
         {error && <p className="error">{error}</p>}
 
         <button disabled={saving || uploading} onClick={handleSave}>
@@ -242,6 +435,92 @@ export default function Profile({
             {pushBusy ? "…" : pushSubscribed ? "Turn off notifications" : "Turn on notifications"}
           </button>
           {pushError && <p className="error">{pushError}</p>}
+
+          {pushSubscribed && (
+            <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
+              <p className="stat-meta" style={{ marginTop: 0, marginBottom: 8, fontWeight: 700 }}>
+                What to notify me about
+              </p>
+              {(
+                [
+                  { key: "notify_new_events" as const, label: "New events", value: notifyNewEvents, setter: setNotifyNewEvents },
+                  { key: "notify_new_notices" as const, label: "New notices", value: notifyNewNotices, setter: setNotifyNewNotices },
+                  { key: "notify_badge_earned" as const, label: "Earning a new badge", value: notifyBadgeEarned, setter: setNotifyBadgeEarned },
+                  { key: "notify_rank_change" as const, label: "Entering/exiting the club Top 10", value: notifyRankChange, setter: setNotifyRankChange },
+                ]
+              ).map((c) => (
+                <div key={c.key} style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
+                  <input
+                    id={c.key}
+                    type="checkbox"
+                    checked={c.value}
+                    disabled={categorySaving === c.key}
+                    onChange={() => handleToggleCategory(c.key, c.value, c.setter)}
+                  />
+                  <label htmlFor={c.key} style={{ margin: 0, fontWeight: 400 }}>
+                    {c.label}
+                  </label>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {!isFirstTime && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <h2 style={{ marginTop: 0 }}>Appearance</h2>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <input id="dark-mode" type="checkbox" checked={darkMode} disabled={darkModeSaving} onChange={handleToggleDarkMode} />
+            <label htmlFor="dark-mode" style={{ margin: 0, fontWeight: 400 }}>
+              Dark mode
+            </label>
+          </div>
+          <p className="stat-meta">Follows your account across devices.</p>
+        </div>
+      )}
+
+      {!isFirstTime && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <h2 style={{ marginTop: 0 }}>Your data</h2>
+          <p className="stat-meta" style={{ marginTop: 0 }}>
+            Export your own match history as a spreadsheet.
+          </p>
+          <button
+            disabled={exportingCsv}
+            onClick={handleExportMatchHistory}
+            style={{ background: "transparent", color: "var(--navy-500)", border: "1px solid var(--border)" }}
+          >
+            {exportingCsv ? "Preparing…" : "Export my match history (CSV)"}
+          </button>
+
+          <p className="stat-meta" style={{ marginTop: 14 }}>
+            Or download everything Sideline holds about you as a single file.
+          </p>
+          <button
+            disabled={exportingData}
+            onClick={handleDownloadMyData}
+            style={{ background: "transparent", color: "var(--navy-500)", border: "1px solid var(--border)" }}
+          >
+            {exportingData ? "Preparing…" : "Download my data"}
+          </button>
+
+          <p className="stat-meta" style={{ marginTop: 14 }}>
+            Leaving the club? This clears your personal details and stops you signing back in. Your past match
+            results stay on record since other members' stats depend on them — see{" "}
+            <span className="link-action" role="button" tabIndex={0} onClick={() => alert("Your name, photo, date of birth, and contact info are cleared, and your account is closed to sign-in. Match scores/ratings stay on record as anonymous history, since other members' own stats and badges are calculated from them.")}>
+              what this actually does
+            </span>
+            .
+          </p>
+          <button
+            disabled={deletingAccount}
+            onClick={handleDeleteAccount}
+            style={{ background: "transparent", color: "var(--danger)", border: "1px solid var(--border)" }}
+          >
+            {deletingAccount ? "Deleting…" : "Delete my account"}
+          </button>
+          {deleteError && <p className="error">{deleteError}</p>}
         </div>
       )}
 

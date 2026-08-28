@@ -14,6 +14,15 @@ export interface Player {
   // Optional honorary title an admin can set (e.g. "Club Coach", "Club
   // Secretary") — purely a display label, no bearing on actual permissions.
   role_title: string | null;
+  // My Account additions (2026-08-28) — see migration
+  // 0044_add_account_settings_columns for the full rationale on each.
+  emergency_contact_name: string | null;
+  emergency_contact_phone: string | null;
+  dark_mode: boolean;
+  notify_new_events: boolean;
+  notify_new_notices: boolean;
+  notify_badge_earned: boolean;
+  notify_rank_change: boolean;
 }
 
 export interface PlayerStatus extends Player {
@@ -95,6 +104,15 @@ export interface EventRow {
   // (e.g. a plain announcement). Defaults true so existing events keep
   // behaving exactly as before.
   rsvp_enabled: boolean;
+  // Added 2026-08-28 — admin opt-in per event for the auto-refreshed
+  // weather forecast (see lib/weather.ts). Off by default since not every
+  // event is outdoors.
+  weather_enabled: boolean;
+  // Added 2026-08-28 — admin "save the date" entries. Enforced server-side
+  // by RLS (see 0047_add_private_events.sql), not just hidden in the UI —
+  // a non-admin's Supabase query for events simply never returns these
+  // rows at all.
+  is_private: boolean;
 }
 
 export interface EventRsvpRow {
@@ -147,6 +165,20 @@ export interface NoticeRow {
   // who posted this notice, shown in the card's meta line. Optional since
   // some queries (e.g. right after an insert) won't have joined it.
   players?: { display_name: string } | null;
+  // Admin poll (2026-08-28) — optional yes/no or multiple-choice poll
+  // attached to a notice, toggled per-post. poll_question/poll_options are
+  // only meaningful when poll_enabled is true.
+  poll_enabled: boolean;
+  poll_question: string | null;
+  poll_options: string[];
+}
+
+export interface NoticePollVote {
+  id: string;
+  notice_id: string;
+  player_id: string;
+  option_index: number;
+  created_at: string;
 }
 
 // Competitions (2026-08-26) — fixed-team doubles, group stage followed by

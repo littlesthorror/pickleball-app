@@ -639,6 +639,15 @@ export default function AdminManagement({ currentUserId }: { currentUserId: stri
                 {p.is_admin && " · admin"}
                 {p.role_title && ` · ${p.role_title}`}
               </div>
+              {/* Emergency contact (2026-08-28) — set by the player themselves
+                  in My Account, shown here since admins are the only people
+                  who should ever see it. */}
+              {(p.emergency_contact_name || p.emergency_contact_phone) && (
+                <div className="stat-meta" style={{ marginTop: 2 }}>
+                  🚨 Emergency contact: {p.emergency_contact_name ?? "—"}
+                  {p.emergency_contact_phone ? ` · ${p.emergency_contact_phone}` : ""}
+                </div>
+              )}
             </div>
           </div>
 

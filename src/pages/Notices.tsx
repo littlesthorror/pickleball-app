@@ -4,7 +4,8 @@ import { supabase } from "../supabaseClient";
 import { linkify } from "../lib/linkify";
 import { useDraft } from "../lib/useDraft";
 import Lightbox from "../components/Lightbox";
-import type { NoticeAttachment, NoticeRow } from "../types";
+import { compressImageFile } from "../lib/imageCompress";
+import type { NoticeAttachment, NoticePollVote, NoticeRow } from "../types";
 
 const NOTICE_DRAFT_KEY = "sideline-draft-notice";
 
@@ -91,10 +92,105 @@ function extractYouTubeIds(text: string): string[] {
   return ids;
 }
 
-export default function Notices({ isAdmin }: { isAdmin: boolean }) {
+// Renders a poll's question, options (with live vote counts/percentages
+// once results are visible), and lets the signed-in player cast or change
+// their vote. Kept as its own component since it has real interaction
+// state (which option is being submitted) separate from the rest of the
+// card. Results are shown to everyone immediately — Ben's polls are things
+// like "best night for socials", not secret ballots, so there's no reason
+// to hide the running tally from someone who hasn't voted yet.
+function NoticePoll({
+  notice,
+  playerId,
+  votes,
+  onVote,
+}: {
+  notice: NoticeRow;
+  playerId: string;
+  votes: NoticePollVote[];
+  onVote: (noticeId: string, optionIndex: number) => Promise<void>;
+}) {
+  const [submitting, setSubmitting] = useState(false);
+  const myVote = votes.find((v) => v.player_id === playerId);
+  const totalVotes = votes.length;
+
+  async function handleVote(optionIndex: number) {
+    if (submitting || optionIndex === myVote?.option_index) return;
+    setSubmitting(true);
+    await onVote(notice.id, optionIndex);
+    setSubmitting(false);
+  }
+
+  return (
+    <div
+      style={{
+        marginTop: 12,
+        padding: "12px 14px",
+        borderRadius: "var(--radius-md)",
+        border: "1px solid var(--border)",
+        background: "rgba(10, 26, 51, 0.02)",
+      }}
+    >
+      <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "var(--heading)", marginBottom: 8 }}>
+        📊 {notice.poll_question}
+      </div>
+      {notice.poll_options.map((option, i) => {
+        const count = votes.filter((v) => v.option_index === i).length;
+        const pct = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
+        const selected = myVote?.option_index === i;
+        return (
+          <div
+            key={i}
+            role="button"
+            tabIndex={0}
+            onClick={() => handleVote(i)}
+            style={{
+              position: "relative",
+              marginTop: 6,
+              padding: "8px 10px",
+              borderRadius: 8,
+              border: selected ? "1.5px solid var(--orange-600)" : "1px solid var(--border)",
+              cursor: submitting ? "default" : "pointer",
+              overflow: "hidden",
+              opacity: submitting ? 0.7 : 1,
+            }}
+          >
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                width: `${pct}%`,
+                background: selected ? "var(--orange-100)" : "rgba(10, 26, 51, 0.05)",
+                transition: "width 0.2s ease",
+              }}
+            />
+            <div style={{ position: "relative", display: "flex", justifyContent: "space-between", fontSize: "0.85rem" }}>
+              <span style={{ fontWeight: selected ? 700 : 500 }}>
+                {selected ? "✓ " : ""}
+                {option}
+              </span>
+              <span className="stat-meta" style={{ margin: 0 }}>
+                {count} · {pct}%
+              </span>
+            </div>
+          </div>
+        );
+      })}
+      <p className="stat-meta" style={{ marginTop: 8, marginBottom: 0 }}>
+        {totalVotes} vote{totalVotes === 1 ? "" : "s"} so far{myVote ? " · tap another option to change yours" : ""}
+      </p>
+    </div>
+  );
+}
+
+export default function Notices({ isAdmin, playerId }: { isAdmin: boolean; playerId: string }) {
   const [notices, setNotices] = useState<NoticeRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Poll votes for every poll-enabled notice currently loaded, keyed by
+  // notice id — fetched alongside the notices themselves in load() rather
+  // than per-card, so opening the page doesn't fire N extra queries.
+  const [pollVotes, setPollVotes] = useState<Map<string, NoticePollVote[]>>(new Map());
 
   // showForm/editingId/title/body live in one sessionStorage-backed draft
   // — see useDraft.ts — so the form survives a tab reload (Android's
@@ -109,6 +205,12 @@ export default function Notices({ isAdmin }: { isAdmin: boolean }) {
     editingId: "",
     title: "",
     body: "",
+    // Poll fields (2026-08-28) — pollOptionsJson holds a JSON-stringified
+    // string[] since useDraft is deliberately string-only (see its own
+    // comment); parsed/re-stringified around every edit below.
+    pollEnabled: "",
+    pollQuestion: "",
+    pollOptionsJson: "",
   });
   const showForm = draft.showForm === "1";
   const editingId = draft.editingId || null;
@@ -138,7 +240,9 @@ export default function Notices({ isAdmin }: { isAdmin: boolean }) {
   const [filePickerReloadWarning, setFilePickerReloadWarning] = useState(false);
   // How many notices to show before a "Show more" button appears — keeps
   // the page from growing indefinitely as notices pile up over time.
-  const PAGE_SIZE = 6;
+  // Reduced from 6 to 3 (2026-08-28) at Ben's request, to keep the page
+  // feeling less crowded.
+  const PAGE_SIZE = 3;
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   function load() {
@@ -149,11 +253,52 @@ export default function Notices({ isAdmin }: { isAdmin: boolean }) {
       .order("pinned", { ascending: false })
       .order("created_at", { ascending: false })
       .then(({ data, error }) => {
-        if (error) setError(error.message);
-        else setNotices((data ?? []) as unknown as NoticeRow[]);
+        if (error) {
+          setError(error.message);
+          setLoading(false);
+          return;
+        }
+        const rows = (data ?? []) as unknown as NoticeRow[];
+        setNotices(rows);
         setLoading(false);
         setVisibleCount(PAGE_SIZE);
+
+        const pollNoticeIds = rows.filter((n) => n.poll_enabled).map((n) => n.id);
+        if (pollNoticeIds.length === 0) {
+          setPollVotes(new Map());
+          return;
+        }
+        supabase
+          .from("notice_poll_votes")
+          .select("*")
+          .in("notice_id", pollNoticeIds)
+          .then(({ data: voteRows, error: voteError }) => {
+            if (voteError || !voteRows) return;
+            const byNotice = new Map<string, NoticePollVote[]>();
+            for (const v of voteRows as NoticePollVote[]) {
+              const list = byNotice.get(v.notice_id) ?? [];
+              list.push(v);
+              byNotice.set(v.notice_id, list);
+            }
+            setPollVotes(byNotice);
+          });
       });
+  }
+
+  async function handleVote(noticeId: string, optionIndex: number) {
+    const { error } = await supabase
+      .from("notice_poll_votes")
+      .upsert({ notice_id: noticeId, player_id: playerId, option_index: optionIndex }, { onConflict: "notice_id,player_id" });
+    if (error) {
+      alert(`Couldn't record your vote: ${error.message}`);
+      return;
+    }
+    const { data: voteRows } = await supabase.from("notice_poll_votes").select("*").eq("notice_id", noticeId);
+    setPollVotes((prev) => {
+      const next = new Map(prev);
+      next.set(noticeId, (voteRows ?? []) as NoticePollVote[]);
+      return next;
+    });
   }
 
   useEffect(load, []);
@@ -214,7 +359,7 @@ export default function Notices({ isAdmin }: { isAdmin: boolean }) {
   }, [editingId, notices]);
 
   function openCreateForm() {
-    setDraft({ showForm: "1", editingId: "", title: "", body: "" });
+    setDraft({ showForm: "1", editingId: "", title: "", body: "", pollEnabled: "", pollQuestion: "", pollOptionsJson: "" });
     setExistingAttachments([]);
     setRemovedPaths(new Set());
     setNewFiles([]);
@@ -225,7 +370,15 @@ export default function Notices({ isAdmin }: { isAdmin: boolean }) {
   }
 
   function openEditForm(notice: NoticeRow) {
-    setDraft({ showForm: "1", editingId: notice.id, title: notice.title, body: notice.body ?? "" });
+    setDraft({
+      showForm: "1",
+      editingId: notice.id,
+      title: notice.title,
+      body: notice.body ?? "",
+      pollEnabled: notice.poll_enabled ? "1" : "",
+      pollQuestion: notice.poll_question ?? "",
+      pollOptionsJson: JSON.stringify(notice.poll_options?.length ? notice.poll_options : ["", ""]),
+    });
     setExistingAttachments(attachmentsFor(notice));
     setRemovedPaths(new Set());
     setNewFiles([]);
@@ -314,9 +467,14 @@ export default function Notices({ isAdmin }: { isAdmin: boolean }) {
 
     const uploaded: NoticeAttachment[] = [];
     for (const f of newFiles) {
-      const ext = f.name.split(".").pop() || "dat";
+      // Downscale+re-encode photo attachments before upload (2026-08-28) —
+      // a raw phone photo can be several MB at 3-4000px, none of which is
+      // needed for a noticeboard thumbnail/lightbox. Non-image files (and
+      // GIFs/SVGs) pass through untouched — see lib/imageCompress.ts.
+      const compressed = await compressImageFile(f);
+      const ext = compressed.name.split(".").pop() || "dat";
       const path = `${crypto.randomUUID()}.${ext}`;
-      const { error: uploadError } = await supabase.storage.from("notices").upload(path, f);
+      const { error: uploadError } = await supabase.storage.from("notices").upload(path, compressed);
       if (uploadError) {
         setSaveError(uploadError.message);
         setSaving(false);
@@ -328,12 +486,31 @@ export default function Notices({ isAdmin }: { isAdmin: boolean }) {
     const keptExisting = existingAttachments.filter((a) => !removedPaths.has(a.path));
     const attachments = [...keptExisting, ...uploaded];
 
+    // Poll fields — only meaningful when the toggle is on, and only kept
+    // if there are at least 2 non-blank options (anything less isn't a
+    // real poll).
+    const pollEnabled = draft.pollEnabled === "1";
+    let pollOptions: string[] = [];
+    if (pollEnabled) {
+      try {
+        pollOptions = (JSON.parse(draft.pollOptionsJson || "[]") as string[]).map((o) => o.trim()).filter(Boolean);
+      } catch {
+        pollOptions = [];
+      }
+    }
+    const pollActuallyEnabled = pollEnabled && !!draft.pollQuestion.trim() && pollOptions.length >= 2;
+    const pollPayload = {
+      poll_enabled: pollActuallyEnabled,
+      poll_question: pollActuallyEnabled ? draft.pollQuestion.trim() : null,
+      poll_options: pollActuallyEnabled ? pollOptions : [],
+    };
+
     let noticeId = editingId;
 
     if (editingId) {
       const { error } = await supabase
         .from("notices")
-        .update({ title: draft.title.trim(), body: draft.body.trim() || null, attachments })
+        .update({ title: draft.title.trim(), body: draft.body.trim() || null, attachments, ...pollPayload })
         .eq("id", editingId);
 
       if (error) {
@@ -354,6 +531,7 @@ export default function Notices({ isAdmin }: { isAdmin: boolean }) {
           body: draft.body.trim() || null,
           attachments,
           created_by: userId,
+          ...pollPayload,
         })
         .select("id")
         .single();
@@ -372,9 +550,10 @@ export default function Notices({ isAdmin }: { isAdmin: boolean }) {
     // than always overwriting the same path) so browsers don't keep
     // showing a cached original after a replacement.
     if (coverFile && noticeId) {
-      const ext = coverFile.name.split(".").pop() || "jpg";
+      const compressedCover = await compressImageFile(coverFile);
+      const ext = compressedCover.name.split(".").pop() || "jpg";
       const path = `notices/${noticeId}/cover-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-      const { error: uploadError } = await supabase.storage.from("notices").upload(path, coverFile);
+      const { error: uploadError } = await supabase.storage.from("notices").upload(path, compressedCover);
       if (uploadError) {
         setSaveError(`Notice saved, but the headline image failed to upload: ${uploadError.message}`);
         setSaving(false);
@@ -518,6 +697,14 @@ export default function Notices({ isAdmin }: { isAdmin: boolean }) {
             >
               i
             </button>
+            <button
+              type="button"
+              onClick={() => wrapSelection("__")}
+              title="Underline"
+              style={{ width: "auto", marginTop: 0, padding: "4px 12px", textDecoration: "underline" }}
+            >
+              U
+            </button>
           </div>
           <textarea
             ref={bodyRef}
@@ -527,9 +714,95 @@ export default function Notices({ isAdmin }: { isAdmin: boolean }) {
             style={{ fontFamily: "inherit", fontSize: "1rem", resize: "vertical", minHeight: 140 }}
           />
           <p className="stat-meta" style={{ marginTop: 4 }}>
-            Select some text and tap B or i to format it, or type **bold** / *italic* yourself. Paste a YouTube link
-            anywhere and it'll show as a tap-to-play thumbnail.
+            Select some text and tap B, i or U to format it, or type **bold** / *italic* / __underline__ yourself.
+            Paste a YouTube link anywhere and it'll show as a tap-to-play thumbnail.
           </p>
+
+          <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <input
+              type="checkbox"
+              checked={draft.pollEnabled === "1"}
+              onChange={(e) => {
+                const checked = e.target.checked;
+                setDraft((d) => ({
+                  ...d,
+                  pollEnabled: checked ? "1" : "",
+                  pollOptionsJson: checked && !d.pollOptionsJson ? JSON.stringify(["", ""]) : d.pollOptionsJson,
+                }));
+              }}
+              style={{ width: "auto" }}
+            />
+            Add a poll to this notice
+          </label>
+
+          {draft.pollEnabled === "1" && (
+            <div style={{ marginTop: 10, marginBottom: 10 }}>
+              <label style={{ marginTop: 0 }}>Poll question</label>
+              <input
+                type="text"
+                value={draft.pollQuestion}
+                onChange={(e) => setDraft((d) => ({ ...d, pollQuestion: e.target.value }))}
+                placeholder="e.g. Best night for the social?"
+                style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)" }}
+              />
+
+              <label>Options</label>
+              {(() => {
+                let options: string[] = [];
+                try {
+                  options = JSON.parse(draft.pollOptionsJson || "[]");
+                } catch {
+                  options = ["", ""];
+                }
+                return (
+                  <>
+                    {options.map((opt, i) => (
+                      <div key={i} style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+                        <input
+                          type="text"
+                          value={opt}
+                          onChange={(e) => {
+                            const next = [...options];
+                            next[i] = e.target.value;
+                            setDraft((d) => ({ ...d, pollOptionsJson: JSON.stringify(next) }));
+                          }}
+                          placeholder={`Option ${i + 1}`}
+                          style={{ flex: 1, padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)" }}
+                        />
+                        {options.length > 2 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const next = options.filter((_, idx) => idx !== i);
+                              setDraft((d) => ({ ...d, pollOptionsJson: JSON.stringify(next) }));
+                            }}
+                            style={{ width: "auto", marginTop: 0, padding: "4px 10px", background: "transparent", color: "var(--danger)" }}
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    {options.length < 6 && (
+                      <span
+                        className="link-action"
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => setDraft((d) => ({ ...d, pollOptionsJson: JSON.stringify([...options, ""]) }))}
+                        style={{ fontSize: "0.82rem" }}
+                      >
+                        + Add option
+                      </span>
+                    )}
+                  </>
+                );
+              })()}
+              <p className="stat-meta" style={{ marginTop: 6 }}>
+                Needs a question and at least 2 options to actually show — results are visible to everyone as
+                soon as they vote.
+              </p>
+            </div>
+          )}
 
           <label>Headline image (optional)</label>
           {existingCoverPath && !removeCover && !coverFile && (
@@ -555,8 +828,19 @@ export default function Notices({ isAdmin }: { isAdmin: boolean }) {
             one, the club badge is shown instead.
           </p>
 
-          <label>Attachments (optional)</label>
+          <label>Photo attachment (optional)</label>
+          <input type="file" accept="image/*" multiple onClick={armFilePicker} onChange={handleFilesChosen} />
+          <p className="stat-meta" style={{ marginTop: 4 }}>
+            Opens your phone's Photos/Gallery — add as many as you like. Use this instead of Files below if
+            attaching keeps failing on your phone (a known issue on some Android/Samsung phones when picking a
+            file from the Files app or Google Drive — Gallery isn't affected).
+          </p>
+
+          <label>File attachment (optional)</label>
           <input type="file" multiple onClick={armFilePicker} onChange={handleFilesChosen} />
+          <p className="stat-meta" style={{ marginTop: 4 }}>
+            For non-photo files (team sheets, PDFs, etc.) — opens the Files app.
+          </p>
 
           {existingAttachments.length > 0 && (
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
@@ -686,6 +970,10 @@ export default function Notices({ isAdmin }: { isAdmin: boolean }) {
                   <p className="rich-text" style={{ margin: "10px 0 0" }}>
                     {linkify(n.body)}
                   </p>
+                )}
+
+                {n.poll_enabled && n.poll_options.length >= 2 && (
+                  <NoticePoll notice={n} playerId={playerId} votes={pollVotes.get(n.id) ?? []} onVote={handleVote} />
                 )}
 
                 {youtubeIds.length > 0 && (

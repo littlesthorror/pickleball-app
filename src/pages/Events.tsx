@@ -3,7 +3,38 @@ import type { ChangeEvent } from "react";
 import { supabase } from "../supabaseClient";
 import { useDraft } from "../lib/useDraft";
 import { linkify } from "../lib/linkify";
+import { getEventForecast } from "../lib/weather";
+import type { EventForecast } from "../lib/weather";
 import type { EventPosterPlaceholder, EventRow } from "../types";
+
+// Small self-contained weather chip — fetches its own forecast (see
+// lib/weather.ts) and renders nothing at all if the event doesn't have
+// weather turned on, the forecast isn't available yet (more than ~16 days
+// out), or the request fails. Used in both the compact row card and the
+// full ticket popup.
+function WeatherPill({ event }: { event: EventRow }) {
+  const [forecast, setForecast] = useState<EventForecast | null>(null);
+
+  useEffect(() => {
+    if (!event.weather_enabled) return;
+    let cancelled = false;
+    getEventForecast(event.event_date, event.event_time).then((f) => {
+      if (!cancelled) setForecast(f);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [event.weather_enabled, event.event_date, event.event_time]);
+
+  if (!event.weather_enabled || !forecast) return null;
+  return (
+    <span title={forecast.description}>
+      {" · "}
+      {forecast.emoji} {forecast.tempC}°C
+      {forecast.precipitationChance != null && forecast.precipitationChance >= 30 ? ` · ${forecast.precipitationChance}% rain` : ""}
+    </span>
+  );
+}
 
 function formatEventDate(dateStr: string) {
   // event_date is a plain date (no time zone) — parse as local, not UTC,
@@ -221,12 +252,18 @@ function EventRowCard({
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="opponent" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {event.is_private && (
+              <span title="Private — only admins can see this" style={{ marginRight: 4 }}>
+                🔒
+              </span>
+            )}
             {event.title}
           </div>
           <div className="meta">
             {formatEventDate(event.event_date)}
             {formatEventTime(event.event_time) ? ` · ${formatEventTime(event.event_time)}` : ""}
             {event.location ? ` · ${event.location}` : ""}
+            <WeatherPill event={event} />
           </div>
         </div>
         <span style={{ color: "var(--text-muted)", fontSize: "1.1rem", flexShrink: 0 }}>›</span>
@@ -394,10 +431,18 @@ function EventTicketModal({
 
         <div className="ticket-header">
           {event.format && <div className="ticket-meta">{event.format}</div>}
-          <h2 className="ticket-title">{event.title}</h2>
+          <h2 className="ticket-title">
+            {event.is_private && (
+              <span title="Private — only admins can see this" style={{ marginRight: 6 }}>
+                🔒
+              </span>
+            )}
+            {event.title}
+          </h2>
           <div className="ticket-when">
             📅 <strong>{formatEventDate(event.event_date)}</strong>
             {formatEventTime(event.event_time) ? ` · ${formatEventTime(event.event_time)}` : ""}
+            <WeatherPill event={event} />
           </div>
           {event.location && <div className="ticket-when">📍 {event.location}</div>}
         </div>
@@ -546,6 +591,12 @@ const EMPTY_DRAFT = {
   // Defaults on, so existing behaviour (every event gets an "I'm in"
   // button) doesn't change unless an admin deliberately turns it off.
   rsvpEnabled: "1",
+  // Defaults off — weather doesn't apply to every event (indoor socials,
+  // announcements, etc.), so an admin opts in rather than out.
+  weatherEnabled: "",
+  // Defaults off — a "save the date" admins can plant on the calendar
+  // without regular members seeing it at all (RLS-enforced, see types.ts).
+  isPrivate: "",
 };
 
 export default function Events({ isAdmin, playerId }: { isAdmin: boolean; playerId: string }) {
@@ -671,6 +722,8 @@ export default function Events({ isAdmin, playerId }: { isAdmin: boolean; player
       waitlistEnabled: e.waitlist_enabled ? "1" : "",
       posterPlaceholder: e.poster_placeholder ?? "",
       rsvpEnabled: e.rsvp_enabled ? "1" : "",
+      weatherEnabled: e.weather_enabled ? "1" : "",
+      isPrivate: e.is_private ? "1" : "",
     });
     setExistingPosterPath(e.poster_path);
     setPosterFile(null);
@@ -704,6 +757,8 @@ export default function Events({ isAdmin, playerId }: { isAdmin: boolean; player
       waitlist_enabled: draft.waitlistEnabled === "1",
       poster_placeholder: (draft.posterPlaceholder || null) as EventPosterPlaceholder | null,
       rsvp_enabled: draft.rsvpEnabled === "1",
+      weather_enabled: draft.weatherEnabled === "1",
+      is_private: draft.isPrivate === "1",
     };
 
     let eventId = editingId;
@@ -907,6 +962,20 @@ export default function Events({ isAdmin, playerId }: { isAdmin: boolean; player
             Turn this off for events where attendance isn't tracked (e.g. a general announcement).
           </p>
 
+          <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
+            <input
+              type="checkbox"
+              checked={draft.weatherEnabled === "1"}
+              onChange={(e) => setDraft((d) => ({ ...d, weatherEnabled: e.target.checked ? "1" : "" }))}
+              style={{ width: "auto" }}
+            />
+            Show a weather forecast on this event
+          </label>
+          <p className="stat-meta" style={{ marginTop: 2 }}>
+            For the club's own courts — turn on for outdoor sessions, leave off for indoor/social events where it
+            doesn't apply. Only shows once the forecast is available (within about 16 days of the event).
+          </p>
+
           {draft.rsvpEnabled === "1" && (
             <>
               <label>Capacity (optional)</label>
@@ -932,6 +1001,20 @@ export default function Events({ isAdmin, playerId }: { isAdmin: boolean; player
               )}
             </>
           )}
+
+          <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
+            <input
+              type="checkbox"
+              checked={draft.isPrivate === "1"}
+              onChange={(e) => setDraft((d) => ({ ...d, isPrivate: e.target.checked ? "1" : "" }))}
+              style={{ width: "auto" }}
+            />
+            🔒 Keep post private (admins only)
+          </label>
+          <p className="stat-meta" style={{ marginTop: 2 }}>
+            A "save the date" only admins can see — hidden from the calendar, Upcoming/Past lists, and search for
+            everyone else.
+          </p>
 
           <label>Description (optional)</label>
           <textarea

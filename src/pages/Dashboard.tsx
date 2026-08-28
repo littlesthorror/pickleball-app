@@ -12,8 +12,11 @@ import { Line } from "react-chartjs-2";
 import { supabase } from "../supabaseClient";
 import Avatar from "../components/Avatar";
 import ShareCard from "../components/ShareCard";
+import SeasonWrappedCard from "../components/SeasonWrappedCard";
 import { computeBadges } from "../lib/badges";
 import type { MonthlyFinish, CompetitionPlacement, SeasonTop10Finish } from "../lib/badges";
+import { computeSeasonWrappedStats } from "../lib/seasonWrapped";
+import type { SeasonWrappedStats } from "../lib/seasonWrappedImage";
 import { isBirthdayToday } from "../lib/birthday";
 import { getTier, getNextTier } from "../lib/tiers";
 import { getCurrentSeason, getTrackedSeasons } from "../lib/seasons";
@@ -86,6 +89,10 @@ export default function Dashboard({
   const [error, setError] = useState<string | null>(null);
   const [xAxis, setXAxis] = useState<XAxisMode>("games");
   const [showShareCard, setShowShareCard] = useState(false);
+  // Season Wrapped (2026-08-28) — which past season's recap card is
+  // currently open, if any. Only ever set on your own dashboard (see the
+  // "Wrapped" link next to each season-history row below).
+  const [wrappedSeasonKey, setWrappedSeasonKey] = useState<string | null>(null);
   // The badge grid's tooltip previously relied on the native `title`
   // attribute, which only shows on desktop hover — silent on a phone,
   // which is how most people actually use this. Tapping a badge now
@@ -501,6 +508,22 @@ export default function Dashboard({
       ? pastSeasonEntries.reduce((best, e) => (e.ratingGain > best.ratingGain ? e : best))
       : null;
 
+  // Season Wrapped stats for whichever past season's card is currently
+  // open — computed on demand rather than for every past season up front,
+  // since it's just a lookup-and-crunch over data already in memory
+  // (history + badges) once wrappedSeasonKey is set.
+  const wrappedStats: SeasonWrappedStats | null = useMemo(() => {
+    if (!wrappedSeasonKey) return null;
+    const entry = pastSeasonEntries.find((e) => e.season.key === wrappedSeasonKey);
+    if (!entry) return null;
+    return computeSeasonWrappedStats(
+      entry.season,
+      { games: entry.games, wins: entry.wins, rank: entry.rank, ratingGain: entry.ratingGain, endRating: entry.rating },
+      history,
+      badges
+    );
+  }, [wrappedSeasonKey, pastSeasonEntries, history, badges]);
+
   // Your own record against this one specific player, regardless of who
   // either of you partnered with in any given match — only computed when
   // viewing someone else's dashboard. Matches where you were teammates
@@ -675,7 +698,7 @@ export default function Dashboard({
           </div>
           <div>
             <div className="stat-meta" style={{ marginTop: 0 }}>Personal best</div>
-            <span style={{ fontWeight: 700, color: "var(--navy-900)" }}>
+            <span style={{ fontWeight: 700, color: "var(--heading)" }}>
               {Math.round(personalBest.rating)}
               {personalBest.date && (
                 <span className="stat-meta" style={{ fontWeight: 400 }}> · {formatDate(personalBest.date)}</span>
@@ -705,7 +728,7 @@ export default function Dashboard({
         </p>
         {bestPartner && (
           <p className="stat-meta" style={{ marginTop: 8, marginBottom: 0 }}>
-            Best partner: <strong style={{ color: "var(--navy-900)" }}>{bestPartner.name}</strong> — {bestPartner.wins}{" "}
+            Best partner: <strong style={{ color: "var(--heading)" }}>{bestPartner.name}</strong> — {bestPartner.wins}{" "}
             win{bestPartner.wins === 1 ? "" : "s"} together
           </p>
         )}
@@ -793,7 +816,20 @@ export default function Dashboard({
                       {Math.round(e.ratingGain)} rating
                     </div>
                   </div>
-                  <div className="score">#{e.rank}</div>
+                  <div style={{ textAlign: "right" }}>
+                    <div className="score">#{e.rank}</div>
+                    {isOwnProfile && e.games > 0 && (
+                      <span
+                        className="link-action"
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => setWrappedSeasonKey(e.season.key)}
+                        style={{ fontSize: "0.72rem" }}
+                      >
+                        Wrapped ✨
+                      </span>
+                    )}
+                  </div>
                 </div>
               ))}
             </>
@@ -804,14 +840,14 @@ export default function Dashboard({
               <h2 style={{ marginTop: 16 }}>Personal bests</h2>
               {bestRankEntry && (
                 <p className="stat-meta" style={{ marginBottom: 4 }}>
-                  Best finish: <strong style={{ color: "var(--navy-900)" }}>#{bestRankEntry.rank}</strong> (
+                  Best finish: <strong style={{ color: "var(--heading)" }}>#{bestRankEntry.rank}</strong> (
                   {bestRankEntry.season.label})
                 </p>
               )}
               {bestGainEntry && bestGainEntry.ratingGain > 0 && (
                 <p className="stat-meta" style={{ marginBottom: 0 }}>
                   Best season gain:{" "}
-                  <strong style={{ color: "var(--navy-900)" }}>+{Math.round(bestGainEntry.ratingGain)}</strong> (
+                  <strong style={{ color: "var(--heading)" }}>+{Math.round(bestGainEntry.ratingGain)}</strong> (
                   {bestGainEntry.season.label})
                 </p>
               )}
@@ -886,6 +922,10 @@ export default function Dashboard({
           leaderboardPosition={leaderboardPosition}
           onClose={() => setShowShareCard(false)}
         />
+      )}
+
+      {isOwnProfile && wrappedStats && (
+        <SeasonWrappedCard player={player} stats={wrappedStats} onClose={() => setWrappedSeasonKey(null)} />
       )}
     </div>
   );

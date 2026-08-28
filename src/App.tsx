@@ -117,6 +117,15 @@ export default function App() {
     loadPlayer();
   }, [session]);
 
+  // Dark mode (2026-08-28) — a data-theme attribute on <html>, driven by
+  // the signed-in player's own saved preference (see Profile.tsx), so it
+  // follows the account across devices rather than being tied to one
+  // browser's storage. index.css has the actual dark palette overrides
+  // scoped to [data-theme="dark"].
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", player?.dark_mode ? "dark" : "light");
+  }, [player?.dark_mode]);
+
   // "New since you last looked" tracking for the Notices/Events nav
   // buttons — last_seen_*_at lives on the players row itself (not the
   // player_status view, which doesn't expose it) so it's fetched
@@ -375,7 +384,7 @@ export default function App() {
                   )}
                   {tab === "club-stats" && <ClubStats />}
                   {tab === "events" && <Events isAdmin={effectiveIsAdmin} playerId={player.id} />}
-                  {tab === "notices" && <Notices isAdmin={effectiveIsAdmin} />}
+                  {tab === "notices" && <Notices isAdmin={effectiveIsAdmin} playerId={player.id} />}
                   {tab === "faq" && <FAQ isAdmin={effectiveIsAdmin} />}
                   {tab === "competitions" && (showCompetitionsTab || effectiveIsAdmin) && (
                     <Competitions isAdmin={effectiveIsAdmin} currentUserId={player.id} />

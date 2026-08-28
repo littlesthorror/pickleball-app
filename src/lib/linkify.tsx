@@ -1,13 +1,14 @@
 import type { ReactNode } from "react";
 
 // Turns plain-text URLs (http/https or bare "www.") into clickable links,
-// and a small set of markdown-style markers into bold/italic text — all in
-// one pass, styled via the .rich-text rules in index.css. Used for FAQ
-// answers, notice bodies, and event descriptions — admins just type
-// **bold**, *italic* / _italic_, or paste a link; no rich-text editor
-// needed. Bold added 2026-08-27 at Ben's request ("formatting options to
-// Notices, e.g. bold/italicise") — kept as plain regex rather than pulling
-// in a markdown library, matching how linkify itself was already built.
+// and a small set of markdown-style markers into bold/italic/underline
+// text — all in one pass, styled via the .rich-text rules in index.css.
+// Used for FAQ answers, notice bodies, and event descriptions — admins
+// just type **bold**, *italic* / _italic_, __underline__, or paste a
+// link; no rich-text editor needed. Bold/italic added 2026-08-27,
+// underline added 2026-08-28 (both at Ben's request) — kept as plain
+// regex rather than pulling in a markdown library, matching how linkify
+// itself was already built.
 //
 // One deliberate limitation: a single stray "*" or "_" (not part of a
 // pair) won't get treated as formatting — the patterns require the
@@ -20,9 +21,13 @@ import type { ReactNode } from "react";
 // bold" would greedily treat everything between the stray "*" and the
 // first "*" of "**12**" as italic. Confirmed against that exact case plus
 // bullet-style lines starting with "* " (common in notice bodies) before
-// shipping.
+// shipping. Underline (__..__) is checked before single-underscore italic
+// for the same reason bold is checked before italic — otherwise
+// "__underline__" would get parsed as italic-wrapping-an-underscore
+// instead. The (?!_) after the single-underscore closer stops it
+// mis-firing on the boundary of a double-underscore pair.
 const TOKEN_PATTERN =
-  /(https?:\/\/[^\s]+|www\.[^\s]+)|\*\*([^\n]+?)\*\*|\*([^\n*]+?)\*(?!\*)|_([^\n_]+?)_/gi;
+  /(https?:\/\/[^\s]+|www\.[^\s]+)|\*\*([^\n]+?)\*\*|\*([^\n*]+?)\*(?!\*)|__([^\n]+?)__|_([^\n_]+?)_(?!_)/gi;
 const TRAILING_PUNCTUATION = /[.,!?;:)\]]+$/;
 
 export function linkify(text: string): ReactNode[] {
@@ -38,7 +43,7 @@ export function linkify(text: string): ReactNode[] {
       nodes.push(text.slice(lastIndex, match.index));
     }
 
-    const [, urlToken, boldContent, italicStarContent, italicUnderscoreContent] = match;
+    const [, urlToken, boldContent, italicStarContent, underlineContent, italicUnderscoreContent] = match;
 
     if (urlToken) {
       let url = urlToken;
@@ -57,6 +62,8 @@ export function linkify(text: string): ReactNode[] {
       if (trailing) nodes.push(trailing);
     } else if (boldContent !== undefined) {
       nodes.push(<strong key={`bold-${key++}`}>{boldContent}</strong>);
+    } else if (underlineContent !== undefined) {
+      nodes.push(<u key={`underline-${key++}`}>{underlineContent}</u>);
     } else if (italicStarContent !== undefined || italicUnderscoreContent !== undefined) {
       nodes.push(<em key={`italic-${key++}`}>{italicStarContent ?? italicUnderscoreContent}</em>);
     }

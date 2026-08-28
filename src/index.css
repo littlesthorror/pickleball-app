@@ -25,8 +25,36 @@
   --radius-md: 12px;
   --radius-sm: 8px;
   --shadow-card: 0 1px 2px rgba(16, 24, 40, 0.04), 0 8px 24px rgba(16, 24, 40, 0.06);
+  /* Separate token for heading/emphasis TEXT color (2026-08-28, dark mode)
+     — deliberately distinct from --navy-900 itself, which several
+     components (badges, the event ticket header, the Competitions title
+     banner, the win-probability box) also use as a fixed dark BACKGROUND
+     fill paired with hardcoded white text. Those need to stay dark
+     regardless of theme, so only this text-specific token gets swapped
+     for something lighter in [data-theme="dark"] below — --navy-900
+     itself is untouched. */
+  --heading: var(--navy-900);
   font-family: -apple-system, "SF Pro Text", system-ui, "Segoe UI", Roboto, sans-serif;
   color-scheme: light;
+}
+
+/* Dark mode (2026-08-28) — toggled via a data-theme attribute on <html>,
+   set from the signed-in player's saved dark_mode preference (see
+   App.tsx/Profile.tsx). Only overrides the core "page chrome" tokens
+   (background/card/border/body text/headings) — the club's brand accent
+   colors (navy/orange/sky) and the handful of components that use
+   --navy-900 as a deliberate fixed-dark background stay exactly as
+   designed, so badges/tickets/banners don't flip to a broken light-on-light
+   or light-on-dark combination. */
+[data-theme="dark"] {
+  --bg: #0b0f17;
+  --card: #141a24;
+  --border: #262f3d;
+  --text: #dfe4ec;
+  --text-muted: #8b96a5;
+  --heading: #eef1f6;
+  --orange-100: #3a2a1a;
+  color-scheme: dark;
 }
 
 * {
@@ -78,7 +106,7 @@ body {
 .brand-name {
   font-weight: 800;
   font-size: 1.6rem;
-  color: var(--navy-900);
+  color: var(--heading);
   letter-spacing: -0.03em;
   white-space: nowrap;
 }
@@ -267,14 +295,14 @@ h1 {
   font-size: 1.5rem;
   font-weight: 700;
   letter-spacing: -0.02em;
-  color: var(--navy-900);
+  color: var(--heading);
   margin: 0 0 4px;
 }
 
 h2 {
   font-size: 1.05rem;
   font-weight: 700;
-  color: var(--navy-900);
+  color: var(--heading);
   margin: 0 0 12px;
 }
 
@@ -393,7 +421,7 @@ label {
 .stat-hero .value {
   font-size: 2.6rem;
   font-weight: 800;
-  color: var(--navy-900);
+  color: var(--heading);
   letter-spacing: -0.03em;
 }
 
@@ -476,7 +504,7 @@ label {
 .match-row .score {
   font-variant-numeric: tabular-nums;
   font-weight: 700;
-  color: var(--navy-900);
+  color: var(--heading);
   margin-right: 12px;
 }
 
@@ -513,7 +541,38 @@ label {
 .leaderboard-row .rating {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  color: var(--navy-900);
+  color: var(--heading);
+}
+
+/* Leaderboard form guide (2026-08-28) — last 5 results, oldest → newest
+   left to right. Fixed-width dots so the strip lines up neatly across
+   rows regardless of how many games a player actually has (fewer than 5
+   just shows fewer dots rather than padding). */
+.form-guide {
+  display: flex;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.form-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.55rem;
+  font-weight: 800;
+  color: #fff;
+  line-height: 1;
+}
+
+.form-dot-win {
+  background: var(--success, #1a8f5e);
+}
+
+.form-dot-loss {
+  background: var(--danger, #b0433f);
 }
 
 /* ── Form controls ──────────────────────────────────────────────────── */
@@ -799,7 +858,7 @@ textarea {
 .notice-title {
   font-size: 1.2rem;
   font-weight: 700;
-  color: var(--navy-900);
+  color: var(--heading);
 }
 
 /* Date + author line under a notice title — deliberately more spaced out

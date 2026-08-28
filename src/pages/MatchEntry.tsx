@@ -77,6 +77,7 @@ export async function submitOneMatch(match: {
       .single();
 
     if (recheck?.status === "confirmed") {
+      notifyPostMatch(inserted.id);
       return { ok: true };
     }
 
@@ -86,7 +87,21 @@ export async function submitOneMatch(match: {
     };
   }
 
+  notifyPostMatch(inserted.id);
   return { ok: true };
+}
+
+// Fire-and-forget — badge-earned/rank-change push notifications (see
+// supabase/functions/notify-post-match) are a nice-to-have layered on top
+// of a successful confirm, never something that should block match entry
+// or surface an error to the admin if it fails. Deliberately NOT awaited;
+// deliberately NOT folded into confirm-match itself, which is core rating
+// logic for a live club and shouldn't carry any extra risk for a feature
+// this much lower-stakes. Added 2026-08-28.
+function notifyPostMatch(matchId: string) {
+  supabase.functions.invoke("notify-post-match", { body: { match_id: matchId } }).catch(() => {
+    // Best-effort only — a missed badge/rank push is not worth surfacing.
+  });
 }
 
 type Mode = "single" | "quick";

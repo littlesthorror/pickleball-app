@@ -141,6 +141,25 @@ function MonthlyStatCard({
   );
 }
 
+// Compact "form guide" strip (2026-08-28) — each player's last 5 confirmed
+// results at a glance, without needing to open their profile. `results`
+// arrives most-recent-first (see get_recent_form()), reversed here so the
+// oldest of the five reads on the left and the most recent on the right —
+// the usual left-to-right "form guide" convention.
+function FormGuide({ results }: { results: boolean[] | undefined }) {
+  if (!results || results.length === 0) return null;
+  const ordered = [...results].reverse();
+  return (
+    <span className="form-guide" title="Last 5 results, oldest → newest">
+      {ordered.map((won, i) => (
+        <span key={i} className={`form-dot ${won ? "form-dot-win" : "form-dot-loss"}`}>
+          {won ? "W" : "L"}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 function DeltaBadge({ value }: { value: number | null }) {
   if (value === null) return <span className="delta-neutral">new</span>;
   const rounded = Math.round(value);
@@ -168,6 +187,10 @@ export default function Leaderboard({
   const [monthlyHistory, setMonthlyHistory] = useState<MonthlyHistoryRow[]>([]);
   const [monthlyMatches, setMonthlyMatches] = useState<MonthlyMatchTeams[]>([]);
   const [pastClubPlayers, setPastClubPlayers] = useState<PastClubPlayer[]>([]);
+  // Form guide (2026-08-28) — last 5 confirmed results per player, fetched
+  // once via a single window-function RPC (see get_recent_form()) rather
+  // than a query per row. Keyed by player id.
+  const [recentForm, setRecentForm] = useState<Map<string, boolean[]>>(new Map());
 
   // Seasons — trackedSeasons is empty until 1 September 2026 (Autumn),
   // when Ben's chosen to start tracking. Standings are computed live via
@@ -199,6 +222,13 @@ export default function Leaderboard({
     // re-running for a month that's already been recorded). Powers the
     // Top 10 / Top 3 badges.
     supabase.rpc("snapshot_month_end_leaderboard");
+
+    supabase.rpc("get_recent_form", { p_limit: 5 }).then(({ data, error }) => {
+      if (error || !data) return;
+      setRecentForm(
+        new Map((data as { player_id: string; results: boolean[] }[]).map((r) => [r.player_id, r.results ?? []]))
+      );
+    });
 
     supabase
       .from("monthly_club_player_awards")
@@ -490,7 +520,10 @@ export default function Leaderboard({
           >
             <span className={`rank ${i < 3 ? "top3" : ""}`}>{i + 1}</span>
             <Avatar name={p.display_name} url={p.avatar_url} size={28} />
-            <span className="name">{p.display_name}</span>
+            <span className="name" style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {p.display_name}
+            </span>
+            <FormGuide results={recentForm.get(p.id)} />
             {sort === "improved" ? (
               <DeltaBadge value={p.delta_30d} />
             ) : (
@@ -654,7 +687,7 @@ export default function Leaderboard({
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <Avatar name={p.displayName} url={p.avatarUrl} size={24} />
-                <span style={{ fontWeight: 700, color: "var(--navy-900)" }}>{p.displayName}</span>
+                <span style={{ fontWeight: 700, color: "var(--heading)" }}>{p.displayName}</span>
               </div>
             </div>
           ))}
