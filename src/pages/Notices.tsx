@@ -8,6 +8,20 @@ import type { NoticeAttachment, NoticeRow } from "../types";
 
 const NOTICE_DRAFT_KEY = "sideline-draft-notice";
 
+// On some Android phones, tapping "Files" in the attachment/cover-image
+// picker and choosing something from Google Drive causes Chrome to reload
+// the tab under memory pressure while the file is being fetched from the
+// cloud — the same underlying issue useDraft.ts was built around, except
+// there's no fixing this part: a picked File object can't survive a real
+// page reload, so the attachment is just gone, with no error and no clue
+// why. This key is "armed" in sessionStorage the instant either file input
+// is opened and cleared the instant its change event actually fires — so
+// if the marker is still sitting there on the next page load, a reload
+// happened mid-pick, and the admin gets a clear explanation instead of a
+// silent failure. Added 2026-08-29 after an admin on Android/Samsung kept
+// hitting this specifically via Attachments > Files > Google Drive.
+const FILE_PICKER_ARMED_KEY = "sideline-notice-filepicker-armed";
+
 // Named "Notices" rather than "Notifications" in the UI — this is a posted
 // noticeboard (notes + files like team sheets), not push notifications, so
 // the clearer label avoids people expecting a phone alert.
@@ -119,6 +133,9 @@ export default function Notices({ isAdmin }: { isAdmin: boolean }) {
   const [thumbFailed, setThumbFailed] = useState<Set<string>>(new Set());
   const [lightbox, setLightbox] = useState<{ src: string; alt: string } | null>(null);
   const [videoId, setVideoId] = useState<string | null>(null);
+  // See FILE_PICKER_ARMED_KEY above — set on mount if a file picker was
+  // opened but the page reloaded before its change event ever fired.
+  const [filePickerReloadWarning, setFilePickerReloadWarning] = useState(false);
   // How many notices to show before a "Show more" button appears — keeps
   // the page from growing indefinitely as notices pile up over time.
   const PAGE_SIZE = 6;
@@ -148,6 +165,36 @@ export default function Notices({ isAdmin }: { isAdmin: boolean }) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  // Runs once on mount — if a file picker was armed but never fired its
+  // change event, the page reloaded mid-pick (see FILE_PICKER_ARMED_KEY).
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem(FILE_PICKER_ARMED_KEY) === "1") {
+        setFilePickerReloadWarning(true);
+        sessionStorage.removeItem(FILE_PICKER_ARMED_KEY);
+      }
+    } catch {
+      // Storage unavailable — nothing to detect, fail quiet.
+    }
+  }, []);
+
+  function armFilePicker() {
+    try {
+      sessionStorage.setItem(FILE_PICKER_ARMED_KEY, "1");
+    } catch {
+      // ignore
+    }
+  }
+
+  function disarmFilePicker() {
+    try {
+      sessionStorage.removeItem(FILE_PICKER_ARMED_KEY);
+    } catch {
+      // ignore
+    }
+    setFilePickerReloadWarning(false);
+  }
 
   // If a tab reload happened mid-edit (the case this whole draft system
   // exists for), the restored draft has editingId + title/body back, but
@@ -196,9 +243,13 @@ export default function Notices({ isAdmin }: { isAdmin: boolean }) {
     setExistingCoverPath(null);
     setCoverFile(null);
     setRemoveCover(false);
+    disarmFilePicker();
   }
 
   function handleFilesChosen(e: ChangeEvent<HTMLInputElement>) {
+    // The change event firing at all — even with an empty selection, e.g.
+    // the picker was cancelled — means no reload happened this time.
+    disarmFilePicker();
     const chosen = Array.from(e.target.files ?? []);
     setNewFiles((prev) => [...prev, ...chosen]);
     // Reset the input so choosing the same file again later still fires a
@@ -207,6 +258,7 @@ export default function Notices({ isAdmin }: { isAdmin: boolean }) {
   }
 
   function handleCoverChange(e: ChangeEvent<HTMLInputElement>) {
+    disarmFilePicker();
     const file = e.target.files?.[0];
     if (file) {
       setCoverFile(file);
@@ -403,6 +455,42 @@ export default function Notices({ isAdmin }: { isAdmin: boolean }) {
         <div className="card" style={{ marginTop: 16 }}>
           <h2 style={{ marginTop: 0 }}>{editingId ? "Edit notice" : "New notice"}</h2>
 
+          {filePickerReloadWarning && (
+            <div
+              style={{
+                background: "var(--orange-100)",
+                color: "var(--orange-600)",
+                borderRadius: "var(--radius-md)",
+                padding: "10px 14px",
+                marginBottom: 16,
+                fontSize: "0.85rem",
+                lineHeight: 1.5,
+              }}
+            >
+              <strong>That file didn't attach.</strong> Your browser reloaded partway through picking it —
+              a known issue on some Android phones when choosing a file from Google Drive. Your title and note
+              are safe, but the file needs picking again. It tends to happen with larger files, so try a
+              smaller one, or pick from Photos/Gallery instead of Files if it keeps happening.
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setFilePickerReloadWarning(false)}
+                  style={{
+                    marginTop: 8,
+                    width: "auto",
+                    padding: "4px 12px",
+                    fontSize: "0.78rem",
+                    background: "transparent",
+                    color: "var(--orange-600)",
+                    border: "1px solid var(--orange-600)",
+                  }}
+                >
+                  Got it
+                </button>
+              </div>
+            </div>
+          )}
+
           <label style={{ marginTop: 0 }}>Title</label>
           <input
             type="text"
@@ -461,14 +549,14 @@ export default function Notices({ isAdmin }: { isAdmin: boolean }) {
               Selected: {coverFile.name}
             </p>
           )}
-          <input type="file" accept="image/*" onChange={handleCoverChange} />
+          <input type="file" accept="image/*" onClick={armFilePicker} onChange={handleCoverChange} />
           <p className="stat-meta" style={{ marginTop: 4 }}>
             Shown as a banner across the top of the card — separate from the attachments below. If you don't add
             one, the club badge is shown instead.
           </p>
 
           <label>Attachments (optional)</label>
-          <input type="file" multiple onChange={handleFilesChosen} />
+          <input type="file" multiple onClick={armFilePicker} onChange={handleFilesChosen} />
 
           {existingAttachments.length > 0 && (
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
