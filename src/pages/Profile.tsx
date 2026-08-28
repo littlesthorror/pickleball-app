@@ -535,11 +535,7 @@ export default function Profile({
 
           <p className="stat-meta" style={{ marginTop: 14 }}>
             Leaving the club? This clears your personal details and stops you signing back in. Your past match
-            results stay on record since other members' stats depend on them — see{" "}
-            <span className="link-action" role="button" tabIndex={0} onClick={() => alert("Your name, photo, date of birth, and contact info are cleared, and your account is closed to sign-in. Match scores/ratings stay on record as anonymous history, since other members' own stats and badges are calculated from them.")}>
-              what this actually does
-            </span>
-            .
+            results stay on record since other members' stats depend on them.
           </p>
           <button
             disabled={deletingAccount}
