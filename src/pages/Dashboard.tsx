@@ -12,7 +12,6 @@ import { Line } from "react-chartjs-2";
 import { supabase } from "../supabaseClient";
 import Avatar from "../components/Avatar";
 import ShareCard from "../components/ShareCard";
-import PartnerFinderCard from "../components/PartnerFinderCard";
 import SeasonWrappedCard from "../components/SeasonWrappedCard";
 import { computeBadges } from "../lib/badges";
 import type { MonthlyFinish, CompetitionPlacement, SeasonTop10Finish } from "../lib/badges";
@@ -650,7 +649,10 @@ export default function Dashboard({
         </div>
       )}
 
-      {isOwnProfile && player && <PartnerFinderCard playerId={player.id} playerName={player.display_name} />}
+      {/* Partner-finder widget ("Looking for a game?") temporarily switched
+          off, 2026-08-28, at Ben's request — code/DB tables left in place
+          (see PartnerFinderCard.tsx, 0051_add_partner_requests.sql) so it
+          can be turned back on later by re-adding the import + this line. */}
 
       {badges.length > 0 && (
         <div className="card">
