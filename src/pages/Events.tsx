@@ -551,7 +551,7 @@ function EventTicketModal({
             </p>
           )}
 
-          <div style={{ marginTop: 18, display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
             {!event.rsvp_enabled ? null : myStatus ? (
               <>
                 <p style={{ margin: 0, fontWeight: 600, color: "var(--navy-700)" }}>

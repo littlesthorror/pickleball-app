@@ -91,6 +91,11 @@ export default function AdminManagement({
   // by player_id client-side rather than one query per card.
   const [legacyBadges, setLegacyBadges] = useState<LegacyBadgeRow[]>([]);
   const [openLegacyFormId, setOpenLegacyFormId] = useState<string | null>(null);
+  // Which player's medical info is currently expanded (2026-08-28) — kept
+  // collapsed behind a small tap-to-reveal pill by default, same idiom as
+  // badge descriptions on the Dashboard, so a long entry never blows out
+  // the card's height or looks messy when the list first loads.
+  const [expandedMedicalId, setExpandedMedicalId] = useState<string | null>(null);
   const [legacyDraft, setLegacyDraft] = useState({
     emoji: "🏆",
     label: "",
@@ -735,23 +740,50 @@ export default function AdminManagement({
                 </div>
               )}
               {/* Essential Medical Information (2026-08-28) — same
-                  admin-only visibility as emergency contact above, but
-                  called out with a highlighted background since it's
-                  safety-critical enough to warrant standing out rather
-                  than blending in as plain muted text. */}
+                  admin-only visibility as emergency contact above. Kept
+                  behind a tap-to-reveal pill rather than always shown
+                  inline, since a long entry would otherwise blow out the
+                  card's height and look messy — the pill itself is always
+                  visible (so admins can always see at a glance that info
+                  is on file) even when collapsed. Reworked 2026-08-28 at
+                  Ben's request. */}
               {p.medical_info && (
-                <div
-                  style={{
-                    marginTop: 6,
-                    padding: "6px 10px",
-                    borderRadius: 8,
-                    background: "var(--orange-100)",
-                    color: "var(--orange-600)",
-                    fontSize: "0.8rem",
-                    fontWeight: 600,
-                  }}
-                >
-                  ⚕️ Medical info: {p.medical_info}
+                <div style={{ marginTop: 6 }}>
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setExpandedMedicalId((id) => (id === p.id ? null : p.id))}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 4,
+                      padding: "3px 9px",
+                      borderRadius: 999,
+                      background: "var(--orange-100)",
+                      color: "var(--orange-600)",
+                      fontSize: "0.75rem",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    ⚕️ Medical info on file {expandedMedicalId === p.id ? "▲" : "▼"}
+                  </span>
+                  {expandedMedicalId === p.id && (
+                    <div
+                      style={{
+                        marginTop: 4,
+                        padding: "8px 10px",
+                        borderRadius: 8,
+                        background: "var(--orange-100)",
+                        color: "var(--orange-600)",
+                        fontSize: "0.8rem",
+                        fontWeight: 600,
+                        maxWidth: 420,
+                      }}
+                    >
+                      {p.medical_info}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -885,7 +917,7 @@ export default function AdminManagement({
               <button
                 disabled={busyId === p.id}
                 onClick={() => toggleAdmin(p)}
-                style={{ flex: "1 1 140px", marginTop: 0 }}
+                style={{ flex: "1 1 140px", marginTop: 0, padding: "8px", fontSize: "0.85rem" }}
               >
                 {p.is_admin ? "Remove admin" : "Make admin"}
               </button>
@@ -893,14 +925,14 @@ export default function AdminManagement({
             <button
               disabled={busyId === p.id}
               onClick={() => toggleActive(p)}
-              style={{ flex: "1 1 140px", marginTop: 0, background: "transparent", color: "var(--navy-500)", border: "1px solid var(--border)" }}
+              style={{ flex: "1 1 140px", marginTop: 0, padding: "8px", fontSize: "0.85rem", background: "transparent", color: "var(--navy-500)", border: "1px solid var(--border)" }}
             >
               {p.is_active ? "Deactivate" : "Reactivate"}
             </button>
             <button
               disabled={busyId === p.id}
               onClick={() => resetHistory(p)}
-              style={{ flex: "1 1 140px", marginTop: 0, background: "transparent", color: "var(--danger)", border: "1px solid var(--border)" }}
+              style={{ flex: "1 1 140px", marginTop: 0, padding: "8px", fontSize: "0.85rem", background: "transparent", color: "var(--danger)", border: "1px solid var(--border)" }}
             >
               Reset history
             </button>
@@ -908,7 +940,7 @@ export default function AdminManagement({
               <button
                 disabled={busyId === p.id}
                 onClick={() => deletePlayer(p)}
-                style={{ flex: "1 1 140px", marginTop: 0, background: "var(--danger)" }}
+                style={{ flex: "1 1 140px", marginTop: 0, padding: "8px", fontSize: "0.85rem", background: "var(--danger)" }}
               >
                 Delete
               </button>
