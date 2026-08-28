@@ -30,6 +30,23 @@ const TOKEN_PATTERN =
   /(https?:\/\/[^\s]+|www\.[^\s]+)|\*\*([^\n]+?)\*\*|\*([^\n*]+?)\*(?!\*)|__([^\n]+?)__|_([^\n_]+?)_(?!_)/gi;
 const TRAILING_PUNCTUATION = /[.,!?;:)\]]+$/;
 
+// Long pasted links (tracking params, deep paths, etc.) read as a wall of
+// noise and wrap badly on mobile — Ben's request 2026-08-28: "automatically
+// shorten long URLs". This only tidies the visible link *text*; the href
+// underneath is always the real, full URL, so nothing about where the link
+// actually goes changes. Strips the scheme/"www." (redundant once it's
+// rendered as a link) and truncates with an ellipsis past MAX_DISPLAY_LEN,
+// same "prefix + …" approach used elsewhere in the app (see fitText in
+// seasonWrappedImage.ts) rather than pulling in a real URL-shortening
+// service for what's purely a display concern.
+const MAX_DISPLAY_LEN = 34;
+
+function displayForUrl(raw: string) {
+  const stripped = raw.replace(/^https?:\/\//i, "").replace(/^www\./i, "");
+  if (stripped.length <= MAX_DISPLAY_LEN) return stripped;
+  return `${stripped.slice(0, MAX_DISPLAY_LEN - 1)}…`;
+}
+
 export function linkify(text: string): ReactNode[] {
   const nodes: ReactNode[] = [];
   let lastIndex = 0;
@@ -55,8 +72,8 @@ export function linkify(text: string): ReactNode[] {
       }
       const href = url.startsWith("http") ? url : `https://${url}`;
       nodes.push(
-        <a key={`link-${key++}`} href={href} target="_blank" rel="noreferrer">
-          {url}
+        <a key={`link-${key++}`} href={href} target="_blank" rel="noreferrer" title={url}>
+          {displayForUrl(url)}
         </a>
       );
       if (trailing) nodes.push(trailing);
