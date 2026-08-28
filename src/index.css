@@ -906,6 +906,19 @@ textarea {
   display: block;
 }
 
+/* The default cover photo's badge graphic sits a little below the true
+   vertical center of the source image (measured: badge spans roughly
+   y=234-932 of a 1122px-tall image, center ~583 vs image center ~561) —
+   at the default 50% object-position, the 16:9 crop shows too much bare
+   net above the badge and clips its bottom edge. Shifting to 57% moves
+   the crop window down just enough to split that margin evenly top and
+   bottom. Scoped to only the default cover (via this extra class) so
+   admin-uploaded cover photos keep the normal centered crop. Added
+   2026-08-28 at Ben's request. */
+.notice-cover-default {
+  object-position: center 57%;
+}
+
 .notice-photo-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);

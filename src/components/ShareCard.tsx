@@ -4,6 +4,7 @@ import { renderShareCardImage } from "../lib/shareCardImage";
 import type { ShareCardStats } from "../lib/shareCardImage";
 import type { Badge } from "../lib/badges";
 import type { PlayerStatus } from "../types";
+import { useBodyScrollLock } from "../lib/useBodyScrollLock";
 
 // The card itself is still screenshot-friendly (see the note in the JSX
 // below), but there's also a proper "Share" action now: it renders the
@@ -27,6 +28,7 @@ export default function ShareCard({
 }) {
   const [working, setWorking] = useState(false);
   const [shareError, setShareError] = useState<string | null>(null);
+  useBodyScrollLock(true);
 
   async function handleShare() {
     setWorking(true);

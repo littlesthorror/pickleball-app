@@ -5,6 +5,7 @@ import { linkify } from "../lib/linkify";
 import { useDraft } from "../lib/useDraft";
 import Lightbox from "../components/Lightbox";
 import { compressImageFile } from "../lib/imageCompress";
+import { useBodyScrollLock } from "../lib/useBodyScrollLock";
 import type { NoticeAttachment, NoticePollVote, NoticeRow } from "../types";
 
 const NOTICE_DRAFT_KEY = "sideline-draft-notice";
@@ -233,8 +234,26 @@ export default function Notices({ isAdmin, playerId }: { isAdmin: boolean; playe
   // image types — track failures per attachment and fall back to a plain
   // download link rather than showing a broken-image icon.
   const [thumbFailed, setThumbFailed] = useState<Set<string>>(new Set());
+  // The New/Edit notice form renders near the top of the page, above the
+  // notice list — on a phone, tapping "Post notice" or a notice's "Edit"
+  // link while scrolled down (past several notices) opened the form
+  // off-screen above the fold with no visual cue it had even appeared, so
+  // it looked like nothing happened. Scrolling it into view automatically
+  // (2026-08-28) makes the jump obvious instead of silent. See the
+  // matching fix + comment in Events.tsx's admin form.
+  const formRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (showForm) {
+      formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [showForm]);
+
   const [lightbox, setLightbox] = useState<{ src: string; alt: string } | null>(null);
   const [videoId, setVideoId] = useState<string | null>(null);
+  // The video overlay is rendered inline below (Lightbox.tsx locks scroll
+  // itself for the image lightbox) — see useBodyScrollLock for why this
+  // matters on mobile.
+  useBodyScrollLock(!!videoId);
   // See FILE_PICKER_ARMED_KEY above — set on mount if a file picker was
   // opened but the page reloaded before its change event ever fired.
   const [filePickerReloadWarning, setFilePickerReloadWarning] = useState(false);
@@ -631,7 +650,7 @@ export default function Notices({ isAdmin, playerId }: { isAdmin: boolean; playe
       </div>
 
       {isAdmin && showForm && (
-        <div className="card" style={{ marginTop: 16 }}>
+        <div ref={formRef} className="card" style={{ marginTop: 16 }}>
           <h2 style={{ marginTop: 0 }}>{editingId ? "Edit notice" : "New notice"}</h2>
 
           {filePickerReloadWarning && (
@@ -941,7 +960,11 @@ export default function Notices({ isAdmin, playerId }: { isAdmin: boolean; playe
           const youtubeIds = n.body ? extractYouTubeIds(n.body) : [];
           return (
             <div key={n.id} className={`card notice-card${n.pinned ? " notice-card-pinned" : ""}`}>
-              <img className="notice-cover" src={n.cover_path ? fileUrl(n.cover_path) : DEFAULT_COVER_URL} alt="" />
+              <img
+                className={`notice-cover${n.cover_path ? "" : " notice-cover-default"}`}
+                src={n.cover_path ? fileUrl(n.cover_path) : DEFAULT_COVER_URL}
+                alt=""
+              />
               <div className={n.pinned ? "notice-card-body-pinned" : undefined} style={{ padding: "16px 18px" }}>
                 <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-start", gap: 8 }}>
                   <div style={{ minWidth: 0, flex: "1 1 200px" }}>

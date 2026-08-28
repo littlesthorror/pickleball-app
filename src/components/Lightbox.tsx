@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { useBodyScrollLock } from "../lib/useBodyScrollLock";
 
 // Full-screen image viewer for notice attachments — clicking a thumbnail
 // opens the photo in place instead of navigating away to a new tab.
@@ -11,6 +12,8 @@ export default function Lightbox({
   alt: string;
   onClose: () => void;
 }) {
+  useBodyScrollLock(true);
+
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();

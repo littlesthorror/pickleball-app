@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import { supabase } from "../supabaseClient";
 import { useDraft } from "../lib/useDraft";
 import { linkify } from "../lib/linkify";
 import { getEventForecast } from "../lib/weather";
 import type { EventForecast } from "../lib/weather";
+import { useBodyScrollLock } from "../lib/useBodyScrollLock";
 import type { EventPosterPlaceholder, EventRow } from "../types";
 
 // Small self-contained weather chip — fetches its own forecast (see
@@ -324,6 +325,10 @@ function EventTicketModal({
   onEdit: () => void;
   onDelete: () => void;
 }) {
+  // Fixes the "opens at the top of the screen" mobile bug (2026-08-28) —
+  // see useBodyScrollLock for the full explanation.
+  useBodyScrollLock(true);
+
   // Holds every RSVP row for this event (with the player's name joined
   // in) so both the counts and the "who's coming" list below can be
   // derived from one fetch — this is also how attendance actually gets
@@ -613,6 +618,15 @@ export default function Events({ isAdmin, playerId }: { isAdmin: boolean; player
   const showForm = draft.showForm === "1";
   const editingId = draft.editingId || null;
 
+  // Same "form opened off-screen with no visual cue" mobile fix as
+  // Notices.tsx's admin form — see the comment there.
+  const formRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (showForm) {
+      formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [showForm]);
+
   const [posterFile, setPosterFile] = useState<File | null>(null);
   const [existingPosterPath, setExistingPosterPath] = useState<string | null>(null);
   const [removePoster, setRemovePoster] = useState(false);
@@ -622,6 +636,11 @@ export default function Events({ isAdmin, playerId }: { isAdmin: boolean; player
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [ticketEvent, setTicketEvent] = useState<EventRow | null>(null);
+
+  // Poster zoom is rendered inline below (not its own component instance,
+  // unlike the ticket modal which locks scroll itself) — see
+  // useBodyScrollLock for why this is needed on mobile.
+  useBodyScrollLock(!!lightboxUrl);
 
   // Category filter — "category" here is just whatever's been typed into
   // an event's Format field, so the options are built from whatever's
@@ -877,7 +896,7 @@ export default function Events({ isAdmin, playerId }: { isAdmin: boolean; player
       )}
 
       {isAdmin && showForm && (
-        <div className="card" style={{ marginTop: 16 }}>
+        <div ref={formRef} className="card" style={{ marginTop: 16 }}>
           <label style={{ marginTop: 0 }}>Title</label>
           <input
             type="text"

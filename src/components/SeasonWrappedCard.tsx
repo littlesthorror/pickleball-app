@@ -3,6 +3,7 @@ import Avatar from "./Avatar";
 import { renderSeasonWrappedImage } from "../lib/seasonWrappedImage";
 import type { SeasonWrappedStats } from "../lib/seasonWrappedImage";
 import type { PlayerStatus } from "../types";
+import { useBodyScrollLock } from "../lib/useBodyScrollLock";
 
 // Season Wrapped card (2026-08-28) — same share/download mechanics as
 // ShareCard.tsx (native share sheet on phones, falls back to a plain
@@ -20,6 +21,7 @@ export default function SeasonWrappedCard({
 }) {
   const [working, setWorking] = useState(false);
   const [shareError, setShareError] = useState<string | null>(null);
+  useBodyScrollLock(true);
 
   async function handleShare() {
     setWorking(true);
