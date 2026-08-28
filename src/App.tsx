@@ -52,7 +52,11 @@ export default function App() {
     const hash = window.location.hash.replace("#", "");
     return hash === "notices" || hash === "events" ? (hash as Tab) : "dashboard";
   });
-  const [viewingPlayer, setViewingPlayer] = useState<{ id: string; name: string } | null>(null);
+  // backLabel (2026-08-28) — PlayerDetail's back button now reads "Back to
+  // leaderboard" or "Back to Manage admins" depending on where the click
+  // actually came from, rather than always saying leaderboard even when an
+  // admin got here from Manage Admins.
+  const [viewingPlayer, setViewingPlayer] = useState<{ id: string; name: string; backLabel: string } | null>(null);
   // Lets an admin see exactly what a regular player sees — hides admin
   // tabs/controls in the UI only. Doesn't touch the real is_admin flag, so
   // permissions (RLS, edge functions) are completely unaffected; this is a
@@ -372,6 +376,7 @@ export default function App() {
                   playerId={viewingPlayer.id}
                   playerName={viewingPlayer.name}
                   viewerId={player.id}
+                  backLabel={viewingPlayer.backLabel}
                   onBack={() => setViewingPlayer(null)}
                 />
               ) : (
@@ -380,7 +385,9 @@ export default function App() {
                     <Dashboard playerId={player.id} isOwnProfile onViewEvents={() => changeTab("events")} />
                   )}
                   {tab === "leaderboard" && (
-                    <Leaderboard onSelectPlayer={(id, name) => setViewingPlayer({ id, name })} />
+                    <Leaderboard
+                      onSelectPlayer={(id, name) => setViewingPlayer({ id, name, backLabel: "Back to leaderboard" })}
+                    />
                   )}
                   {tab === "club-stats" && <ClubStats />}
                   {tab === "events" && <Events isAdmin={effectiveIsAdmin} playerId={player.id} />}
@@ -391,7 +398,10 @@ export default function App() {
                   )}
                   {tab === "match-entry" && effectiveIsAdmin && <MatchEntry />}
                   {tab === "manage-admins" && effectiveIsAdmin && (
-                    <AdminManagement currentUserId={session.user.id} />
+                    <AdminManagement
+                      currentUserId={session.user.id}
+                      onSelectPlayer={(id, name) => setViewingPlayer({ id, name, backLabel: "Back to Manage admins" })}
+                    />
                   )}
                   {tab === "game-history" && effectiveIsAdmin && <GameHistory />}
                   {tab === "profile" && (

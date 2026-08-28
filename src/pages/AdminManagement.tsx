@@ -36,7 +36,17 @@ interface ClientErrorLog {
 // potentially signed up, admins are pinned to the top (highest priority
 // to find quickly), then everyone else alphabetically, with a search box
 // and "show more" pagination so the list stays manageable.
-export default function AdminManagement({ currentUserId }: { currentUserId: string }) {
+export default function AdminManagement({
+  currentUserId,
+  onSelectPlayer,
+}: {
+  currentUserId: string;
+  // Lets an admin tap a member's photo/name here to open their full
+  // Dashboard (same view the Leaderboard's click-through uses) — added
+  // 2026-08-28 at Ben's request, so admins don't have to hunt for someone
+  // on the Leaderboard just to check their profile.
+  onSelectPlayer?: (id: string, name: string) => void;
+}) {
   const [players, setPlayers] = useState<PlayerStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -608,7 +618,15 @@ export default function AdminManagement({ currentUserId }: { currentUserId: stri
       {visiblePlayers.map((p) => (
         <div className="card" key={p.id}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-            <Avatar name={p.display_name} url={p.avatar_url} size={40} />
+            <span
+              role={onSelectPlayer ? "button" : undefined}
+              tabIndex={onSelectPlayer ? 0 : undefined}
+              aria-label={onSelectPlayer ? `View ${p.display_name}'s profile` : undefined}
+              onClick={() => onSelectPlayer?.(p.id, p.display_name)}
+              style={{ cursor: onSelectPlayer ? "pointer" : undefined, flexShrink: 0 }}
+            >
+              <Avatar name={p.display_name} url={p.avatar_url} size={40} />
+            </span>
             <div style={{ flex: 1, minWidth: 0 }}>
               {editingNameId === p.id ? (
                 // Inline edit mode — replaces the old always-visible name
@@ -664,7 +682,19 @@ export default function AdminManagement({ currentUserId }: { currentUserId: stri
                 </div>
               ) : (
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <div style={{ fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <div
+                    role={onSelectPlayer ? "button" : undefined}
+                    tabIndex={onSelectPlayer ? 0 : undefined}
+                    aria-label={onSelectPlayer ? `View ${p.display_name}'s profile` : undefined}
+                    onClick={() => onSelectPlayer?.(p.id, p.display_name)}
+                    style={{
+                      fontWeight: 700,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      cursor: onSelectPlayer ? "pointer" : undefined,
+                    }}
+                  >
                     {p.display_name}
                   </div>
                   <button

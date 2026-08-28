@@ -8,6 +8,7 @@ export default function PlayerDetail({
   playerId,
   playerName,
   viewerId,
+  backLabel = "Back to leaderboard",
   onBack,
 }: {
   playerId: string;
@@ -15,6 +16,10 @@ export default function PlayerDetail({
   // The signed-in user's own player id — passed through to Dashboard so it
   // can show "your record vs this player" (added 2026-08-14).
   viewerId: string;
+  // Reflects where the click actually came from (Leaderboard vs Manage
+  // admins) rather than always saying "leaderboard" — added 2026-08-28
+  // once Manage Admins grew its own click-through to this same view.
+  backLabel?: string;
   onBack: () => void;
 }) {
   return (
@@ -31,7 +36,7 @@ export default function PlayerDetail({
           fontWeight: 600,
         }}
       >
-        ← Back to leaderboard
+        ← {backLabel}
       </button>
       <h1 style={{ marginBottom: 16 }}>{playerName}</h1>
       <Dashboard playerId={playerId} viewerId={viewerId} />
