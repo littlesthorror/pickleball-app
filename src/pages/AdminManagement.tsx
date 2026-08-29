@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import { FunctionsHttpError } from "@supabase/supabase-js";
 import { supabase } from "../supabaseClient";
 import Avatar from "../components/Avatar";
@@ -6,6 +7,46 @@ import type { LegacyBadgeRow, PlayerStatus } from "../types";
 
 const PAGE_SIZE = 20;
 const ERROR_LOG_LIMIT = 50;
+
+// Reusable collapsible settings section (2026-08-29, Ben's request to
+// "clean up" this page) — Invite code / Competitions tab / Ratings / Error
+// logs all default to collapsed since they're occasional admin actions,
+// not something looked at on every visit, unlike the always-open member
+// list below. An optional subtitle (e.g. current on/off state, or an error
+// count) stays visible even while collapsed, so there's still a
+// quick-glance signal without needing to open the section.
+function CollapsibleCard({
+  title,
+  subtitle,
+  defaultOpen = false,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  defaultOpen?: boolean;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="card">
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => setOpen((v) => !v)}
+        style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}
+      >
+        <div style={{ minWidth: 0 }}>
+          <h2 style={{ margin: 0 }}>{title}</h2>
+          {subtitle && !open && <p className="stat-meta" style={{ margin: "2px 0 0" }}>{subtitle}</p>}
+        </div>
+        <span style={{ color: "var(--navy-500)", fontWeight: 700, flexShrink: 0, marginLeft: 12 }}>
+          {open ? "Hide ▲" : "Show ▼"}
+        </span>
+      </div>
+      {open && <div style={{ marginTop: 12 }}>{children}</div>}
+    </div>
+  );
+}
 
 // Added 2026-08-25 alongside src/lib/errorLogging.ts — see that file for
 // how these rows get written. Kept local to this file since nothing else
@@ -457,8 +498,7 @@ export default function AdminManagement({
         Promote or demote admins, deactivate accounts, or reset a player's rating history.
       </p>
 
-      <div className="card">
-        <h2 style={{ marginTop: 0 }}>Invite code</h2>
+      <CollapsibleCard title="Invite code">
         <p className="stat-meta" style={{ marginTop: 0 }}>
           New members need this code to join — signing in with Google alone isn't enough. Share it however
           suits the club (WhatsApp, a printed sheet, etc.), and change it any time below.
@@ -500,10 +540,9 @@ export default function AdminManagement({
             Saved — the previous code no longer works.
           </p>
         )}
-      </div>
+      </CollapsibleCard>
 
-      <div className="card">
-        <h2 style={{ marginTop: 0 }}>Competitions tab</h2>
+      <CollapsibleCard title="Competitions tab" subtitle={showCompetitionsTab ? "Visible to everyone" : "Hidden from members"}>
         <p className="stat-meta" style={{ marginTop: 0 }}>
           Off by default so it doesn't clutter navigation between events. Turn it on for regular members while a
           competition is being run — admins can always see and set up competitions either way.
@@ -519,10 +558,9 @@ export default function AdminManagement({
         >
           {savingCompetitionsTab ? "…" : showCompetitionsTab ? "Visible to everyone — turn off" : "Hidden from members — turn on"}
         </button>
-      </div>
+      </CollapsibleCard>
 
-      <div className="card">
-        <h2 style={{ marginTop: 0 }}>Ratings</h2>
+      <CollapsibleCard title="Ratings">
         <p className="stat-meta" style={{ marginTop: 0 }}>
           Deleting an older game (in Game history) automatically recalculates everyone's rating afterward, so
           this shouldn't normally be needed. It's here as a sanity check — recalculates every player's rating
@@ -535,10 +573,12 @@ export default function AdminManagement({
         >
           {recomputing ? "Recomputing…" : "Recompute history"}
         </button>
-      </div>
+      </CollapsibleCard>
 
-      <div className="card">
-        <h2 style={{ marginTop: 0 }}>Error logs</h2>
+      <CollapsibleCard
+        title="Error logs"
+        subtitle={errorLogsLoading ? undefined : errorLogs.length === 0 ? "No errors logged" : `${errorLogs.length} logged`}
+      >
         <p className="stat-meta" style={{ marginTop: 0 }}>
           Uncaught errors from members' devices, logged automatically — useful for spotting real bugs (like a
           browser quirk on a specific phone) without relying on someone describing it after the fact.
@@ -603,7 +643,7 @@ export default function AdminManagement({
             </button>
           </>
         )}
-      </div>
+      </CollapsibleCard>
 
       <div className="card">
         <h2 style={{ marginTop: 0 }}>Members</h2>
