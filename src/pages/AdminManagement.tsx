@@ -830,6 +830,28 @@ export default function AdminManagement({
                 </div>
               )}
             </div>
+            {/* Leaderboard-visibility indicator (2026-08-29, at Ben's
+                request) — a subtle open/crossed-out eye reflecting each
+                player's own "Show me on the club leaderboard" toggle in My
+                Account (player_status.profile_visible), so admins can see
+                at a glance who's hidden without opening each profile. */}
+            <span
+              title={p.profile_visible ? "Visible on the leaderboard" : "Hidden from the leaderboard"}
+              aria-label={p.profile_visible ? "Visible on the leaderboard" : "Hidden from the leaderboard"}
+              style={{ flexShrink: 0, alignSelf: "flex-start", color: "var(--text-muted)", opacity: p.profile_visible ? 0.5 : 0.85 }}
+            >
+              {p.profile_visible ? (
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+              ) : (
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 7 11 7a13.16 13.16 0 0 1-1.67 2.68M6.61 6.61A13.53 13.53 0 0 0 1 12s4 7 11 7a9.26 9.26 0 0 0 5.39-1.61M14.12 14.12a3 3 0 1 1-4.24-4.24" />
+                  <path d="M1 1l22 22" />
+                </svg>
+              )}
+            </span>
           </div>
 
           <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
