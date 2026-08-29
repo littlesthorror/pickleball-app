@@ -808,9 +808,18 @@ export default function Dashboard({
         )}
       </div>
 
-      {(bestMonth || longestStreak >= 2) && (
+      {(history.length > 0 || bestMonth || longestStreak >= 2) && (
         <div className="card">
           <h2>Highlights</h2>
+          {history.length > 0 && (
+            <div className="match-row">
+              <div>
+                <div className="opponent">Career high</div>
+                {personalBest.date && <div className="meta">{formatDate(personalBest.date)}</div>}
+              </div>
+              <div className="score">{Math.round(personalBest.rating)}</div>
+            </div>
+          )}
           {bestMonth && (
             <div className="match-row">
               <div>

@@ -422,7 +422,7 @@ label {
 
 /* ── Player name tag (dashboard hero card) ─────────────────────────── */
 .player-name-tag {
-  font-size: 0.72rem;
+  font-size: 1.15rem;
   font-weight: 700;
   color: #001d51;
 }
