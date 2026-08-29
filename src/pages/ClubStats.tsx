@@ -145,7 +145,11 @@ export default function ClubStats() {
             id: c.id,
             name: c.name,
             event_date: c.event_date,
+            // Top 3 only (2026-08-29, Ben's request) — the 4th-place
+            // semifinal loser (or, with a 3rd-place playoff, the runner-up
+            // of it) isn't really a podium finish worth surfacing here.
             placements: (c.competition_results ?? [])
+              .filter((r) => r.placement <= 3)
               .map((r) => ({ placement: r.placement, teamLabel: teamLabel(r.team_id) }))
               .sort((a, b) => a.placement - b.placement),
           }))
