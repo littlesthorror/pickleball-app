@@ -70,11 +70,13 @@ export default function App() {
   const [showCompetitionsTab, setShowCompetitionsTab] = useState(false);
 
   useEffect(() => {
-    supabase
-      .from("club_settings")
-      .select("show_competitions_tab")
-      .maybeSingle()
-      .then(({ data }) => setShowCompetitionsTab(!!data?.show_competitions_tab));
+    // Reads via an RPC rather than selecting the table directly (2026-08-28
+    // bugfix) — club_settings' only SELECT policy is admin-only (it also
+    // holds the invite code, which must stay that way), so a direct select
+    // silently returned nothing for regular members and the tab never
+    // appeared for them even once an admin switched it on. See
+    // 0053_add_get_show_competitions_tab_rpc.sql.
+    supabase.rpc("get_show_competitions_tab").then(({ data }) => setShowCompetitionsTab(!!data));
   }, []);
 
   useEffect(() => {
