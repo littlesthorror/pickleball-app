@@ -32,6 +32,10 @@ export interface Player {
 export interface PlayerStatus extends Player {
   rating: number;
   rd: number;
+  // Added 2026-08-29 (see 0054_add_volatility_to_player_status_view.sql) —
+  // needed client-side for the Match Entry "Impact preview", which mirrors
+  // confirm-match's exact Glicko-2 math rather than an approximation.
+  volatility: number;
   games_played: number;
   reset_at: string | null;
   is_provisional: boolean;

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../supabaseClient";
 import { averageTeam, predictedWinProbability } from "../lib/predict";
+import { predictedRatingImpact } from "../lib/impact";
 import type { PlayerStatus } from "../types";
 
 export function PlayerSelect({
@@ -244,11 +245,22 @@ function SingleMatchEntry({
     if (!a1 || !a2 || !b1 || !b2) return null;
     const teamA = averageTeam(a1, a2);
     const teamB = averageTeam(b1, b2);
+
+    // "Impact preview" (added 2026-08-29, inspired by DUPR's Impact tool) —
+    // only computable once a valid score is actually typed in, since the
+    // rating swing depends on the margin of victory, not just who's
+    // playing. Win probability above doesn't need a score, so it still
+    // shows as soon as all 4 players are picked.
+    const impact = scoresValid
+      ? predictedRatingImpact(teamA, teamB, Number(teamAScore), Number(teamBScore))
+      : null;
+
     return {
       teamAProbability: predictedWinProbability(teamA, teamB),
+      impact,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [teamAP1, teamAP2, teamBP1, teamBP2, players, allFourPicked, noDuplicates]);
+  }, [teamAP1, teamAP2, teamBP1, teamBP2, players, allFourPicked, noDuplicates, scoresValid, teamAScore, teamBScore]);
 
   function clearPlayers() {
     setTeamAP1("");
@@ -396,6 +408,17 @@ function SingleMatchEntry({
           {Math.round(prediction.teamAProbability * 100)}% of the time
           <br />
           <small>Based on current ratings and rating deviation — same math the engine uses.</small>
+          {prediction.impact && (
+            <>
+              <br />
+              <br />
+              If this score is submitted: Team A{" "}
+              {prediction.impact.deltaA >= 0 ? "+" : "−"}
+              {Math.abs(Math.round(prediction.impact.deltaA))} · Team B{" "}
+              {prediction.impact.deltaB >= 0 ? "+" : "−"}
+              {Math.abs(Math.round(prediction.impact.deltaB))}
+            </>
+          )}
         </div>
       )}
 

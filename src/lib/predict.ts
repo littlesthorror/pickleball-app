@@ -17,6 +17,11 @@ function g(phi: number) {
 export interface TeamRatingInput {
   rating: number;
   rd: number;
+  // Added 2026-08-29 alongside the Impact preview (src/lib/impact.ts) —
+  // win-probability itself doesn't use volatility, but averageTeam() is
+  // shared by both previews, and impact.ts needs a full Glicko2Player
+  // shape (rating/rd/volatility) out of it.
+  volatility: number;
 }
 
 /**
@@ -31,5 +36,9 @@ export function predictedWinProbability(team: TeamRatingInput, opponent: TeamRat
 }
 
 export function averageTeam(a: TeamRatingInput, b: TeamRatingInput): TeamRatingInput {
-  return { rating: (a.rating + b.rating) / 2, rd: (a.rd + b.rd) / 2 };
+  return {
+    rating: (a.rating + b.rating) / 2,
+    rd: (a.rd + b.rd) / 2,
+    volatility: (a.volatility + b.volatility) / 2,
+  };
 }
