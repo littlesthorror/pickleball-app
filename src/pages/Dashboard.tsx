@@ -20,6 +20,8 @@ import type { SeasonWrappedStats } from "../lib/seasonWrappedImage";
 import { isBirthdayToday } from "../lib/birthday";
 import { getTier, getNextTier } from "../lib/tiers";
 import { getCurrentSeason, getTrackedSeasons } from "../lib/seasons";
+import { getEventForecast } from "../lib/weather";
+import type { EventForecast } from "../lib/weather";
 import type { Season } from "../lib/seasons";
 import type { EventRow, LegacyBadgeRow, PlayerMatchHistoryRow, PlayerStatus } from "../types";
 
@@ -51,6 +53,48 @@ interface ViewerMatchRow {
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+// Small "weather today" widget (2026-08-29, Ben's request) — same
+// Open-Meteo/venue-forecast plumbing as the Events page's per-event
+// WeatherPill (lib/weather.ts), just always for today rather than tied to
+// a specific event's own weather_enabled toggle. Renders nothing while
+// loading or if a forecast genuinely isn't available, so it never leaves a
+// half-finished-looking gap on the dashboard.
+function TodayWeatherCard() {
+  const [forecast, setForecast] = useState<EventForecast | null | undefined>(undefined);
+
+  useEffect(() => {
+    let cancelled = false;
+    const todayStr = new Date().toISOString().slice(0, 10);
+    getEventForecast(todayStr, null).then((f) => {
+      if (!cancelled) setForecast(f);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (!forecast) return null;
+
+  return (
+    <div className="card">
+      <p className="stat-meta" style={{ marginTop: 0, marginBottom: 4, color: "var(--sky-600)", fontWeight: 700 }}>
+        Weather today
+      </p>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+        <span style={{ fontSize: "1.6rem", fontWeight: 800 }}>
+          {forecast.emoji} {forecast.tempC}°C
+        </span>
+        <span className="stat-meta" style={{ margin: 0 }}>
+          {forecast.description}
+          {forecast.precipitationChance != null && forecast.precipitationChance >= 30
+            ? ` · ${forecast.precipitationChance}% chance of rain`
+            : ""}
+        </span>
+      </div>
+    </div>
+  );
 }
 
 export default function Dashboard({
@@ -648,6 +692,8 @@ export default function Dashboard({
           </div>
         </div>
       )}
+
+      {isOwnProfile && <TodayWeatherCard />}
 
       {/* Partner-finder widget ("Looking for a game?") temporarily switched
           off, 2026-08-28, at Ben's request — code/DB tables left in place

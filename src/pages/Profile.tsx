@@ -4,6 +4,7 @@ import { supabase } from "../supabaseClient";
 import Avatar from "../components/Avatar";
 import { getExistingSubscription, isPushSupported, subscribeToPush, unsubscribeFromPush } from "../lib/push";
 import { downloadCsv } from "../lib/csvExport";
+import { compressImageFile } from "../lib/imageCompress";
 import type { PlayerStatus, PlayerMatchHistoryRow } from "../types";
 
 // Used two ways: as a one-time "complete your profile" step right after
@@ -245,12 +246,22 @@ export default function Profile({
     setUploading(true);
     setError(null);
 
-    const ext = file.name.split(".").pop() || "jpg";
+    // Downscaled before upload (2026-08-29 bugfix) — avatars were
+    // previously uploaded at full original resolution (a phone photo can
+    // easily be several MB), and this photo never renders larger than a
+    // couple hundred px anywhere in the app. With ~30 members' avatars
+    // re-fetched by everyone on every leaderboard/dashboard visit, that was
+    // the single biggest driver behind Supabase's Fair Use Policy email —
+    // see imageCompress.ts. 500px is generous headroom over the largest
+    // on-screen size while still cutting a multi-MB photo down to well
+    // under 100KB.
+    const compressedFile = await compressImageFile(file, 500);
+    const ext = compressedFile.name.split(".").pop() || "jpg";
     const path = `${player.id}/avatar.${ext}`;
 
     const { error: uploadError } = await supabase.storage
       .from("avatars")
-      .upload(path, file, { upsert: true });
+      .upload(path, compressedFile, { upsert: true, cacheControl: "31536000" });
 
     if (uploadError) {
       setError(uploadError.message);

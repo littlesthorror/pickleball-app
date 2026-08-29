@@ -725,10 +725,13 @@ export default function AdminManagement({
                 </div>
               )}
               <div className="stat-meta" style={{ marginTop: 0 }}>
-                {p.games_played} games played
-                {!p.is_active && " · deactivated"}
-                {p.is_admin && " · admin"}
-                {p.role_title && ` · ${p.role_title}`}
+                {/* Games played removed from here 2026-08-28 (Ben: profile
+                    was feeling busy) — still used elsewhere (e.g. gating
+                    the Delete button below), just not shown in this line
+                    any more. "Admin" capitalised per Ben's request. */}
+                {[!p.is_active && "Deactivated", p.is_admin && "Admin", p.role_title]
+                  .filter(Boolean)
+                  .join(" · ")}
               </div>
               {/* Emergency contact (2026-08-28) — set by the player themselves
                   in My Account, shown here since admins are the only people

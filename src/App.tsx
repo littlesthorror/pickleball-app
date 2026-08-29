@@ -245,7 +245,15 @@ export default function App() {
       {session ? (
         <>
           <div className="app-header">
-            <div className="brand">
+            <div
+              className="brand"
+              role="button"
+              tabIndex={0}
+              aria-label="Go to Dashboard"
+              onClick={() => changeTab("dashboard")}
+              onKeyDown={(e) => e.key === "Enter" && changeTab("dashboard")}
+              style={{ cursor: "pointer" }}
+            >
               {/* Drop your club logo file at public/logo.png and it'll show
                   up here automatically — see README for where to add it. */}
               <img src="/logo.png" alt="" onError={(e) => (e.currentTarget.style.display = "none")} />

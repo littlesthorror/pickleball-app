@@ -3,6 +3,7 @@ import type { ChangeEvent } from "react";
 import { supabase } from "../supabaseClient";
 import { linkify } from "../lib/linkify";
 import { useDraft } from "../lib/useDraft";
+import { compressImageFile } from "../lib/imageCompress";
 import type { FaqItem } from "../types";
 
 const FAQ_DRAFT_KEY = "sideline-draft-faq";
@@ -183,12 +184,17 @@ export default function FAQ({ isAdmin }: { isAdmin: boolean }) {
     }
 
     if (imageFile && itemId) {
-      const ext = imageFile.name.split(".").pop() || "jpg";
+      // Downscaled before upload (2026-08-29 bugfix) — was uploading the
+      // original file untouched; see the same fix on Profile.tsx's avatar
+      // upload and Events.tsx's poster upload for why this mattered for
+      // Supabase's Fair Use Policy bandwidth email.
+      const compressedImage = await compressImageFile(imageFile);
+      const ext = compressedImage.name.split(".").pop() || "jpg";
       // A fresh, unique path per upload rather than overwriting the same
       // one — see the identical comment on Events.tsx's poster upload for
       // why (avoids a stale cached image after replacing it).
       const path = `faq/${itemId}/image-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-      const { error: uploadError } = await supabase.storage.from("notices").upload(path, imageFile);
+      const { error: uploadError } = await supabase.storage.from("notices").upload(path, compressedImage, { cacheControl: "31536000" });
       if (uploadError) {
         setSaveError(`Saved, but the image failed to upload: ${uploadError.message}`);
         setSaving(false);

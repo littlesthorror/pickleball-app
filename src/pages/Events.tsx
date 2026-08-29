@@ -6,6 +6,7 @@ import { linkify } from "../lib/linkify";
 import { getEventForecast } from "../lib/weather";
 import type { EventForecast } from "../lib/weather";
 import { useBodyScrollLock } from "../lib/useBodyScrollLock";
+import { compressImageFile } from "../lib/imageCompress";
 import type { EventPosterPlaceholder, EventRow } from "../types";
 
 // Small self-contained weather chip — fetches its own forecast (see
@@ -840,14 +841,21 @@ export default function Events({ isAdmin, playerId }: { isAdmin: boolean; player
     }
 
     if (posterFile && eventId) {
-      const ext = posterFile.name.split(".").pop() || "jpg";
+      // Downscaled before upload (2026-08-29 bugfix) — this was uploading
+      // the original full-resolution photo untouched; posters get fetched
+      // by every member who opens the event, so an uncompressed multi-MB
+      // photo here was part of what tipped Supabase's Fair Use Policy
+      // bandwidth threshold. See imageCompress.ts / Profile.tsx's avatar
+      // upload for the other two places this same gap existed.
+      const compressedPoster = await compressImageFile(posterFile);
+      const ext = compressedPoster.name.split(".").pop() || "jpg";
       // A fresh, unique path per upload — rather than always overwriting
       // events/<id>/poster.<ext> — so the image gets a new URL every time
       // a poster is replaced. The old scheme reused the same URL for every
       // replacement, so browsers kept showing the cached original even
       // though the file underneath had changed. Found and fixed 2026-08-14.
       const path = `events/${eventId}/poster-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-      const { error: uploadError } = await supabase.storage.from("notices").upload(path, posterFile);
+      const { error: uploadError } = await supabase.storage.from("notices").upload(path, compressedPoster, { cacheControl: "31536000" });
       if (uploadError) {
         setSaveError(`Event saved, but the poster failed to upload: ${uploadError.message}`);
         setSaving(false);

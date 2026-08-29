@@ -1,7 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../supabaseClient";
 import { PlayerSelect, submitOneMatch } from "./MatchEntry";
 import { computeGroupStandings, generateGroupFixtures } from "../lib/competitionStandings";
+import compBanner1 from "../assets/competition-banners/comp-banner-1.jpg";
+import compBanner2 from "../assets/competition-banners/comp-banner-2.jpg";
+import compBanner3 from "../assets/competition-banners/comp-banner-3.jpg";
 import type {
   CompetitionRow,
   CompetitionTeamRow,
@@ -21,6 +24,13 @@ const KNOCKOUT_ROUNDS: { value: KnockoutRound; label: string }[] = [
 ];
 
 const MEDALS: Record<number, string> = { 1: "🥇", 2: "🥈", 3: "🥉" };
+
+// Rotating banner backdrop photos (2026-08-29, Ben's request) — the 1st
+// competition ever created uses photo 1, the 2nd uses photo 2, the 3rd
+// photo 3, the 4th back to photo 1, and so on — cycling purely by creation
+// order so the same competition always gets the same photo rather than it
+// changing depending on which one you're viewing when.
+const COMPETITION_BANNERS = [compBanner1, compBanner2, compBanner3];
 
 // Fixed-team doubles competitions: group stage (round robin within small
 // groups) followed by a knockout bracket, World-Cup style. Added
@@ -42,6 +52,14 @@ export default function Competitions({ isAdmin, currentUserId }: { isAdmin: bool
   const [newScoring, setNewScoring] = useState<ScoringSystem>("standard");
   const [newDoubleRoundRobin, setNewDoubleRoundRobin] = useState(false);
   const [creating, setCreating] = useState(false);
+  // Collapsed by default once at least one competition exists (2026-08-28,
+  // Ben's request — the form was always taking up space at the top of the
+  // page even when there was nothing to create). Still open by default the
+  // very first time, so a brand-new club isn't stuck looking for a hidden
+  // button with zero competitions on screen. Set once on mount rather than
+  // recomputed on every competitions.length change, so it doesn't yank
+  // itself shut/open under an admin who's mid-edit.
+  const [showNewForm, setShowNewForm] = useState<boolean | null>(null);
 
   function loadCompetitions() {
     return supabase
@@ -122,6 +140,7 @@ export default function Competitions({ isAdmin, currentUserId }: { isAdmin: bool
   }
 
   const selected = competitions.find((c) => c.id === selectedId) ?? null;
+  const newFormOpen = showNewForm ?? competitions.length === 0;
 
   if (loading) return <p>Loading competitions…</p>;
   if (error) return <p className="error">{error}</p>;
@@ -149,46 +168,63 @@ export default function Competitions({ isAdmin, currentUserId }: { isAdmin: bool
 
       {isAdmin && (
         <div className="card">
-          <h2 style={{ marginTop: 0 }}>New competition</h2>
-          <label>Name</label>
-          <input
-            type="text"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            placeholder="e.g. Huntingdon Cup 2026"
-          />
-          <label>Date (optional)</label>
-          <input type="date" value={newDate} onChange={(e) => setNewDate(e.target.value)} />
-          <label>Teams advancing per group</label>
-          <input
-            type="number"
-            min={1}
-            value={newAdvance}
-            onChange={(e) => setNewAdvance(e.target.value)}
-            style={{ maxWidth: 100 }}
-          />
-          <label>Scoring system</label>
-          <select value={newScoring} onChange={(e) => setNewScoring(e.target.value as ScoringSystem)}>
-            <option value="standard">Standard — 2 points for a win</option>
-            <option value="social">Social — 2 for a win, +1 consolation point for a close loss (7+)</option>
-          </select>
-          <p className="stat-meta" style={{ marginTop: 4 }}>
-            {newScoring === "social"
-              ? "The losing team still picks up 1 point if they scored more than 6 in the game."
-              : "Only the winning team scores group-stage points."}
-          </p>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 16, cursor: "pointer" }}>
-            <input
-              type="checkbox"
-              checked={newDoubleRoundRobin}
-              onChange={(e) => setNewDoubleRoundRobin(e.target.checked)}
-              style={{ width: "auto" }}
-            />
-            Teams play each other twice (double round robin)
-          </label>
-          <button disabled={creating || !newName.trim()} onClick={handleCreate} style={{ marginTop: 16 }}>
-            {creating ? "Creating…" : "Create competition"}
-          </button>
+          {/* Collapsible (2026-08-28, Ben's request) — collapsed by default
+              once at least one competition already exists, so this form
+              doesn't permanently take up space at the top of the page.
+              Still expanded by default the very first time (no competitions
+              yet), so there's nothing to hunt for on a brand-new club. */}
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => setShowNewForm(!newFormOpen)}
+            style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}
+          >
+            <h2 style={{ margin: 0 }}>New competition</h2>
+            <span style={{ color: "var(--navy-500)", fontWeight: 700 }}>{newFormOpen ? "Hide ▲" : "Show ▼"}</span>
+          </div>
+          {newFormOpen && (
+            <>
+              <label>Name</label>
+              <input
+                type="text"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder="e.g. Huntingdon Cup 2026"
+              />
+              <label>Date (optional)</label>
+              <input type="date" value={newDate} onChange={(e) => setNewDate(e.target.value)} />
+              <label>Teams advancing per group</label>
+              <input
+                type="number"
+                min={1}
+                value={newAdvance}
+                onChange={(e) => setNewAdvance(e.target.value)}
+                style={{ maxWidth: 100 }}
+              />
+              <label>Scoring system</label>
+              <select value={newScoring} onChange={(e) => setNewScoring(e.target.value as ScoringSystem)}>
+                <option value="standard">Standard — 2 points for a win</option>
+                <option value="social">Social — 2 for a win, +1 consolation point for a close loss (7+)</option>
+              </select>
+              <p className="stat-meta" style={{ marginTop: 4 }}>
+                {newScoring === "social"
+                  ? "The losing team still picks up 1 point if they scored more than 6 in the game."
+                  : "Only the winning team scores group-stage points."}
+              </p>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 16, cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={newDoubleRoundRobin}
+                  onChange={(e) => setNewDoubleRoundRobin(e.target.checked)}
+                  style={{ width: "auto" }}
+                />
+                Teams play each other twice (double round robin)
+              </label>
+              <button disabled={creating || !newName.trim()} onClick={handleCreate} style={{ marginTop: 16 }}>
+                {creating ? "Creating…" : "Create competition"}
+              </button>
+            </>
+          )}
         </div>
       )}
 
@@ -207,6 +243,13 @@ export default function Competitions({ isAdmin, currentUserId }: { isAdmin: bool
           currentUserId={currentUserId}
           onCompetitionChanged={loadCompetitions}
           onDelete={handleDeleteCompetition}
+          bannerIndex={
+            // competitions is loaded newest-first — reverse the position to
+            // get creation order (oldest = 0) before cycling through the
+            // banner photos, so a given competition's photo never changes
+            // as new ones get created after it.
+            (competitions.length - 1 - competitions.findIndex((c) => c.id === selected.id)) % COMPETITION_BANNERS.length
+          }
         />
       )}
     </div>
@@ -220,6 +263,7 @@ function CompetitionDetail({
   currentUserId,
   onCompetitionChanged,
   onDelete,
+  bannerIndex,
 }: {
   competition: CompetitionRow;
   players: PlayerStatus[];
@@ -227,6 +271,7 @@ function CompetitionDetail({
   currentUserId: string;
   onCompetitionChanged: () => void;
   onDelete: (id: string) => void;
+  bannerIndex: number;
 }) {
   const [teams, setTeams] = useState<CompetitionTeamRow[]>([]);
   const [groups, setGroups] = useState<CompetitionGroupRow[]>([]);
@@ -234,9 +279,19 @@ function CompetitionDetail({
   const [matches, setMatches] = useState<(CompetitionMatchRow & { matches: { team_a_score: number; team_b_score: number } | null })[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Tracks whether the first load for this competition has finished. Every
+  // admin action on this page (add a team, enter a score, advance a stage…)
+  // calls load() again via onChanged — previously that re-set `loading` to
+  // true every time, which collapsed this whole section down to a single
+  // "Loading competition…" line and back, snapping the page's scroll
+  // position to the top (2026-08-28 bugfix, Ben: "it shifts the page back
+  // to the top... every time"). Only the very first load should show that
+  // skeleton; every refresh after that updates the data in place without
+  // unmounting the page.
+  const hasLoadedOnce = useRef(false);
 
   function load() {
-    setLoading(true);
+    if (!hasLoadedOnce.current) setLoading(true);
     return Promise.all([
       supabase.from("competition_teams").select("*").eq("competition_id", competition.id),
       supabase.from("competition_groups").select("*").eq("competition_id", competition.id).order("sort_order"),
@@ -267,10 +322,12 @@ function CompetitionDetail({
       }
 
       setLoading(false);
+      hasLoadedOnce.current = true;
     });
   }
 
   useEffect(() => {
+    hasLoadedOnce.current = false;
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [competition.id]);
@@ -296,10 +353,12 @@ function CompetitionDetail({
     <div>
       {error && <p className="error">{error}</p>}
       {/* Title banner — made bold/gradient 2026-08-27 at Ben's request
-          ("50s v 18 just doesn't really pop"). Reuses the same navy
-          gradient as the app header / Share card so it reads as a
-          consistent "special moment" treatment rather than a one-off
-          style, with the status as a small pill instead of plain text. */}
+          ("50s v 18 just doesn't really pop"). 2026-08-29: now an opaque
+          photo backdrop (one of 3, rotating per competition — see
+          COMPETITION_BANNERS above) with the same navy gradient layered on
+          top as a translucent wash, rather than a flat colour, so the
+          banner still reads as a consistent "special moment" treatment
+          while varying in look from one competition to the next. */}
       <div
         style={{
           display: "flex",
@@ -307,7 +366,10 @@ function CompetitionDetail({
           justifyContent: "space-between",
           alignItems: "flex-start",
           gap: 12,
-          background: "linear-gradient(135deg, var(--navy-900), var(--navy-700))",
+          backgroundColor: "var(--navy-900)",
+          backgroundImage: `linear-gradient(135deg, rgba(15,37,71,0.82), rgba(22,52,96,0.82)), url(${COMPETITION_BANNERS[bannerIndex]})`,
+          backgroundSize: "cover",
+          backgroundPosition: "center",
           borderRadius: "var(--radius-md)",
           padding: "18px 20px",
         }}
@@ -405,7 +467,14 @@ function CompetitionDetail({
       )}
 
       {competition.status === "completed" && (
-        <CompletedSection competitionId={competition.id} teamLabel={teamLabel} />
+        <CompletedSection
+          competition={competition}
+          teams={teams}
+          matches={matches}
+          teamLabel={teamLabel}
+          isAdmin={isAdmin}
+          onChanged={refreshAfterChange}
+        />
       )}
     </div>
   );
@@ -1249,17 +1318,34 @@ function KnockoutSection({
   }
 
   return (
-    <div className="card">
-      <h3 style={{ marginTop: 0 }}>Knockout bracket</h3>
+    <div className="card card-knockout">
+      <h3 style={{ marginTop: 0 }}>🏆 Knockout bracket</h3>
 
       {KNOCKOUT_ROUNDS.map(({ value, label }) => {
         const roundMatches = knockoutMatches
           .filter((m) => m.knockout_round === value)
           .sort((a, b) => (a.knockout_slot ?? 0) - (b.knockout_slot ?? 0));
         if (roundMatches.length === 0) return null;
+        // Final/semifinal headings get a bit more visual weight than the
+        // earlier rounds (2026-08-28, Ben: "should feel a bit more special
+        // and standout a touch") — everything from quarterfinal down stays
+        // as plain bold text.
+        const isFinal = value === "final";
+        const isSemifinal = value === "semifinal";
         return (
           <div key={value} style={{ marginBottom: 16 }}>
-            <strong>{label}</strong>
+            <div
+              style={
+                isFinal
+                  ? { fontWeight: 800, fontSize: "1.15rem", color: "var(--orange-600)", letterSpacing: "0.02em", marginBottom: 4 }
+                  : isSemifinal
+                  ? { fontWeight: 700, fontSize: "1rem", color: "var(--navy-500)", marginBottom: 4 }
+                  : { fontWeight: 700, marginBottom: 4 }
+              }
+            >
+              {isFinal ? "🏆 " : isSemifinal ? "🥈 " : ""}
+              {label}
+            </div>
             {roundMatches.map((m) => (
               <FixtureRow
                 key={m.id}
@@ -1314,7 +1400,16 @@ function KnockoutSection({
       {isAdmin && competition.status === "knockout" && (
         <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--border)" }}>
           {completeError && <p className="error">{completeError}</p>}
-          <button disabled={completing} onClick={completeCompetition}>
+          {/* Blue stroke (2026-08-28, Ben's request) — this is the one
+              button on the page with a real, hard-to-undo-casually
+              consequence (locks the bracket, writes final placements to
+              Club Stats), so it should read as visually distinct from the
+              routine "Add match" button above rather than blending in. */}
+          <button
+            disabled={completing}
+            onClick={completeCompetition}
+            style={{ border: "2px solid var(--sky-600)" }}
+          >
             {completing ? "Finishing…" : "Mark competition complete"}
           </button>
         </div>
@@ -1325,31 +1420,151 @@ function KnockoutSection({
 
 // ── Completed: final placements ──────────────────────────────────────────
 
-function CompletedSection({ competitionId, teamLabel }: { competitionId: string; teamLabel: (id: string) => string }) {
+// Competition Summary (2026-08-28, Ben's request) — extends the original
+// bare "Final placements" list into a fuller recap: the podium called out
+// more prominently, plus a couple of fun, positive-only stats pulled from
+// the competition's own matches (highest scoring team, biggest win).
+// Deliberately excludes anything framed around a loss/worst performance
+// (no "biggest defeat", no "fewest wins") per Ben's explicit ask — every
+// stat here should be something a team is happy to see themselves in.
+function CompletedSection({
+  competition,
+  teams,
+  matches,
+  teamLabel,
+  isAdmin,
+  onChanged,
+}: {
+  competition: CompetitionRow;
+  teams: CompetitionTeamRow[];
+  matches: (CompetitionMatchRow & { matches: { team_a_score: number; team_b_score: number } | null })[];
+  teamLabel: (id: string) => string;
+  isAdmin: boolean;
+  onChanged: () => void;
+}) {
   const [results, setResults] = useState<{ placement: number; team_id: string }[]>([]);
+  const [reopening, setReopening] = useState(false);
 
   useEffect(() => {
     supabase
       .from("competition_results")
       .select("placement, team_id")
-      .eq("competition_id", competitionId)
+      .eq("competition_id", competition.id)
       .order("placement")
       .then(({ data }) => setResults(data ?? []));
-  }, [competitionId]);
+  }, [competition.id]);
+
+  const podium = results.filter((r) => r.placement <= 3);
+
+  // Highest scoring team — total points scored across every played match
+  // (group + knockout) in the competition.
+  const scoreByTeam = new Map<string, number>();
+  for (const m of matches) {
+    if (!m.matches) continue;
+    scoreByTeam.set(m.team_a_id, (scoreByTeam.get(m.team_a_id) ?? 0) + m.matches.team_a_score);
+    scoreByTeam.set(m.team_b_id, (scoreByTeam.get(m.team_b_id) ?? 0) + m.matches.team_b_score);
+  }
+  let topScorer: { teamId: string; points: number } | null = null;
+  for (const [teamId, points] of scoreByTeam) {
+    if (!topScorer || points > topScorer.points) topScorer = { teamId, points };
+  }
+
+  // Biggest win — largest margin of victory in any single played match.
+  let biggestWin: { winnerId: string; loserId: string; winnerScore: number; loserScore: number; margin: number } | null = null;
+  for (const m of matches) {
+    if (!m.matches || !m.winner_team_id) continue;
+    const winnerIsA = m.winner_team_id === m.team_a_id;
+    const winnerScore = winnerIsA ? m.matches.team_a_score : m.matches.team_b_score;
+    const loserScore = winnerIsA ? m.matches.team_b_score : m.matches.team_a_score;
+    const margin = winnerScore - loserScore;
+    if (margin > 0 && (!biggestWin || margin > biggestWin.margin)) {
+      biggestWin = {
+        winnerId: m.winner_team_id,
+        loserId: winnerIsA ? m.team_b_id : m.team_a_id,
+        winnerScore,
+        loserScore,
+        margin,
+      };
+    }
+  }
+
+  async function reopenCompetition() {
+    if (
+      !confirm(
+        "Reopen this competition? It'll move back to the knockout stage so results can be corrected — the recorded final placements will be cleared until you mark it complete again."
+      )
+    ) {
+      return;
+    }
+    setReopening(true);
+    await supabase.from("competition_results").delete().eq("competition_id", competition.id);
+    const { error } = await supabase.from("competitions").update({ status: "knockout" }).eq("id", competition.id);
+    setReopening(false);
+    if (!error) onChanged();
+  }
 
   return (
     <div className="card">
-      <h3 style={{ marginTop: 0 }}>Final placements</h3>
-      {results.map((r) => (
-        <div className="match-row" key={`${r.placement}-${r.team_id}`}>
-          <div className="opponent">
-            {MEDALS[r.placement] ?? `${r.placement}th`} {teamLabel(r.team_id)}
-          </div>
+      <h3 style={{ marginTop: 0 }}>🏁 Competition summary</h3>
+
+      {podium.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
+          {podium.map((r) => (
+            <div
+              key={`${r.placement}-${r.team_id}`}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "10px 14px",
+                borderRadius: 10,
+                background: r.placement === 1 ? "var(--orange-100)" : "var(--bg-subtle, rgba(15,37,71,0.04))",
+                border: r.placement === 1 ? "1.5px solid var(--orange-500)" : "1px solid var(--border)",
+              }}
+            >
+              <span style={{ fontSize: "1.3rem" }}>{MEDALS[r.placement] ?? `${r.placement}th`}</span>
+              <span style={{ fontWeight: r.placement === 1 ? 800 : 600 }}>{teamLabel(r.team_id)}</span>
+            </div>
+          ))}
         </div>
-      ))}
+      )}
+
+      {(topScorer || biggestWin) && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 4 }}>
+          {topScorer && (
+            <div style={{ flex: "1 1 220px", padding: "10px 12px", borderRadius: 10, background: "var(--bg-subtle, rgba(15,37,71,0.04))", border: "1px solid var(--border)" }}>
+              <div className="stat-meta" style={{ margin: 0 }}>🔥 Highest scoring team</div>
+              <div style={{ fontWeight: 700, marginTop: 2 }}>{teamLabel(topScorer.teamId)}</div>
+              <div className="stat-meta" style={{ marginTop: 2 }}>{topScorer.points} points across the competition</div>
+            </div>
+          )}
+          {biggestWin && (
+            <div style={{ flex: "1 1 220px", padding: "10px 12px", borderRadius: 10, background: "var(--bg-subtle, rgba(15,37,71,0.04))", border: "1px solid var(--border)" }}>
+              <div className="stat-meta" style={{ margin: 0 }}>💥 Biggest win</div>
+              <div style={{ fontWeight: 700, marginTop: 2 }}>{teamLabel(biggestWin.winnerId)}</div>
+              <div className="stat-meta" style={{ marginTop: 2 }}>
+                Beat {teamLabel(biggestWin.loserId)} {biggestWin.winnerScore}–{biggestWin.loserScore}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       <p className="stat-meta" style={{ marginTop: 12 }}>
         This also appears in the "Past competitions" section on Club Stats.
       </p>
+
+      {isAdmin && (
+        <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--border)" }}>
+          <button
+            disabled={reopening}
+            onClick={reopenCompetition}
+            style={{ background: "transparent", color: "var(--navy-500)", border: "1px solid var(--border)" }}
+          >
+            {reopening ? "Reopening…" : "Reopen competition (marked complete by mistake?)"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

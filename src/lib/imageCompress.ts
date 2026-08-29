@@ -16,14 +16,23 @@
 const MAX_DIMENSION = 1600;
 const JPEG_QUALITY = 0.82;
 
-export async function compressImageFile(file: File): Promise<File> {
+// maxDimension is overridable per call site (2026-08-29) — added after
+// discovering avatars/event posters/FAQ images were being uploaded at full
+// original resolution (this function wasn't wired up to those three upload
+// paths at all), which turned out to be the main driver behind Supabase's
+// "Fair Use Policy" bandwidth email: a leaderboard full of 2-4MB avatar
+// photos gets re-fetched by every member on every visit. Avatars in
+// particular never render larger than a couple hundred px anywhere in the
+// app, so they get a much smaller target than the 1600px default used for
+// notices/event/FAQ images (which are shown full-width in a lightbox).
+export async function compressImageFile(file: File, maxDimension: number = MAX_DIMENSION): Promise<File> {
   if (!file.type.startsWith("image/") || file.type === "image/gif" || file.type === "image/svg+xml") {
     return file;
   }
 
   try {
     const bitmap = await createImageBitmap(file);
-    const scale = Math.min(1, MAX_DIMENSION / Math.max(bitmap.width, bitmap.height));
+    const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
     if (scale >= 1) {
       bitmap.close?.();
       return file; // already small enough — don't re-encode for no gain

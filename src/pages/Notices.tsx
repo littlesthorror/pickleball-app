@@ -501,7 +501,11 @@ export default function Notices({ isAdmin, playerId }: { isAdmin: boolean; playe
       const compressed = await compressImageFile(f);
       const ext = compressed.name.split(".").pop() || "dat";
       const path = `${crypto.randomUUID()}.${ext}`;
-      const { error: uploadError } = await supabase.storage.from("notices").upload(path, compressed);
+      // cacheControl: uploads get a unique path already, so it's safe to
+      // tell browsers/CDN to cache it hard rather than the 1hr default —
+      // cuts repeat egress for members re-visiting a notice (2026-08-29,
+      // part of the fix for Supabase's Fair Use Policy bandwidth email).
+      const { error: uploadError } = await supabase.storage.from("notices").upload(path, compressed, { cacheControl: "31536000" });
       if (uploadError) {
         setSaveError(uploadError.message);
         setSaving(false);
@@ -580,7 +584,7 @@ export default function Notices({ isAdmin, playerId }: { isAdmin: boolean; playe
       const compressedCover = await compressImageFile(coverFile);
       const ext = compressedCover.name.split(".").pop() || "jpg";
       const path = `notices/${noticeId}/cover-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-      const { error: uploadError } = await supabase.storage.from("notices").upload(path, compressedCover);
+      const { error: uploadError } = await supabase.storage.from("notices").upload(path, compressedCover, { cacheControl: "31536000" });
       if (uploadError) {
         setSaveError(`Notice saved, but the headline image failed to upload: ${uploadError.message}`);
         setSaving(false);

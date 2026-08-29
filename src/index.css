@@ -900,6 +900,16 @@ textarea {
   box-shadow: 0 0 0 1px var(--orange-500), var(--shadow-card);
 }
 
+/* Knockout bracket card (2026-08-28) — Ben's request: an outline + a
+   different background shade, similar to the pinned-notice treatment
+   above, so the bracket clearly reads as its own distinct section rather
+   than blending in with the standings/fixtures cards above it. */
+.card-knockout {
+  box-shadow: 0 0 0 1.5px var(--orange-500), var(--shadow-card);
+  background-color: var(--card);
+  background-image: linear-gradient(180deg, var(--orange-100) 0%, rgba(255, 231, 209, 0) 160px);
+}
+
 .notice-card-body-pinned {
   background: linear-gradient(180deg, var(--orange-100) 0%, rgba(255, 231, 209, 0) 90px);
 }
