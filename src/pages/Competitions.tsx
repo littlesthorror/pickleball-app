@@ -1340,7 +1340,7 @@ function KnockoutSection({
                   ? { fontWeight: 800, fontSize: "1.15rem", color: "var(--orange-600)", letterSpacing: "0.02em", marginBottom: 4 }
                   : isSemifinal
                   ? { fontWeight: 700, fontSize: "1rem", color: "var(--navy-500)", marginBottom: 4 }
-                  : { fontWeight: 700, marginBottom: 4 }
+                  : { fontWeight: 700, color: "var(--navy-700)", marginBottom: 4 }
               }
             >
               {isFinal ? "🏆 " : isSemifinal ? "🥈 " : ""}
@@ -1518,8 +1518,12 @@ function CompletedSection({
                 gap: 10,
                 padding: "10px 14px",
                 borderRadius: 10,
-                background: r.placement === 1 ? "var(--orange-100)" : "var(--bg-subtle, rgba(15,37,71,0.04))",
-                border: r.placement === 1 ? "1.5px solid var(--orange-500)" : "1px solid var(--border)",
+                // Blue rather than orange (2026-08-29, Ben's request) — the
+                // Knockout bracket card above already uses orange, so the
+                // winner here gets its own colour to stay visually distinct
+                // from it rather than blending together.
+                background: r.placement === 1 ? "rgba(43, 120, 209, 0.14)" : "var(--bg-subtle, rgba(15,37,71,0.04))",
+                border: r.placement === 1 ? "1.5px solid var(--sky-600)" : "1px solid var(--border)",
               }}
             >
               <span style={{ fontSize: "1.3rem" }}>{MEDALS[r.placement] ?? `${r.placement}th`}</span>
