@@ -19,6 +19,9 @@ import Competitions from "./pages/Competitions";
 import type { PlayerStatus } from "./types";
 import { getCurrentSeason, isWithinNewSeasonWindow } from "./lib/seasons";
 import { logError } from "./lib/errorLogging";
+import { ConfirmProvider } from "./components/ConfirmDialog";
+import { ToastProvider } from "./components/Toast";
+import PageLoading from "./components/PageLoading";
 
 // One-line "new season" banner, shown for the first few days of each
 // tracked season (see isWithinNewSeasonWindow) — purely time-window based,
@@ -241,7 +244,9 @@ export default function App() {
   const effectiveIsAdmin = !!player?.is_admin && !previewAsPlayer;
 
   return (
-    <div className="page">
+    <ConfirmProvider>
+      <ToastProvider>
+        <div className="page">
       {session ? (
         <>
           <div className="app-header">
@@ -290,7 +295,7 @@ export default function App() {
           )}
 
           {!playerChecked ? (
-            <p>Loading your profile…</p>
+            <PageLoading label="Loading your profile…" />
           ) : !player ? (
             <InviteGate onJoined={loadPlayer} />
           ) : !player.profile_completed ? (
@@ -447,6 +452,8 @@ export default function App() {
       ) : (
         <Login />
       )}
-    </div>
+        </div>
+      </ToastProvider>
+    </ConfirmProvider>
   );
 }

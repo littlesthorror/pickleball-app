@@ -8,6 +8,9 @@ import type { EventForecast } from "../lib/weather";
 import { useBodyScrollLock } from "../lib/useBodyScrollLock";
 import { compressImageFile } from "../lib/imageCompress";
 import type { EventPosterPlaceholder, EventRow } from "../types";
+import { useConfirm } from "../components/ConfirmDialog";
+import { useToast } from "../components/Toast";
+import PageLoading from "../components/PageLoading";
 
 // Small self-contained weather chip — fetches its own forecast (see
 // lib/weather.ts) and renders nothing at all if the event doesn't have
@@ -641,6 +644,8 @@ const EMPTY_DRAFT = {
 };
 
 export default function Events({ isAdmin, playerId }: { isAdmin: boolean; playerId: string }) {
+  const confirm = useConfirm();
+  const toast = useToast();
   const [events, setEvents] = useState<EventRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -889,16 +894,16 @@ export default function Events({ isAdmin, playerId }: { isAdmin: boolean; player
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("Remove this event?")) return;
+    if (!(await confirm("Remove this event?", { danger: true }))) return;
     const { error } = await supabase.from("events").delete().eq("id", id);
     if (error) {
-      alert(`Couldn't delete: ${error.message}`);
+      toast.error(`Couldn't delete: ${error.message}`);
       return;
     }
     load();
   }
 
-  if (loading) return <p>Loading events…</p>;
+  if (loading) return <PageLoading label="Loading events…" />;
   if (error) return <p className="error">{error}</p>;
 
   const now = new Date();

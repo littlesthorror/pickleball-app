@@ -3,6 +3,7 @@ import { supabase } from "../supabaseClient";
 import Avatar from "../components/Avatar";
 import type { LeaderboardRow } from "../types";
 import { getCurrentSeason, getTrackedSeasons } from "../lib/seasons";
+import PageLoading from "../components/PageLoading";
 
 type SortMode = "rating" | "improved";
 
@@ -477,7 +478,7 @@ export default function Leaderboard({
 
   const clubPlayerRow = clubPlayer ? rowsById.get(clubPlayer.playerId) : undefined;
 
-  if (loading) return <p>Loading leaderboard…</p>;
+  if (loading) return <PageLoading label="Loading leaderboard…" />;
   if (error) return <p className="error">{error}</p>;
 
   const visibleEstablishedRows = established.slice(0, visibleEstablished);

@@ -7,6 +7,9 @@ import Lightbox from "../components/Lightbox";
 import { compressImageFile } from "../lib/imageCompress";
 import { useBodyScrollLock } from "../lib/useBodyScrollLock";
 import type { NoticeAttachment, NoticePollVote, NoticeRow } from "../types";
+import { useConfirm } from "../components/ConfirmDialog";
+import { useToast } from "../components/Toast";
+import PageLoading from "../components/PageLoading";
 
 const NOTICE_DRAFT_KEY = "sideline-draft-notice";
 
@@ -193,6 +196,8 @@ function NoticePoll({
 }
 
 export default function Notices({ isAdmin, playerId }: { isAdmin: boolean; playerId: string }) {
+  const confirm = useConfirm();
+  const toast = useToast();
   const [notices, setNotices] = useState<NoticeRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -317,7 +322,7 @@ export default function Notices({ isAdmin, playerId }: { isAdmin: boolean; playe
       .from("notice_poll_votes")
       .upsert({ notice_id: noticeId, player_id: playerId, option_index: optionIndex }, { onConflict: "notice_id,player_id" });
     if (error) {
-      alert(`Couldn't record your vote: ${error.message}`);
+      toast.error(`Couldn't record your vote: ${error.message}`);
       return;
     }
     const { data: voteRows } = await supabase.from("notice_poll_votes").select("*").eq("notice_id", noticeId);
@@ -623,7 +628,7 @@ export default function Notices({ isAdmin, playerId }: { isAdmin: boolean; playe
   }
 
   async function handleDelete(notice: NoticeRow) {
-    if (!confirm("Remove this notice?")) return;
+    if (!(await confirm("Remove this notice?", { danger: true }))) return;
     const paths = attachmentsFor(notice).map((a) => a.path);
     if (notice.cover_path) paths.push(notice.cover_path);
     if (paths.length > 0) {
@@ -631,7 +636,7 @@ export default function Notices({ isAdmin, playerId }: { isAdmin: boolean; playe
     }
     const { error } = await supabase.from("notices").delete().eq("id", notice.id);
     if (error) {
-      alert(`Couldn't delete: ${error.message}`);
+      toast.error(`Couldn't delete: ${error.message}`);
       return;
     }
     load();
@@ -640,7 +645,7 @@ export default function Notices({ isAdmin, playerId }: { isAdmin: boolean; playe
   async function togglePinned(notice: NoticeRow) {
     const { error } = await supabase.from("notices").update({ pinned: !notice.pinned }).eq("id", notice.id);
     if (error) {
-      alert(`Couldn't update: ${error.message}`);
+      toast.error(`Couldn't update: ${error.message}`);
       return;
     }
     load();
@@ -650,7 +655,7 @@ export default function Notices({ isAdmin, playerId }: { isAdmin: boolean; playe
     return supabase.storage.from("notices").getPublicUrl(path).data.publicUrl;
   }
 
-  if (loading) return <p>Loading notices…</p>;
+  if (loading) return <PageLoading label="Loading notices…" />;
   if (error) return <p className="error">{error}</p>;
 
   const actionBtnStyle = {

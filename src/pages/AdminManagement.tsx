@@ -4,6 +4,9 @@ import { FunctionsHttpError } from "@supabase/supabase-js";
 import { supabase } from "../supabaseClient";
 import Avatar from "../components/Avatar";
 import type { LegacyBadgeRow, PlayerPrivateInfo, PlayerStatus } from "../types";
+import { useConfirm } from "../components/ConfirmDialog";
+import { useToast } from "../components/Toast";
+import PageLoading from "../components/PageLoading";
 
 const PAGE_SIZE = 20;
 const ERROR_LOG_LIMIT = 50;
@@ -88,6 +91,8 @@ export default function AdminManagement({
   // on the Leaderboard just to check their profile.
   onSelectPlayer?: (id: string, name: string) => void;
 }) {
+  const confirm = useConfirm();
+  const toast = useToast();
   const [players, setPlayers] = useState<PlayerStatus[]>([]);
   // Emergency contact + medical info (2026-08-31) — moved out of
   // player_status into their own RLS-locked table (see types.ts's
@@ -193,7 +198,7 @@ export default function AdminManagement({
       .eq("id", true);
     setSavingCompetitionsTab(false);
     if (error) {
-      alert(`Couldn't update: ${error.message}`);
+      toast.error(`Couldn't update: ${error.message}`);
       return;
     }
     setShowCompetitionsTab(next);
@@ -215,12 +220,12 @@ export default function AdminManagement({
   }
 
   async function clearErrorLogs() {
-    if (!confirm(`Clear all ${errorLogs.length} logged error${errorLogs.length === 1 ? "" : "s"}?`)) return;
+    if (!(await confirm(`Clear all ${errorLogs.length} logged error${errorLogs.length === 1 ? "" : "s"}?`, { danger: true }))) return;
     setClearingLogs(true);
     const { error } = await supabase.from("client_error_logs").delete().not("id", "is", null);
     setClearingLogs(false);
     if (error) {
-      alert(`Couldn't clear error logs: ${error.message}`);
+      toast.error(`Couldn't clear error logs: ${error.message}`);
       return;
     }
     loadErrorLogs();
@@ -254,7 +259,7 @@ export default function AdminManagement({
     });
     setGrantingBadge(false);
     if (error) {
-      alert(`Couldn't grant this badge: ${error.message}`);
+      toast.error(`Couldn't grant this badge: ${error.message}`);
       return;
     }
     setLegacyDraft({ emoji: "🏆", label: "", description: "", achievedAt: new Date().toISOString().slice(0, 10) });
@@ -263,10 +268,10 @@ export default function AdminManagement({
   }
 
   async function revokeLegacyBadge(badge: LegacyBadgeRow) {
-    if (!confirm(`Remove the "${badge.label}" badge from this player?`)) return;
+    if (!(await confirm(`Remove the "${badge.label}" badge from this player?`, { danger: true }))) return;
     const { error } = await supabase.from("legacy_badges").delete().eq("id", badge.id);
     if (error) {
-      alert(`Couldn't remove this badge: ${error.message}`);
+      toast.error(`Couldn't remove this badge: ${error.message}`);
       return;
     }
     loadLegacyBadges();
@@ -300,7 +305,7 @@ export default function AdminManagement({
       .eq("id", true);
     setSavingCode(false);
     if (error) {
-      alert(`Couldn't save: ${error.message}`);
+      toast.error(`Couldn't save: ${error.message}`);
       return;
     }
     setInviteCode(inviteCodeInput.trim());
@@ -321,7 +326,7 @@ export default function AdminManagement({
   async function saveName(player: PlayerStatus) {
     const value = (nameDrafts[player.id] ?? player.display_name).trim();
     if (!value) {
-      alert("Name can't be empty.");
+      toast.error("Name can't be empty.");
       return;
     }
     if (value === player.display_name) {
@@ -332,7 +337,7 @@ export default function AdminManagement({
     const { error } = await supabase.from("players").update({ display_name: value }).eq("id", player.id);
     setBusyId(null);
     if (error) {
-      alert(`Couldn't update name: ${error.message}`);
+      toast.error(`Couldn't update name: ${error.message}`);
       return;
     }
     setEditingNameId(null);
@@ -353,7 +358,7 @@ export default function AdminManagement({
       .eq("id", player.id);
     setBusyId(null);
     if (error) {
-      alert(`Couldn't update role: ${error.message}`);
+      toast.error(`Couldn't update role: ${error.message}`);
       return;
     }
     load();
@@ -367,7 +372,7 @@ export default function AdminManagement({
       .eq("id", player.id);
     setBusyId(null);
     if (error) {
-      alert(`Couldn't update admin status: ${error.message}`);
+      toast.error(`Couldn't update admin status: ${error.message}`);
       return;
     }
     load();
@@ -381,7 +386,7 @@ export default function AdminManagement({
       .eq("id", player.id);
     setBusyId(null);
     if (error) {
-      alert(`Couldn't update: ${error.message}`);
+      toast.error(`Couldn't update: ${error.message}`);
       return;
     }
     load();
@@ -389,9 +394,10 @@ export default function AdminManagement({
 
   async function resetHistory(player: PlayerStatus) {
     if (
-      !confirm(
-        `Reset ${player.display_name}'s rating back to a fresh start? Their own dashboard will only count games from this point forward — everyone else's match history against them stays exactly as it is.`
-      )
+      !(await confirm(
+        `Reset ${player.display_name}'s rating back to a fresh start? Their own dashboard will only count games from this point forward — everyone else's match history against them stays exactly as it is.`,
+        { danger: true }
+      ))
     ) {
       return;
     }
@@ -418,9 +424,9 @@ export default function AdminManagement({
       }
       if (error instanceof FunctionsHttpError) {
         const body = await error.context.json().catch(() => null);
-        alert(body?.error ?? "Couldn't reset this player's history.");
+        toast.error(body?.error ?? "Couldn't reset this player's history.");
       } else {
-        alert("Couldn't reach the server to reset this player's history — check your connection and try again.");
+        toast.error("Couldn't reach the server to reset this player's history — check your connection and try again.");
       }
       return;
     }
@@ -436,9 +442,9 @@ export default function AdminManagement({
   // actually supports.
   async function recomputeHistory() {
     if (
-      !confirm(
+      !(await confirm(
         "Recalculate every player's rating from the complete match history? This rebuilds everyone's rating from scratch based on every confirmed game, in order — useful as a sanity check, but not something you'd normally need to run."
-      )
+      ))
     ) {
       return;
     }
@@ -461,24 +467,24 @@ export default function AdminManagement({
       const justRecomputed =
         !!recheck?.updated_at && new Date(recheck.updated_at).getTime() > attemptedAt - 5000;
       if (justRecomputed) {
-        alert("Done — every player's rating has been recalculated from the full match history.");
+        toast.success("Done — every player's rating has been recalculated from the full match history.");
         load();
         return;
       }
       if (error instanceof FunctionsHttpError) {
         const body = await error.context.json().catch(() => null);
-        alert(body?.error ?? "Couldn't recompute ratings.");
+        toast.error(body?.error ?? "Couldn't recompute ratings.");
       } else {
-        alert("Couldn't reach the server to recompute ratings — check your connection and try again.");
+        toast.error("Couldn't reach the server to recompute ratings — check your connection and try again.");
       }
       return;
     }
-    alert("Done — every player's rating has been recalculated from the full match history.");
+    toast.success("Done — every player's rating has been recalculated from the full match history.");
     load();
   }
 
   async function deletePlayer(player: PlayerStatus) {
-    if (!confirm(`Permanently delete ${player.display_name}'s account? This can't be undone.`)) {
+    if (!(await confirm(`Permanently delete ${player.display_name}'s account? This can't be undone.`, { danger: true }))) {
       return;
     }
     setBusyId(player.id);
@@ -489,7 +495,7 @@ export default function AdminManagement({
       // a player with any match history simply can't be deleted, so this
       // just explains that in plain language rather than showing the raw
       // Postgres error.
-      alert(
+      toast.error(
         `Couldn't delete ${player.display_name} — they still have match history attached to their account. Use "Deactivate" instead to hide them from match entry without losing anyone's shared results.`
       );
       return;
@@ -497,7 +503,7 @@ export default function AdminManagement({
     load();
   }
 
-  if (loading) return <p>Loading players…</p>;
+  if (loading) return <PageLoading label="Loading players…" />;
   if (error) return <p className="error">{error}</p>;
 
   return (

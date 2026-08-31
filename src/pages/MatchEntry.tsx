@@ -3,6 +3,7 @@ import { supabase } from "../supabaseClient";
 import { averageTeam, predictedWinProbability } from "../lib/predict";
 import { predictedRatingImpact } from "../lib/impact";
 import type { PlayerStatus } from "../types";
+import PageLoading from "../components/PageLoading";
 
 export function PlayerSelect({
   label,
@@ -138,7 +139,7 @@ export default function MatchEntry() {
     };
   }, []);
 
-  if (loading) return <p>Loading players…</p>;
+  if (loading) return <PageLoading label="Loading players…" />;
   if (loadError)
     return (
       <p className="error">

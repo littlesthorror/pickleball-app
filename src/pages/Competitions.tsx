@@ -2,6 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../supabaseClient";
 import { PlayerSelect, submitOneMatch } from "./MatchEntry";
 import { computeGroupStandings, generateGroupFixtures } from "../lib/competitionStandings";
+import { useConfirm } from "../components/ConfirmDialog";
+import { useToast } from "../components/Toast";
+import PageLoading from "../components/PageLoading";
 import compBanner1 from "../assets/competition-banners/comp-banner-1.jpg";
 import compBanner2 from "../assets/competition-banners/comp-banner-2.jpg";
 import compBanner3 from "../assets/competition-banners/comp-banner-3.jpg";
@@ -40,6 +43,7 @@ const COMPETITION_BANNERS = [compBanner1, compBanner2, compBanner3];
 // only responsible for team/group/bracket bookkeeping and simple
 // win/loss/points standings, not ratings.
 export default function Competitions({ isAdmin, currentUserId }: { isAdmin: boolean; currentUserId: string }) {
+  const confirm = useConfirm();
   const [players, setPlayers] = useState<PlayerStatus[]>([]);
   const [competitions, setCompetitions] = useState<CompetitionRow[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -129,7 +133,7 @@ export default function Competitions({ isAdmin, currentUserId }: { isAdmin: bool
   async function handleDeleteCompetition(id: string) {
     const target = competitions.find((c) => c.id === id);
     if (!target) return;
-    if (!confirm(`Delete "${target.name}"? This removes its teams, groups, and bracket — permanently.`)) return;
+    if (!(await confirm(`Delete "${target.name}"? This removes its teams, groups, and bracket — permanently.`, { danger: true }))) return;
     const { error } = await supabase.from("competitions").delete().eq("id", id);
     if (error) {
       setError(error.message);
@@ -142,7 +146,7 @@ export default function Competitions({ isAdmin, currentUserId }: { isAdmin: bool
   const selected = competitions.find((c) => c.id === selectedId) ?? null;
   const newFormOpen = showNewForm ?? competitions.length === 0;
 
-  if (loading) return <p>Loading competitions…</p>;
+  if (loading) return <PageLoading label="Loading competitions…" />;
   if (error) return <p className="error">{error}</p>;
 
   return (
@@ -347,7 +351,7 @@ function CompetitionDetail({
     onCompetitionChanged();
   }
 
-  if (loading) return <p>Loading competition…</p>;
+  if (loading) return <PageLoading label="Loading competition…" />;
 
   return (
     <div>
@@ -499,6 +503,8 @@ function SetupStage({
   isAdmin: boolean;
   onChanged: () => void;
 }) {
+  const confirm = useConfirm();
+  const toast = useToast();
   const [p1, setP1] = useState("");
   const [p2, setP2] = useState("");
   const [teamName, setTeamName] = useState("");
@@ -536,10 +542,10 @@ function SetupStage({
   }
 
   async function deleteTeam(teamId: string) {
-    if (!confirm("Remove this team? Only possible before they've played any games.")) return;
+    if (!(await confirm("Remove this team? Only possible before they've played any games.", { danger: true }))) return;
     const { error } = await supabase.from("competition_teams").delete().eq("id", teamId);
     if (error) {
-      alert(`Couldn't remove team: ${error.message}`);
+      toast.error(`Couldn't remove team: ${error.message}`);
       return;
     }
     onChanged();
@@ -555,7 +561,7 @@ function SetupStage({
     });
     setSavingGroup(false);
     if (error) {
-      alert(`Couldn't add group: ${error.message}`);
+      toast.error(`Couldn't add group: ${error.message}`);
       return;
     }
     setNewGroupName("");
@@ -567,7 +573,7 @@ function SetupStage({
       .from("competition_group_teams")
       .upsert({ team_id: teamId, group_id: groupId }, { onConflict: "team_id" });
     if (error) {
-      alert(`Couldn't assign team: ${error.message}`);
+      toast.error(`Couldn't assign team: ${error.message}`);
       return;
     }
     onChanged();
@@ -576,7 +582,7 @@ function SetupStage({
   async function unassignTeam(teamId: string) {
     const { error } = await supabase.from("competition_group_teams").delete().eq("team_id", teamId);
     if (error) {
-      alert(`Couldn't unassign team: ${error.message}`);
+      toast.error(`Couldn't unassign team: ${error.message}`);
       return;
     }
     onChanged();
@@ -596,7 +602,7 @@ function SetupStage({
       setStartError(`Every group needs at least 2 teams — check ${groupsWithTooFewTeams.map((g) => g.name).join(", ")}.`);
       return;
     }
-    if (!confirm("Start the group stage? This creates every group's fixture list — you can still add results as you go.")) {
+    if (!(await confirm("Start the group stage? This creates every group's fixture list — you can still add results as you go."))) {
       return;
     }
     setStarting(true);
@@ -857,6 +863,8 @@ function GroupFixturesSection({
   currentUserId: string;
   onChanged: () => void;
 }) {
+  const confirm = useConfirm();
+  const toast = useToast();
   const [advancing, setAdvancing] = useState(false);
   // Which group's fixtures are shown at once. With several groups of up
   // to 8 teams each (a full "World Cup" style setup), stacking every
@@ -871,7 +879,7 @@ function GroupFixturesSection({
 
   async function advanceToKnockout() {
     const unplayed = matches.filter((m) => m.group_id && !m.matches).length;
-    const proceed = confirm(
+    const proceed = await confirm(
       unplayed > 0
         ? `${unplayed} group game(s) haven't been played yet. Move to the knockout stage anyway?`
         : "Move to the knockout stage?"
@@ -881,7 +889,7 @@ function GroupFixturesSection({
     const { error } = await supabase.from("competitions").update({ status: "knockout" }).eq("id", competition.id);
     setAdvancing(false);
     if (error) {
-      alert(`Couldn't advance: ${error.message}`);
+      toast.error(`Couldn't advance: ${error.message}`);
       return;
     }
     onChanged();
@@ -981,6 +989,7 @@ function FixtureRow({
   onChanged: () => void;
   locked: boolean;
 }) {
+  const confirm = useConfirm();
   const played = !!match.matches;
   const [scoreA, setScoreA] = useState(() => (played ? "" : loadFixtureScoreDraft(match.id).scoreA));
   const [scoreB, setScoreB] = useState(() => (played ? "" : loadFixtureScoreDraft(match.id).scoreB));
@@ -1032,9 +1041,9 @@ function FixtureRow({
       return;
     }
     if (
-      !confirm(
+      !(await confirm(
         `Change the score to ${teamAScore}–${teamBScore}? Ratings get recalculated from the corrected match history afterward.`
-      )
+      ))
     ) {
       return;
     }
@@ -1231,6 +1240,7 @@ function KnockoutSection({
   currentUserId: string;
   onChanged: () => void;
 }) {
+  const confirm = useConfirm();
   const [round, setRound] = useState<KnockoutRound>("quarterfinal");
   const [teamA, setTeamA] = useState("");
   const [teamB, setTeamB] = useState("");
@@ -1269,7 +1279,7 @@ function KnockoutSection({
       setCompleteError("The final needs a result before the competition can be marked complete.");
       return;
     }
-    if (!confirm("Mark this competition complete and record final placements? This shows on the Club Stats page.")) {
+    if (!(await confirm("Mark this competition complete and record final placements? This shows on the Club Stats page."))) {
       return;
     }
     setCompleting(true);
@@ -1442,6 +1452,7 @@ function CompletedSection({
   isAdmin: boolean;
   onChanged: () => void;
 }) {
+  const confirm = useConfirm();
   const [results, setResults] = useState<{ placement: number; team_id: string }[]>([]);
   const [reopening, setReopening] = useState(false);
 
@@ -1490,9 +1501,9 @@ function CompletedSection({
 
   async function reopenCompetition() {
     if (
-      !confirm(
+      !(await confirm(
         "Reopen this competition? It'll move back to the knockout stage so results can be corrected — the recorded final placements will be cleared until you mark it complete again."
-      )
+      ))
     ) {
       return;
     }

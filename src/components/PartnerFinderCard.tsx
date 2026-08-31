@@ -9,6 +9,7 @@ import { supabase } from "../supabaseClient";
 import Avatar from "./Avatar";
 import { useBodyScrollLock } from "../lib/useBodyScrollLock";
 import type { PartnerRequestInterestRow, PartnerRequestRow } from "../types";
+import { useToast } from "./Toast";
 
 const STALE_FLEXIBLE_DAYS = 14;
 
@@ -34,6 +35,7 @@ function formatWhen(r: PartnerRequestRow) {
 }
 
 export default function PartnerFinderCard({ playerId, playerName }: { playerId: string; playerName: string }) {
+  const toast = useToast();
   const [requests, setRequests] = useState<PartnerRequestRow[]>([]);
   const [interests, setInterests] = useState<PartnerRequestInterestRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -86,7 +88,7 @@ export default function PartnerFinderCard({ playerId, playerName }: { playerId: 
     });
     setPosting(false);
     if (error) {
-      alert(`Couldn't post that: ${error.message}`);
+      toast.error(`Couldn't post that: ${error.message}`);
       return;
     }
     setNote("");

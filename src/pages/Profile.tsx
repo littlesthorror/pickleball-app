@@ -6,6 +6,8 @@ import { getExistingSubscription, isPushSupported, subscribeToPush, unsubscribeF
 import { downloadCsv } from "../lib/csvExport";
 import { compressImageFile } from "../lib/imageCompress";
 import type { PlayerStatus, PlayerMatchHistoryRow, PlayerPrivateInfo } from "../types";
+import { useConfirm } from "../components/ConfirmDialog";
+import { useToast } from "../components/Toast";
 
 // Used two ways: as a one-time "complete your profile" step right after
 // first Google sign-in (isFirstTime=true, no way to skip past it except
@@ -32,6 +34,8 @@ export default function Profile({
   previewAsPlayer?: boolean;
   onTogglePreview?: () => void;
 }) {
+  const confirm = useConfirm();
+  const toast = useToast();
   const [displayName, setDisplayName] = useState(player.display_name);
   const [dob, setDob] = useState(player.date_of_birth ?? "");
   const [dobVisible, setDobVisible] = useState(player.date_of_birth_visible);
@@ -99,7 +103,7 @@ export default function Profile({
     setDarkModeSaving(false);
     if (darkModeError) {
       setDarkMode(!next);
-      alert(`Couldn't update: ${darkModeError.message}`);
+      toast.error(`Couldn't update: ${darkModeError.message}`);
       return;
     }
     onSaved({ ...player, dark_mode: next });
@@ -128,7 +132,7 @@ export default function Profile({
     setCategorySaving(null);
     if (catError) {
       setter(current);
-      alert(`Couldn't update: ${catError.message}`);
+      toast.error(`Couldn't update: ${catError.message}`);
     }
   }
 
@@ -185,9 +189,10 @@ export default function Profile({
 
   async function handleDeleteAccount() {
     if (
-      !confirm(
-        "Delete your Sideline account? Your name, photo, date of birth, and contact info will be permanently cleared, and you won't be able to sign back in. Your past match results stay on record (as anonymous history) since other members' stats depend on them. This can't be undone — continue?"
-      )
+      !(await confirm(
+        "Delete your Sideline account? Your name, photo, date of birth, and contact info will be permanently cleared, and you won't be able to sign back in. Your past match results stay on record (as anonymous history) since other members' stats depend on them. This can't be undone — continue?",
+        { danger: true }
+      ))
     ) {
       return;
     }
@@ -215,7 +220,7 @@ export default function Profile({
       .order("game_number", { ascending: true });
     setExportingCsv(false);
     if (exportError || !data) {
-      alert(`Couldn't export: ${exportError?.message ?? "no data returned"}`);
+      toast.error(`Couldn't export: ${exportError?.message ?? "no data returned"}`);
       return;
     }
     const rows = data as PlayerMatchHistoryRow[];

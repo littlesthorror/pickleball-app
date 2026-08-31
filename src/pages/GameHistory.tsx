@@ -3,6 +3,9 @@ import type { CSSProperties } from "react";
 import { FunctionsHttpError } from "@supabase/supabase-js";
 import { supabase } from "../supabaseClient";
 import type { MatchStatus } from "../types";
+import { useConfirm } from "../components/ConfirmDialog";
+import { useToast } from "../components/Toast";
+import PageLoading from "../components/PageLoading";
 
 const PAGE_SIZE = 20;
 
@@ -48,6 +51,8 @@ function teamLabel(p1: EmbeddedPlayer | null, p2: EmbeddedPlayer | null) {
 // match history only grows over time, so this fetches one page at a time
 // straight from the database instead.
 export default function GameHistory() {
+  const confirm = useConfirm();
+  const toast = useToast();
   const [matches, setMatches] = useState<MatchRow[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [page, setPage] = useState(0);
@@ -106,9 +111,10 @@ export default function GameHistory() {
     const teamA = teamLabel(m.team_a_player_1, m.team_a_player_2);
     const teamB = teamLabel(m.team_b_player_1, m.team_b_player_2);
     if (
-      !confirm(
-        `Delete this game (${teamA} ${m.team_a_score}–${m.team_b_score} ${teamB})? The match record itself is gone permanently — this can't be undone. If it's confirmed, every player's rating gets recalculated from the remaining match history afterward, which can shift ratings for people who never played in this game, not just these four.`
-      )
+      !(await confirm(
+        `Delete this game (${teamA} ${m.team_a_score}–${m.team_b_score} ${teamB})? The match record itself is gone permanently — this can't be undone. If it's confirmed, every player's rating gets recalculated from the remaining match history afterward, which can shift ratings for people who never played in this game, not just these four.`,
+        { danger: true }
+      ))
     ) {
       return;
     }
@@ -143,14 +149,14 @@ export default function GameHistory() {
       // plain, honest message.
       if (error instanceof FunctionsHttpError) {
         const body = await error.context.json().catch(() => null);
-        alert(body?.error ?? "Couldn't delete this game.");
+        toast.error(body?.error ?? "Couldn't delete this game.");
       } else {
-        alert("Couldn't reach the server to delete this game — check your connection and try again.");
+        toast.error("Couldn't reach the server to delete this game — check your connection and try again.");
       }
       return;
     }
     if (data?.error) {
-      alert(data.error);
+      toast.error(data.error);
       return;
     }
     load();
@@ -185,16 +191,16 @@ export default function GameHistory() {
       teamAScore < 0 ||
       teamBScore < 0
     ) {
-      alert("Scores must be whole numbers, zero or higher.");
+      toast.error("Scores must be whole numbers, zero or higher.");
       return;
     }
 
     const teamA = teamLabel(m.team_a_player_1, m.team_a_player_2);
     const teamB = teamLabel(m.team_b_player_1, m.team_b_player_2);
     if (
-      !confirm(
+      !(await confirm(
         `Change the score to ${teamA} ${teamAScore}–${teamBScore} ${teamB}? If this game is confirmed, every player's rating gets recalculated from the corrected match history afterward, which can shift ratings for people who never played in this game, not just these four.`
-      )
+      ))
     ) {
       return;
     }
@@ -231,14 +237,14 @@ export default function GameHistory() {
       // generic wrapper message, same as deleteMatch below.
       if (error instanceof FunctionsHttpError) {
         const body = await error.context.json().catch(() => null);
-        alert(body?.error ?? "Couldn't save this score.");
+        toast.error(body?.error ?? "Couldn't save this score.");
       } else {
-        alert("Couldn't reach the server to save this score — check your connection and try again.");
+        toast.error("Couldn't reach the server to save this score — check your connection and try again.");
       }
       return;
     }
     if (data?.error) {
-      alert(data.error);
+      toast.error(data.error);
       return;
     }
     setEditingId(null);
@@ -257,7 +263,7 @@ export default function GameHistory() {
       </p>
 
       {loading ? (
-        <p>Loading games…</p>
+        <PageLoading label="Loading games…" />
       ) : error ? (
         <p className="error">{error}</p>
       ) : matches.length === 0 ? (

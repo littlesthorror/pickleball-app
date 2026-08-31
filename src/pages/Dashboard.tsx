@@ -24,6 +24,7 @@ import { getEventForecast } from "../lib/weather";
 import type { EventForecast } from "../lib/weather";
 import type { Season } from "../lib/seasons";
 import type { EventRow, LegacyBadgeRow, PlayerMatchHistoryRow, PlayerStatus } from "../types";
+import PageLoading from "../components/PageLoading";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Filler);
 
@@ -616,7 +617,7 @@ export default function Dashboard({
     return wins + losses > 0 ? { wins, losses } : null;
   }, [viewerMatches, viewerId, playerId, isOwnProfile]);
 
-  if (loading) return <p>Loading your dashboard…</p>;
+  if (loading) return <PageLoading label="Loading your dashboard…" />;
   if (error) return <p className="error">{error}</p>;
   if (!player) return <p className="error">Couldn't find your player profile.</p>;
 

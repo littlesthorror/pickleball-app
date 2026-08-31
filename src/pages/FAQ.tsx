@@ -5,6 +5,9 @@ import { linkify } from "../lib/linkify";
 import { useDraft } from "../lib/useDraft";
 import { compressImageFile } from "../lib/imageCompress";
 import type { FaqItem } from "../types";
+import { useConfirm } from "../components/ConfirmDialog";
+import { useToast } from "../components/Toast";
+import PageLoading from "../components/PageLoading";
 
 const FAQ_DRAFT_KEY = "sideline-draft-faq";
 
@@ -42,6 +45,8 @@ function imageUrl(path: string) {
 // just reads. Answers can include a YouTube link (rendered as a
 // click-to-play thumbnail) and/or one attached image (click to enlarge).
 export default function FAQ({ isAdmin }: { isAdmin: boolean }) {
+  const confirm = useConfirm();
+  const toast = useToast();
   const [items, setItems] = useState<FaqItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -226,16 +231,16 @@ export default function FAQ({ isAdmin }: { isAdmin: boolean }) {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("Remove this FAQ item?")) return;
+    if (!(await confirm("Remove this FAQ item?", { danger: true }))) return;
     const { error } = await supabase.from("faq_items").delete().eq("id", id);
     if (error) {
-      alert(`Couldn't delete: ${error.message}`);
+      toast.error(`Couldn't delete: ${error.message}`);
       return;
     }
     load();
   }
 
-  if (loading) return <p>Loading FAQ…</p>;
+  if (loading) return <PageLoading label="Loading FAQ…" />;
   if (error) return <p className="error">{error}</p>;
 
   return (

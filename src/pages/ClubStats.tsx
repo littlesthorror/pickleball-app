@@ -13,6 +13,7 @@ import { Line } from "react-chartjs-2";
 import { supabase } from "../supabaseClient";
 import Avatar from "../components/Avatar";
 import type { PlayerStatus } from "../types";
+import PageLoading from "../components/PageLoading";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, Filler);
 
@@ -309,7 +310,7 @@ export default function ClubStats() {
     return { datasets, minTime };
   }, [history, topPlayers, rangeMonths]);
 
-  if (loading) return <p>Loading club stats…</p>;
+  if (loading) return <PageLoading label="Loading club stats…" />;
   if (error) return <p className="error">{error}</p>;
 
   return (
