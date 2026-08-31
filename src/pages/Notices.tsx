@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import { supabase } from "../supabaseClient";
-import { linkify } from "../lib/linkify";
+import { renderRichBody } from "../lib/richBody";
 import { useDraft } from "../lib/useDraft";
 import Lightbox from "../components/Lightbox";
 import { compressImageFile } from "../lib/imageCompress";
@@ -489,6 +489,32 @@ export default function Notices({ isAdmin, playerId }: { isAdmin: boolean; playe
     });
   }
 
+  // Inserts a ready-to-edit two-column table skeleton at the cursor —
+  // added 2026-08-31 after Ben asked for a way to lay two lists side by
+  // side (e.g. two teams' rosters). See lib/richBody.tsx for how "|"
+  // separated lines actually get turned into a <table>; this button just
+  // saves admins from typing the syntax from scratch.
+  function insertTableTemplate() {
+    const el = bodyRef.current;
+    if (!el) return;
+    const template = "Column A | Column B\nRow 1 | Row 1\nRow 2 | Row 2";
+    const start = el.selectionStart ?? draft.body.length;
+    const end = el.selectionEnd ?? draft.body.length;
+    const value = draft.body;
+    // A blank line before the table keeps it from merging with whatever
+    // text (if any) already precedes the cursor — richBody.tsx only treats
+    // *consecutive* "|" lines as a table, so running straight into an
+    // existing line that happens to contain "|" could otherwise swallow it.
+    const prefix = start > 0 && value[start - 1] !== "\n" ? "\n" : "";
+    const newValue = value.slice(0, start) + prefix + template + value.slice(end);
+    setDraft((d) => ({ ...d, body: newValue }));
+    requestAnimationFrame(() => {
+      el.focus();
+      const selStart = start + prefix.length;
+      el.setSelectionRange(selStart, selStart + template.length);
+    });
+  }
+
   async function handleSave() {
     if (!draft.title.trim()) return;
     setSaving(true);
@@ -625,6 +651,7 @@ export default function Notices({ isAdmin, playerId }: { isAdmin: boolean; playe
     resetForm();
     setSaving(false);
     load();
+    toast.success(editingId ? "Notice updated" : "Notice posted");
   }
 
   async function handleDelete(notice: NoticeRow) {
@@ -756,6 +783,14 @@ export default function Notices({ isAdmin, playerId }: { isAdmin: boolean; playe
             >
               U
             </button>
+            <button
+              type="button"
+              onClick={insertTableTemplate}
+              title="Insert table"
+              style={{ width: "auto", marginTop: 0, padding: "4px 12px" }}
+            >
+              Table
+            </button>
           </div>
           <textarea
             ref={bodyRef}
@@ -766,7 +801,8 @@ export default function Notices({ isAdmin, playerId }: { isAdmin: boolean; playe
           />
           <p className="stat-meta" style={{ marginTop: 4 }}>
             Select some text and tap B, i or U to format it, or type **bold** / *italic* / __underline__ yourself.
-            Paste a YouTube link anywhere and it'll show as a tap-to-play thumbnail.
+            Paste a YouTube link anywhere and it'll show as a tap-to-play thumbnail. Tap "Table" for a side-by-side
+            list — the first line becomes the header, and each line after is a row, with columns separated by "|".
           </p>
 
           <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -1023,9 +1059,9 @@ export default function Notices({ isAdmin, playerId }: { isAdmin: boolean; playe
                 </div>
 
                 {n.body && (
-                  <p className="rich-text" style={{ margin: "10px 0 0" }}>
-                    {linkify(n.body)}
-                  </p>
+                  <div className="rich-text" style={{ margin: "10px 0 0" }}>
+                    {renderRichBody(n.body)}
+                  </div>
                 )}
 
                 {n.poll_enabled && n.poll_options.length >= 2 && (

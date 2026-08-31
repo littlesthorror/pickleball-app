@@ -891,6 +891,7 @@ export default function Events({ isAdmin, playerId }: { isAdmin: boolean; player
     closeForm();
     setSaving(false);
     load();
+    toast.success(editingId ? "Event updated" : "Event posted");
   }
 
   async function handleDelete(id: string) {

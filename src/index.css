@@ -1037,6 +1037,45 @@ textarea {
   word-break: break-all;
 }
 
+/* ── Rich-text tables (Notices) ──────────────────────────────────────────
+   Added 2026-08-31 — see lib/richBody.tsx. A notice's "|"-separated lines
+   render as one of these instead of the usual <p>. Wrapped in a
+   horizontally-scrolling div rather than letting the table itself shrink
+   columns illegibly, since a 3+ column table won't always fit a phone
+   screen at a readable font size. */
+.rich-table-wrap {
+  overflow-x: auto;
+  margin: 10px 0;
+}
+
+.rich-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.88rem;
+}
+
+.rich-table th,
+.rich-table td {
+  text-align: left;
+  padding: 6px 14px 6px 0;
+  vertical-align: top;
+  white-space: pre-line;
+}
+
+.rich-table th {
+  color: var(--text-muted);
+  font-weight: 700;
+  border-bottom: 1px solid var(--border);
+}
+
+.rich-table td {
+  border-bottom: 1px solid var(--border);
+}
+
+.rich-table tr:last-child td {
+  border-bottom: none;
+}
+
 /* ── Admin "preview as player" banner ──────────────────────────────── */
 .preview-banner {
   background: var(--orange-100);

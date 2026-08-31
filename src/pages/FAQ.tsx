@@ -228,6 +228,7 @@ export default function FAQ({ isAdmin }: { isAdmin: boolean }) {
     closeForm();
     setSaving(false);
     load();
+    toast.success(editingId ? "Question updated" : "Question added");
   }
 
   async function handleDelete(id: string) {
