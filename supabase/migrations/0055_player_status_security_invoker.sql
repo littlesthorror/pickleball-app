@@ -1,0 +1,16 @@
+-- Fixes a Supabase security linter CRITICAL finding: public.player_status
+-- was a SECURITY DEFINER view (the Postgres default for views), meaning it
+-- always ran with its creator's permissions rather than the querying
+-- user's — bypassing whatever RLS the underlying tables have, regardless
+-- of who's actually asking. Flipping to security_invoker = true makes it
+-- respect the querying user's own RLS instead, same as querying the
+-- tables directly.
+--
+-- Verified this is a safe, no-behavior-change fix here: both `players` and
+-- `player_ratings` already have a "readable by any logged-in member" SELECT
+-- policy (auth.role() = 'authenticated'), so nothing that was visible
+-- through the view stops being visible. It's still worth fixing — a
+-- SECURITY DEFINER view silently ignores any future tightening of the
+-- underlying tables' RLS, which is exactly the kind of gap that causes a
+-- real leak down the line. 2026-08-31.
+alter view public.player_status set (security_invoker = true);

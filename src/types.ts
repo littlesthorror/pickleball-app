@@ -14,19 +14,32 @@ export interface Player {
   // Optional honorary title an admin can set (e.g. "Club Coach", "Club
   // Secretary") — purely a display label, no bearing on actual permissions.
   role_title: string | null;
-  // My Account additions (2026-08-28) — see migration
-  // 0044_add_account_settings_columns for the full rationale on each.
-  emergency_contact_name: string | null;
-  emergency_contact_phone: string | null;
-  // Optional — conditions, allergies, current medications. Admin-only
-  // visibility, same as the emergency contact fields above. Added
-  // 2026-08-28.
-  medical_info: string | null;
   dark_mode: boolean;
   notify_new_events: boolean;
   notify_new_notices: boolean;
   notify_badge_earned: boolean;
   notify_rank_change: boolean;
+}
+
+// Emergency contact + medical info (2026-08-28) — moved 2026-08-31 out of
+// `players` into their own table (see
+// 0056_lock_down_medical_and_emergency_contact_info.sql). These used to be
+// plain columns on `players`, which has a "readable by any logged-in
+// member" RLS policy — meaning any member could read another member's
+// medical info/emergency contact directly via the API, even though the UI
+// only ever showed it to admins. Postgres RLS can't restrict individual
+// columns, only rows, so the real fix was giving these their own table
+// with its own RLS ("the player themselves, or an admin" — see the
+// migration). Fetched separately from PlayerStatus now: Profile.tsx fetches
+// its own row, AdminManagement.tsx fetches all rows (both allowed by the
+// same RLS policy, since is_admin() short-circuits the row check for
+// admins).
+export interface PlayerPrivateInfo {
+  player_id: string;
+  emergency_contact_name: string | null;
+  emergency_contact_phone: string | null;
+  medical_info: string | null;
+  updated_at: string;
 }
 
 export interface PlayerStatus extends Player {

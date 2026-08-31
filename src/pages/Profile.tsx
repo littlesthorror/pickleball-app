@@ -5,7 +5,7 @@ import Avatar from "../components/Avatar";
 import { getExistingSubscription, isPushSupported, subscribeToPush, unsubscribeFromPush } from "../lib/push";
 import { downloadCsv } from "../lib/csvExport";
 import { compressImageFile } from "../lib/imageCompress";
-import type { PlayerStatus, PlayerMatchHistoryRow } from "../types";
+import type { PlayerStatus, PlayerMatchHistoryRow, PlayerPrivateInfo } from "../types";
 
 // Used two ways: as a one-time "complete your profile" step right after
 // first Google sign-in (isFirstTime=true, no way to skip past it except
@@ -45,13 +45,36 @@ export default function Profile({
   // ever shown to admins elsewhere (AdminManagement) — never to other
   // regular members. Saved as part of the normal Save button below, same
   // as name/DOB.
-  const [emergencyName, setEmergencyName] = useState(player.emergency_contact_name ?? "");
-  const [emergencyPhone, setEmergencyPhone] = useState(player.emergency_contact_phone ?? "");
+  //
+  // Moved 2026-08-31 into their own `player_private_info` table, locked
+  // down by RLS to "the player themselves, or an admin" — these no longer
+  // come from the `player` prop (PlayerStatus/player_status no longer
+  // carries them at all), so they're fetched separately below.
+  const [emergencyName, setEmergencyName] = useState("");
+  const [emergencyPhone, setEmergencyPhone] = useState("");
 
   // Essential Medical Information (2026-08-28) — conditions, allergies,
   // current medications. Same admin-only visibility as the emergency
   // contact fields above, same save path.
-  const [medicalInfo, setMedicalInfo] = useState(player.medical_info ?? "");
+  const [medicalInfo, setMedicalInfo] = useState("");
+
+  useEffect(() => {
+    if (isFirstTime) return; // nothing to fetch yet during first-time setup
+    supabase
+      .from("player_private_info")
+      .select("*")
+      .eq("player_id", player.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        const row = data as PlayerPrivateInfo | null;
+        if (row) {
+          setEmergencyName(row.emergency_contact_name ?? "");
+          setEmergencyPhone(row.emergency_contact_phone ?? "");
+          setMedicalInfo(row.medical_info ?? "");
+        }
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [player.id, isFirstTime]);
 
   // Linked Google account email (2026-08-28) — read-only, purely so
   // someone on a shared/family device can confirm which account they're
@@ -138,9 +161,12 @@ export default function Profile({
         role_title: player.role_title,
         rating: player.rating,
         games_played: player.games_played,
-        emergency_contact_name: player.emergency_contact_name,
-        emergency_contact_phone: player.emergency_contact_phone,
-        medical_info: player.medical_info,
+        // Read from state (fetched from player_private_info on mount)
+        // rather than the `player` prop — these fields moved out of
+        // PlayerStatus 2026-08-31, see types.ts's PlayerPrivateInfo comment.
+        emergency_contact_name: emergencyName || null,
+        emergency_contact_phone: emergencyPhone || null,
+        medical_info: medicalInfo || null,
         google_email: googleEmail,
       },
       match_history: matches ?? [],
@@ -295,14 +321,28 @@ export default function Profile({
         avatar_url: avatarUrl,
         profile_visible: profileVisible,
         profile_completed: true,
-        emergency_contact_name: emergencyName.trim() || null,
-        emergency_contact_phone: emergencyPhone.trim() || null,
-        medical_info: medicalInfo.trim() || null,
       })
       .eq("id", player.id);
 
     if (error) {
       setError(error.message);
+      setSaving(false);
+      return;
+    }
+
+    // Separate table since 2026-08-31 (see types.ts's PlayerPrivateInfo
+    // comment) — upsert rather than update, since a player who's never
+    // filled these in yet has no row here at all.
+    const { error: privateInfoError } = await supabase.from("player_private_info").upsert({
+      player_id: player.id,
+      emergency_contact_name: emergencyName.trim() || null,
+      emergency_contact_phone: emergencyPhone.trim() || null,
+      medical_info: medicalInfo.trim() || null,
+      updated_at: new Date().toISOString(),
+    });
+
+    if (privateInfoError) {
+      setError(privateInfoError.message);
       setSaving(false);
       return;
     }

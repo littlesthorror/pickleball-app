@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { FunctionsHttpError } from "@supabase/supabase-js";
 import { supabase } from "../supabaseClient";
 import Avatar from "../components/Avatar";
-import type { LegacyBadgeRow, PlayerStatus } from "../types";
+import type { LegacyBadgeRow, PlayerPrivateInfo, PlayerStatus } from "../types";
 
 const PAGE_SIZE = 20;
 const ERROR_LOG_LIMIT = 50;
@@ -89,6 +89,13 @@ export default function AdminManagement({
   onSelectPlayer?: (id: string, name: string) => void;
 }) {
   const [players, setPlayers] = useState<PlayerStatus[]>([]);
+  // Emergency contact + medical info (2026-08-31) — moved out of
+  // player_status into their own RLS-locked table (see types.ts's
+  // PlayerPrivateInfo comment), so they're fetched separately here and
+  // merged in by player_id rather than coming along with the main
+  // player_status rows. As an admin, is_admin() lets this fetch return
+  // every player's row, not just the signed-in admin's own.
+  const [privateInfoByPlayer, setPrivateInfoByPlayer] = useState<Record<string, PlayerPrivateInfo>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -147,11 +154,13 @@ export default function AdminManagement({
 
   function load() {
     setLoading(true);
-    supabase
-      .from("player_status")
-      .select("*")
-      .order("display_name")
-      .then(({ data, error }) => {
+    Promise.all([
+      supabase.from("player_status").select("*").order("display_name"),
+      supabase.from("player_private_info").select("*"),
+    ]).then(([{ data, error }, { data: privateRows }]) => {
+        setPrivateInfoByPlayer(
+          Object.fromEntries(((privateRows ?? []) as PlayerPrivateInfo[]).map((r) => [r.player_id, r]))
+        );
         if (error) {
           setError(error.message);
         } else {
@@ -775,11 +784,13 @@ export default function AdminManagement({
               </div>
               {/* Emergency contact (2026-08-28) — set by the player themselves
                   in My Account, shown here since admins are the only people
-                  who should ever see it. */}
-              {(p.emergency_contact_name || p.emergency_contact_phone) && (
+                  who should ever see it. Read from player_private_info
+                  (2026-08-31) rather than the player_status row — see
+                  types.ts's PlayerPrivateInfo comment. */}
+              {(privateInfoByPlayer[p.id]?.emergency_contact_name || privateInfoByPlayer[p.id]?.emergency_contact_phone) && (
                 <div className="stat-meta" style={{ marginTop: 2 }}>
-                  🚨 Emergency contact: {p.emergency_contact_name ?? "—"}
-                  {p.emergency_contact_phone ? ` · ${p.emergency_contact_phone}` : ""}
+                  🚨 Emergency contact: {privateInfoByPlayer[p.id]?.emergency_contact_name ?? "—"}
+                  {privateInfoByPlayer[p.id]?.emergency_contact_phone ? ` · ${privateInfoByPlayer[p.id]?.emergency_contact_phone}` : ""}
                 </div>
               )}
               {/* Essential Medical Information (2026-08-28) — same
@@ -790,7 +801,7 @@ export default function AdminManagement({
                   visible (so admins can always see at a glance that info
                   is on file) even when collapsed. Reworked 2026-08-28 at
                   Ben's request. */}
-              {p.medical_info && (
+              {privateInfoByPlayer[p.id]?.medical_info && (
                 <div style={{ marginTop: 6 }}>
                   <span
                     role="button"
@@ -824,7 +835,7 @@ export default function AdminManagement({
                         maxWidth: 420,
                       }}
                     >
-                      {p.medical_info}
+                      {privateInfoByPlayer[p.id]?.medical_info}
                     </div>
                   )}
                 </div>
