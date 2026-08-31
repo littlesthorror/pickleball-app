@@ -847,7 +847,15 @@ export default function Events({ isAdmin, playerId }: { isAdmin: boolean; player
       // photo here was part of what tipped Supabase's Fair Use Policy
       // bandwidth threshold. See imageCompress.ts / Profile.tsx's avatar
       // upload for the other two places this same gap existed.
-      const compressedPoster = await compressImageFile(posterFile);
+      let compressedPoster: File;
+      try {
+        compressedPoster = await compressImageFile(posterFile);
+      } catch (err) {
+        setSaveError(`Event saved, but the poster couldn't be uploaded: ${err instanceof Error ? err.message : "unknown error"}`);
+        setSaving(false);
+        load();
+        return;
+      }
       const ext = compressedPoster.name.split(".").pop() || "jpg";
       // A fresh, unique path per upload — rather than always overwriting
       // events/<id>/poster.<ext> — so the image gets a new URL every time

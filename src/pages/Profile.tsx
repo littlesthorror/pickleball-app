@@ -255,7 +255,14 @@ export default function Profile({
     // see imageCompress.ts. 500px is generous headroom over the largest
     // on-screen size while still cutting a multi-MB photo down to well
     // under 100KB.
-    const compressedFile = await compressImageFile(file, 500);
+    let compressedFile: File;
+    try {
+      compressedFile = await compressImageFile(file, 500);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't process that photo.");
+      setUploading(false);
+      return;
+    }
     const ext = compressedFile.name.split(".").pop() || "jpg";
     const path = `${player.id}/avatar.${ext}`;
 

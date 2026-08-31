@@ -498,7 +498,14 @@ export default function Notices({ isAdmin, playerId }: { isAdmin: boolean; playe
       // a raw phone photo can be several MB at 3-4000px, none of which is
       // needed for a noticeboard thumbnail/lightbox. Non-image files (and
       // GIFs/SVGs) pass through untouched — see lib/imageCompress.ts.
-      const compressed = await compressImageFile(f);
+      let compressed: File;
+      try {
+        compressed = await compressImageFile(f);
+      } catch (err) {
+        setSaveError(err instanceof Error ? err.message : "Couldn't process one of the attachments.");
+        setSaving(false);
+        return;
+      }
       const ext = compressed.name.split(".").pop() || "dat";
       const path = `${crypto.randomUUID()}.${ext}`;
       // cacheControl: uploads get a unique path already, so it's safe to
@@ -581,7 +588,15 @@ export default function Notices({ isAdmin, playerId }: { isAdmin: boolean; playe
     // than always overwriting the same path) so browsers don't keep
     // showing a cached original after a replacement.
     if (coverFile && noticeId) {
-      const compressedCover = await compressImageFile(coverFile);
+      let compressedCover: File;
+      try {
+        compressedCover = await compressImageFile(coverFile);
+      } catch (err) {
+        setSaveError(`Notice saved, but the headline image couldn't be uploaded: ${err instanceof Error ? err.message : "unknown error"}`);
+        setSaving(false);
+        load();
+        return;
+      }
       const ext = compressedCover.name.split(".").pop() || "jpg";
       const path = `notices/${noticeId}/cover-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
       const { error: uploadError } = await supabase.storage.from("notices").upload(path, compressedCover, { cacheControl: "31536000" });

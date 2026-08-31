@@ -188,7 +188,15 @@ export default function FAQ({ isAdmin }: { isAdmin: boolean }) {
       // original file untouched; see the same fix on Profile.tsx's avatar
       // upload and Events.tsx's poster upload for why this mattered for
       // Supabase's Fair Use Policy bandwidth email.
-      const compressedImage = await compressImageFile(imageFile);
+      let compressedImage: File;
+      try {
+        compressedImage = await compressImageFile(imageFile);
+      } catch (err) {
+        setSaveError(`Saved, but the image couldn't be uploaded: ${err instanceof Error ? err.message : "unknown error"}`);
+        setSaving(false);
+        load();
+        return;
+      }
       const ext = compressedImage.name.split(".").pop() || "jpg";
       // A fresh, unique path per upload rather than overwriting the same
       // one — see the identical comment on Events.tsx's poster upload for

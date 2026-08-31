@@ -16,6 +16,31 @@
 const MAX_DIMENSION = 1600;
 const JPEG_QUALITY = 0.82;
 
+// Hard ceiling added 2026-08-31 — the "fall back to the original file on
+// failure" design above turned out to have a real gap: a 16MB notice
+// cover image made it into storage untouched because createImageBitmap
+// silently failed to decode it, and the original fallback path had no
+// size check at all. That one file alone was responsible for roughly a
+// third of a single day's Supabase "cached egress" bandwidth (255MB of
+// the day's 755MB), a big part of what pushed the club past its quota and
+// forced the move to a paid plan. Rather than uploading a huge file
+// silently, every fallback path now throws instead once the original is
+// above this ceiling, so the upload fails loudly with a clear message
+// the admin/player can act on (try a different photo/format) instead of
+// quietly costing bandwidth for months. Generous enough to essentially
+// never trip for a normal phone photo that DOES compress successfully.
+export const HARD_SIZE_CAP_BYTES = 3 * 1024 * 1024; // 3MB
+
+function enforceHardCap(f: File): File {
+  if (f.size > HARD_SIZE_CAP_BYTES) {
+    const mb = (f.size / (1024 * 1024)).toFixed(1);
+    throw new Error(
+      `This image (${mb}MB) couldn't be automatically resized and is too large to upload as-is. Try a different photo, or save it as a JPEG first.`
+    );
+  }
+  return f;
+}
+
 // maxDimension is overridable per call site (2026-08-29) — added after
 // discovering avatars/event posters/FAQ images were being uploaded at full
 // original resolution (this function wasn't wired up to those three upload
@@ -27,7 +52,7 @@ const JPEG_QUALITY = 0.82;
 // notices/event/FAQ images (which are shown full-width in a lightbox).
 export async function compressImageFile(file: File, maxDimension: number = MAX_DIMENSION): Promise<File> {
   if (!file.type.startsWith("image/") || file.type === "image/gif" || file.type === "image/svg+xml") {
-    return file;
+    return enforceHardCap(file);
   }
 
   try {
@@ -35,7 +60,7 @@ export async function compressImageFile(file: File, maxDimension: number = MAX_D
     const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
     if (scale >= 1) {
       bitmap.close?.();
-      return file; // already small enough — don't re-encode for no gain
+      return enforceHardCap(file); // already small enough — don't re-encode for no gain
     }
 
     const width = Math.round(bitmap.width * scale);
@@ -44,16 +69,19 @@ export async function compressImageFile(file: File, maxDimension: number = MAX_D
     canvas.width = width;
     canvas.height = height;
     const ctx = canvas.getContext("2d");
-    if (!ctx) return file;
+    if (!ctx) return enforceHardCap(file);
     ctx.drawImage(bitmap, 0, 0, width, height);
     bitmap.close?.();
 
     const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", JPEG_QUALITY));
-    if (!blob) return file;
+    if (!blob) return enforceHardCap(file);
 
     const newName = file.name.replace(/\.[^./]+$/, "") + ".jpg";
-    return new File([blob], newName, { type: "image/jpeg" });
+    return enforceHardCap(new File([blob], newName, { type: "image/jpeg" }));
   } catch {
-    return file;
+    // Decode/encode failed — fall back to the original, but only if it's a
+    // sane size (see enforceHardCap comment above for why this can't just
+    // silently return `file` any more).
+    return enforceHardCap(file);
   }
 }
