@@ -362,6 +362,7 @@ export default function Profile({
 
     setSaving(false);
     if (refreshed) onSaved(refreshed as PlayerStatus);
+    if (!isFirstTime) toast.success("Saved!");
   }
 
   return (
