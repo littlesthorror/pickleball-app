@@ -489,22 +489,21 @@ export default function Notices({ isAdmin, playerId }: { isAdmin: boolean; playe
     });
   }
 
-  // Inserts a ready-to-edit two-column table skeleton at the cursor —
-  // added 2026-08-31 after Ben asked for a way to lay two lists side by
-  // side (e.g. two teams' rosters). See lib/richBody.tsx for how "|"
-  // separated lines actually get turned into a <table>; this button just
-  // saves admins from typing the syntax from scratch.
-  function insertTableTemplate() {
+  // Inserts a ready-to-edit block skeleton at the cursor — shared by the
+  // "Table" and "List" toolbar buttons below. See lib/richBody.tsx for how
+  // "|" lines become a <table> and "- " lines become an auto-flowing
+  // <ul>; these buttons just save admins from typing the syntax from
+  // scratch. A blank line before the block keeps it from merging with
+  // whatever text (if any) already precedes the cursor — richBody.tsx
+  // only treats *consecutive* matching lines as a block, so running
+  // straight into an existing line that happens to contain "|" or start
+  // with "-" could otherwise swallow it.
+  function insertTemplate(template: string) {
     const el = bodyRef.current;
     if (!el) return;
-    const template = "Column A | Column B\nRow 1 | Row 1\nRow 2 | Row 2";
     const start = el.selectionStart ?? draft.body.length;
     const end = el.selectionEnd ?? draft.body.length;
     const value = draft.body;
-    // A blank line before the table keeps it from merging with whatever
-    // text (if any) already precedes the cursor — richBody.tsx only treats
-    // *consecutive* "|" lines as a table, so running straight into an
-    // existing line that happens to contain "|" could otherwise swallow it.
     const prefix = start > 0 && value[start - 1] !== "\n" ? "\n" : "";
     const newValue = value.slice(0, start) + prefix + template + value.slice(end);
     setDraft((d) => ({ ...d, body: newValue }));
@@ -513,6 +512,14 @@ export default function Notices({ isAdmin, playerId }: { isAdmin: boolean; playe
       const selStart = start + prefix.length;
       el.setSelectionRange(selStart, selStart + template.length);
     });
+  }
+
+  function insertTableTemplate() {
+    insertTemplate("Column A | Column B\nRow 1 | Row 1\nRow 2 | Row 2");
+  }
+
+  function insertListTemplate() {
+    insertTemplate("- Item 1\n- Item 2\n- Item 3");
   }
 
   async function handleSave() {
@@ -791,6 +798,14 @@ export default function Notices({ isAdmin, playerId }: { isAdmin: boolean; playe
             >
               Table
             </button>
+            <button
+              type="button"
+              onClick={insertListTemplate}
+              title="Insert list"
+              style={{ width: "auto", marginTop: 0, padding: "4px 12px" }}
+            >
+              List
+            </button>
           </div>
           <textarea
             ref={bodyRef}
@@ -803,6 +818,8 @@ export default function Notices({ isAdmin, playerId }: { isAdmin: boolean; playe
             Select some text and tap B, i or U to format it, or type **bold** / *italic* / __underline__ yourself.
             Paste a YouTube link anywhere and it'll show as a tap-to-play thumbnail. Tap "Table" for a side-by-side
             list — the first line becomes the header, and each line after is a row, with columns separated by "|".
+            Tap "List" for a single long list (e.g. a roster) that flows into columns automatically — each line
+            starts with "- ".
           </p>
 
           <label style={{ display: "flex", alignItems: "center", gap: 8 }}>

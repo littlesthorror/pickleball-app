@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import { supabase } from "../supabaseClient";
-import { linkify } from "../lib/linkify";
+import { renderRichBody } from "../lib/richBody";
 import { useDraft } from "../lib/useDraft";
 import { compressImageFile } from "../lib/imageCompress";
 import type { FaqItem } from "../types";
@@ -154,6 +154,35 @@ export default function FAQ({ isAdmin }: { isAdmin: boolean }) {
     }
   }
 
+  // Same "Table"/"List" inserts as Notices.tsx (see lib/richBody.tsx for
+  // how "|" lines become a <table> and "- " lines become an auto-flowing
+  // <ul>) — added 2026-08-31 at Ben's request to make both available in
+  // FAQ answers too.
+  const answerRef = useRef<HTMLTextAreaElement>(null);
+  function insertTemplate(template: string) {
+    const el = answerRef.current;
+    if (!el) return;
+    const start = el.selectionStart ?? draft.answer.length;
+    const end = el.selectionEnd ?? draft.answer.length;
+    const value = draft.answer;
+    const prefix = start > 0 && value[start - 1] !== "\n" ? "\n" : "";
+    const newValue = value.slice(0, start) + prefix + template + value.slice(end);
+    setDraft((d) => ({ ...d, answer: newValue }));
+    requestAnimationFrame(() => {
+      el.focus();
+      const selStart = start + prefix.length;
+      el.setSelectionRange(selStart, selStart + template.length);
+    });
+  }
+
+  function insertTableTemplate() {
+    insertTemplate("Column A | Column B\nRow 1 | Row 1\nRow 2 | Row 2");
+  }
+
+  function insertListTemplate() {
+    insertTemplate("- Item 1\n- Item 2\n- Item 3");
+  }
+
   async function handleSave() {
     if (!draft.question.trim() || !draft.answer.trim()) return;
     setSaving(true);
@@ -266,14 +295,36 @@ export default function FAQ({ isAdmin }: { isAdmin: boolean }) {
           />
 
           <label>Answer</label>
+          <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+            <button
+              type="button"
+              onClick={insertTableTemplate}
+              title="Insert table"
+              style={{ width: "auto", marginTop: 0, padding: "4px 12px" }}
+            >
+              Table
+            </button>
+            <button
+              type="button"
+              onClick={insertListTemplate}
+              title="Insert list"
+              style={{ width: "auto", marginTop: 0, padding: "4px 12px" }}
+            >
+              List
+            </button>
+          </div>
           <textarea
+            ref={answerRef}
             value={draft.answer}
             onChange={(e) => setDraft((d) => ({ ...d, answer: e.target.value }))}
             rows={4}
             style={{ fontFamily: "inherit", fontSize: "1rem", resize: "vertical" }}
           />
           <p className="stat-meta" style={{ marginTop: -6 }}>
-            Paste a YouTube link anywhere in the answer and it'll show as a tap-to-play thumbnail.
+            Paste a YouTube link anywhere in the answer and it'll show as a tap-to-play thumbnail. Type
+            **bold** / *italic* / __underline__, or tap "Table" for a side-by-side list — the first line
+            becomes the header, and each line after is a row, with columns separated by "|". Tap "List"
+            for a single long list that flows into columns automatically — each line starts with "- ".
           </p>
 
           <label>Order (lower shows first, optional)</label>
@@ -335,7 +386,7 @@ export default function FAQ({ isAdmin }: { isAdmin: boolean }) {
               </div>
               {openId === item.id && (
                 <div style={{ marginTop: 8 }}>
-                  <p className="rich-text" style={{ margin: 0 }}>{linkify(item.answer)}</p>
+                  <div className="rich-text" style={{ margin: 0 }}>{renderRichBody(item.answer)}</div>
 
                   {youtubeIds.length > 0 && (
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 10 }}>

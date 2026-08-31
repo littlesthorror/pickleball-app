@@ -19,6 +19,20 @@ import { linkify } from "./linkify";
 // typed in an ordinary sentence from accidentally turning into a
 // one-row table. Cell contents still run through linkify(), so bold/
 // italic/links keep working inside table cells too.
+//
+// A second block type, added the same day at Ben's follow-up request: a
+// plain "- one item per line" list (3+ consecutive lines starting with
+// "- ") renders as an auto-flowing multi-column list instead of one long
+// vertical column — good for a long single roster (e.g. 30 confirmed
+// pairs) where, unlike the table case above, there's no natural second
+// column to pair each line against. Uses CSS columns (see .rich-list in
+// index.css) so the browser decides 1/2/3 columns based on available
+// width rather than the admin having to plan a layout. Requires 3+
+// consecutive lines (higher than the table's 2) since a leading "-" is a
+// much more common thing to type in ordinary prose than "|" is, and a
+// higher bar keeps a stray dash from misfiring into a one-item list.
+const LIST_LINE = /^-\s+\S/;
+
 export function renderRichBody(text: string): ReactNode[] {
   const lines = text.split("\n");
   const blocks: ReactNode[] = [];
@@ -69,6 +83,20 @@ export function renderRichBody(text: string): ReactNode[] {
             </tbody>
           </table>
         </div>
+      );
+    } else if (LIST_LINE.test(line) && LIST_LINE.test(lines[i + 1] ?? "") && LIST_LINE.test(lines[i + 2] ?? "")) {
+      flushPlain();
+      const items: string[] = [];
+      while (i < lines.length && LIST_LINE.test(lines[i])) {
+        items.push(lines[i].replace(/^-\s+/, ""));
+        i++;
+      }
+      blocks.push(
+        <ul key={`list-${key++}`} className="rich-list">
+          {items.map((item, ii) => (
+            <li key={ii}>{linkify(item)}</li>
+          ))}
+        </ul>
       );
     } else {
       plainRun.push(line);
