@@ -29,18 +29,28 @@ import PageLoading from "./components/PageLoading";
 // reassure people nothing resets, not just announce the date.
 const SEASON_EMOJI: Record<string, string> = { Spring: "🌱", Summer: "☀️", Autumn: "🍂", Winter: "❄️" };
 
-type Tab =
-  | "dashboard"
-  | "leaderboard"
-  | "club-stats"
-  | "events"
-  | "notices"
-  | "faq"
-  | "competitions"
-  | "match-entry"
-  | "manage-admins"
-  | "game-history"
-  | "profile";
+// Kept as a runtime array (not just a type) so the "which tab was this
+// hash?" check on refresh (below) can validate against it directly,
+// rather than needing a second hand-maintained list in sync with the
+// type. A tab a regular member isn't allowed to see (e.g. "manage-admins"
+// surviving in the URL from when they were an admin, or a stale/shared
+// link) is harmless to restore into state here — every tab's actual
+// render site already gates on isAdmin/showCompetitionsTab, so an
+// unauthorized tab value just renders nothing rather than the page.
+const TABS = [
+  "dashboard",
+  "leaderboard",
+  "club-stats",
+  "events",
+  "notices",
+  "faq",
+  "competitions",
+  "match-entry",
+  "manage-admins",
+  "game-history",
+  "profile",
+] as const;
+type Tab = (typeof TABS)[number];
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
@@ -51,10 +61,24 @@ export default function App() {
   // "/#events" — there's no real client-side router here, so a URL hash is
   // the lightest way to land directly on the right tab instead of always
   // landing on the dashboard. Added 2026-08-25 alongside push notifications.
+  //
+  // Extended 2026-08-31 to cover every tab, not just notices/events — Ben
+  // asked for hitting the browser's refresh button to keep you on whatever
+  // tab you were viewing instead of always bouncing back to the dashboard.
+  // The matching write side is the effect below, which keeps the hash in
+  // sync with `tab` via history.replaceState (not pushState — this is
+  // deliberately NOT the same thing as wiring up the back button, which
+  // was explicitly left for later; replaceState never adds a history
+  // entry, so it only survives a refresh and doesn't change what the
+  // browser's own Back button does).
   const [tab, setTab] = useState<Tab>(() => {
     const hash = window.location.hash.replace("#", "");
-    return hash === "notices" || hash === "events" ? (hash as Tab) : "dashboard";
+    return (TABS as readonly string[]).includes(hash) ? (hash as Tab) : "dashboard";
   });
+
+  useEffect(() => {
+    window.history.replaceState(null, "", `#${tab}`);
+  }, [tab]);
   // backLabel (2026-08-28) — PlayerDetail's back button now reads "Back to
   // leaderboard" or "Back to Manage admins" depending on where the click
   // actually came from, rather than always saying leaderboard even when an
