@@ -632,7 +632,14 @@ export default function Profile({
             style={{
               marginTop: 0,
               background: "transparent",
-              color: "var(--danger)",
+              // Not red — signing out isn't a destructive action, unlike
+              // "Delete my account" below. Previously both used
+              // var(--danger), making the two buttons visually identical
+              // and easy to mix up. Matches the neutral navy styling
+              // already used for "Preview as a regular player" and
+              // "Download my data" above. Fixed 2026-08-31 at Ben's
+              // request.
+              color: "var(--navy-500)",
               border: "1px solid var(--border)",
             }}
           >
