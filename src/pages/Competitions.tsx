@@ -283,6 +283,40 @@ function CompetitionDetail({
   const [matches, setMatches] = useState<(CompetitionMatchRow & { matches: { team_a_score: number; team_b_score: number } | null })[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
+  // Inline title editing (2026-09-01, Ben's request) — a competition's name
+  // is only ever entered once, in the "New competition" form, before this
+  // point. Same pencil-icon "tap to edit" pattern as member names in
+  // AdminManagement.tsx.
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState(competition.name);
+  const [savingName, setSavingName] = useState(false);
+
+  async function saveCompetitionName() {
+    const value = nameDraft.trim();
+    if (!value) {
+      toast.error("Name can't be empty.");
+      return;
+    }
+    if (value === competition.name) {
+      setEditingName(false);
+      return;
+    }
+    setSavingName(true);
+    const { error: saveError } = await supabase.from("competitions").update({ name: value }).eq("id", competition.id);
+    setSavingName(false);
+    if (saveError) {
+      toast.error(`Couldn't rename: ${saveError.message}`);
+      return;
+    }
+    setEditingName(false);
+    onCompetitionChanged();
+  }
+
+  function cancelEditName() {
+    setNameDraft(competition.name);
+    setEditingName(false);
+  }
   // Tracks whether the first load for this competition has finished. Every
   // admin action on this page (add a team, enter a score, advance a stage…)
   // calls load() again via onChanged — previously that re-set `loading` to
@@ -379,9 +413,82 @@ function CompetitionDetail({
         }}
       >
         <div style={{ minWidth: 0 }}>
-          <h2 style={{ margin: 0, color: "#fff", fontSize: "1.5rem", lineHeight: 1.2 }}>
-            🏆 {competition.name}
-          </h2>
+          {editingName ? (
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <input
+                type="text"
+                autoFocus
+                value={nameDraft}
+                onChange={(e) => setNameDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") saveCompetitionName();
+                  if (e.key === "Escape") cancelEditName();
+                }}
+                style={{
+                  minWidth: 0,
+                  flex: 1,
+                  padding: "6px 10px",
+                  borderRadius: 8,
+                  border: "1px solid rgba(255,255,255,0.4)",
+                  background: "rgba(255,255,255,0.12)",
+                  color: "#fff",
+                  fontSize: "1.2rem",
+                  fontWeight: 700,
+                }}
+              />
+              <button
+                disabled={savingName || !nameDraft.trim()}
+                onClick={saveCompetitionName}
+                aria-label="Save competition name"
+                style={{ width: "auto", flexShrink: 0, marginTop: 0, padding: "6px 10px", fontSize: "0.9rem" }}
+              >
+                ✓
+              </button>
+              <button
+                disabled={savingName}
+                onClick={cancelEditName}
+                aria-label="Cancel editing name"
+                style={{
+                  width: "auto",
+                  flexShrink: 0,
+                  marginTop: 0,
+                  padding: "6px 10px",
+                  fontSize: "0.9rem",
+                  background: "rgba(255,255,255,0.1)",
+                  color: "#fff",
+                  border: "1px solid rgba(255,255,255,0.3)",
+                }}
+              >
+                ✕
+              </button>
+            </div>
+          ) : (
+            <h2 style={{ margin: 0, color: "#fff", fontSize: "1.5rem", lineHeight: 1.2, display: "flex", alignItems: "center", gap: 8 }}>
+              🏆 {competition.name}
+              {isAdmin && (
+                <button
+                  onClick={() => {
+                    setNameDraft(competition.name);
+                    setEditingName(true);
+                  }}
+                  aria-label="Edit competition name"
+                  style={{
+                    width: "auto",
+                    flexShrink: 0,
+                    marginTop: 0,
+                    padding: "2px 6px",
+                    fontSize: "0.85rem",
+                    lineHeight: 1,
+                    background: "transparent",
+                    color: "rgba(255,255,255,0.75)",
+                    border: "none",
+                  }}
+                >
+                  ✏️
+                </button>
+              )}
+            </h2>
+          )}
           <p style={{ margin: "8px 0 0", color: "rgba(255,255,255,0.75)", fontSize: "0.85rem" }}>
             {competition.event_date
               ? new Date(competition.event_date).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" })
@@ -409,12 +516,18 @@ function CompetitionDetail({
             style={{
               width: "auto",
               flexShrink: 0,
+              // Pushes the button to the right edge of its flex line even
+              // when it wraps onto its own row below the title on narrow
+              // screens (2026-09-01, Ben's request) — plain
+              // justify-content: space-between only right-aligns it when
+              // there's a second item sharing that row.
+              marginLeft: "auto",
               marginTop: 0,
               padding: "8px 14px",
               fontSize: "0.85rem",
               background: "rgba(255,255,255,0.1)",
               color: "#fff",
-              border: "1px solid rgba(255,255,255,0.3)",
+              border: "1px solid var(--danger)",
             }}
             onClick={() => onDelete(competition.id)}
           >
