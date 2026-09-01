@@ -279,7 +279,7 @@ export function computeBadges(
     }
   }
 
-  // "Rollercoaster" — rating swings by more than 100 points within a
+  // "Rollercoaster" — rating swings by more than 200 points within a
   // single calendar month. Measured as the full range (highest minus
   // lowest rating touched) within the month, seeded with the rating you
   // entered the month at — so a big move right at the start of the month
@@ -288,6 +288,19 @@ export function computeBadges(
   // go up-then-down (vs. just one big move) — a reasonable simplification
   // given how much "up and down" already tends to happen naturally while
   // RD is still high early on.
+  //
+  // Threshold raised from 100 to 200 on 2026-09-01 (Ben: "a few people
+  // have that already... I think the number needs to be a bit higher") —
+  // the club's very first logged session showed 12 of 17 active players
+  // over 100 points, since everyone starts at RD 350 (max uncertainty,
+  // biggest possible per-game swings) in their very first month. 100 was
+  // effectively "played your first session," not a genuinely rare/notable
+  // swing. 200 was chosen because it sat just above the natural gap in
+  // that session's real numbers (233 and 220 for the two biggest movers,
+  // next was 167) — see 0059_grandfather_rollercoaster_badge.sql for the
+  // players who'd already earned it under the old rule and were granted a
+  // matching legacy_badges row so they don't lose it now that the bar has
+  // moved.
   const dateJoinedRating = { date: dateJoined, rating: 1500 };
   const ratingPoints = [dateJoinedRating, ...history.map((h) => ({ date: h.played_at, rating: h.post_rating }))];
   const monthKey = (d: string) => {
@@ -314,7 +327,7 @@ export function computeBadges(
       biggestSwingMonth = g.date;
     }
   }
-  if (biggestSwing > 100 && biggestSwingMonth) {
+  if (biggestSwing > 200 && biggestSwingMonth) {
     badges.push({
       id: "rollercoaster",
       emoji: "🎢",

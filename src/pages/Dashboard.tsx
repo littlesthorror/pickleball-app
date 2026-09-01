@@ -30,7 +30,43 @@ ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip,
 
 const NAVY = "#0f2547";
 const ORANGE_BAND = "rgba(255, 122, 26, 0.14)";
+// Dark-mode equivalents (2026-09-01, Ben: "the bar chart in dark mode
+// isn't very visible") — the light-mode colors above were hardcoded into
+// the chart's canvas draw calls, which don't pick up index.css's
+// [data-theme="dark"] variable overrides the way regular DOM elements do.
+// NAVY (near-black) was nearly invisible against the dark theme's own
+// near-black background, and the same low-opacity orange band read as a
+// muddy smear instead of a clean wash. Picked to match the dark theme's
+// existing palette: the rating line uses --text's dark value so it pops
+// against the dark background, the band opacity is bumped up so it still
+// reads clearly, and grid/ticks reuse dark --border/--text-muted.
+const NAVY_DARK = "#e7ecf5";
+const ORANGE_BAND_DARK = "rgba(255, 122, 26, 0.28)";
+const GRID_LIGHT = "#eef1f6";
+const GRID_DARK = "#262f3d";
+const TICKS_LIGHT = "#667085";
+const TICKS_DARK = "#8b96a5";
 const BADGE_PAGE_SIZE = 6;
+
+// Tracks the app's dark/light theme (see App.tsx — a data-theme attribute
+// on <html>, driven by the signed-in viewer's own saved preference) so the
+// canvas-drawn chart below can pick matching colors. Regular DOM elements
+// pick this up automatically via CSS variables; Chart.js can't, since it
+// draws to a canvas rather than styled HTML, so this mirrors the attribute
+// into React state via a MutationObserver.
+function useIsDarkTheme(): boolean {
+  const [isDark, setIsDark] = useState(
+    () => document.documentElement.getAttribute("data-theme") === "dark"
+  );
+  useEffect(() => {
+    const observer = new MutationObserver(() => {
+      setIsDark(document.documentElement.getAttribute("data-theme") === "dark");
+    });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    return () => observer.disconnect();
+  }, []);
+  return isDark;
+}
 
 type XAxisMode = "games" | "date";
 
@@ -123,6 +159,7 @@ export default function Dashboard({
   // your own dashboard, same as above.
   onViewEvents?: () => void;
 }) {
+  const isDarkTheme = useIsDarkTheme();
   const [player, setPlayer] = useState<PlayerStatus | null>(null);
   const [history, setHistory] = useState<PlayerMatchHistoryRow[]>([]);
   const [monthlyFinishes, setMonthlyFinishes] = useState<MonthlyFinish[]>([]);
@@ -362,6 +399,9 @@ export default function Dashboard({
     const lower = points.map((p) => Math.round(p.rating - p.rd));
     const rating = points.map((p) => Math.round(p.rating));
 
+    const lineColor = isDarkTheme ? NAVY_DARK : NAVY;
+    const bandColor = isDarkTheme ? ORANGE_BAND_DARK : ORANGE_BAND;
+
     return {
       labels,
       datasets: [
@@ -377,14 +417,14 @@ export default function Dashboard({
           data: upper,
           borderWidth: 0,
           pointRadius: 0,
-          backgroundColor: ORANGE_BAND,
+          backgroundColor: bandColor,
           fill: "-1" as const,
         },
         {
           label: "Rating",
           data: rating,
-          borderColor: NAVY,
-          backgroundColor: NAVY,
+          borderColor: lineColor,
+          backgroundColor: lineColor,
           pointRadius: history.length > 40 ? 0 : 3,
           borderWidth: 2.5,
           tension: 0.25,
@@ -392,7 +432,7 @@ export default function Dashboard({
         },
       ],
     };
-  }, [player, history, xAxis]);
+  }, [player, history, xAxis, isDarkTheme]);
 
   // Seasonal Top 10 badges — derived from seasonEntries (already fetched
   // live above for the Seasons history card), filtered to seasons that
@@ -791,8 +831,14 @@ export default function Dashboard({
                 maintainAspectRatio: false,
                 plugins: { legend: { display: false }, tooltip: { intersect: false, mode: "index" } },
                 scales: {
-                  x: { grid: { display: false }, ticks: { maxTicksLimit: 6, color: "#667085" } },
-                  y: { grid: { color: "#eef1f6" }, ticks: { color: "#667085" } },
+                  x: {
+                    grid: { display: false },
+                    ticks: { maxTicksLimit: 6, color: isDarkTheme ? TICKS_DARK : TICKS_LIGHT },
+                  },
+                  y: {
+                    grid: { color: isDarkTheme ? GRID_DARK : GRID_LIGHT },
+                    ticks: { color: isDarkTheme ? TICKS_DARK : TICKS_LIGHT },
+                  },
                 },
               }}
             />
