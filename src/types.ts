@@ -19,6 +19,12 @@ export interface Player {
   notify_new_notices: boolean;
   notify_badge_earned: boolean;
   notify_rank_change: boolean;
+  // Admin-created "dummy" account (2026-09-01) for a member who's
+  // reluctant to sign up themselves — the underlying auth login is
+  // permanently disabled (see create-placeholder-player edge function),
+  // this just flags it for a small "Guest" tag in the UI. See
+  // 0057_add_placeholder_players.sql.
+  is_placeholder: boolean;
 }
 
 // Emergency contact + medical info (2026-08-28) — moved 2026-08-31 out of

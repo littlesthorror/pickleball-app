@@ -26,6 +26,7 @@ export function PlayerSelect({
         {players.map((p) => (
           <option key={p.id} value={p.id} disabled={disabledIds.includes(p.id)}>
             {p.display_name}
+            {p.is_placeholder ? " (Guest)" : ""}
             {p.is_provisional ? " (provisional)" : ""}
           </option>
         ))}

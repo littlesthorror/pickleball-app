@@ -157,6 +157,12 @@ export default function AdminManagement({
   });
   const [grantingBadge, setGrantingBadge] = useState(false);
 
+  // Placeholder/dummy players (2026-09-01) — for members reluctant to sign
+  // up themselves who still need to be registered in matches/competitions.
+  // See create-placeholder-player edge function for how this is created.
+  const [placeholderName, setPlaceholderName] = useState("");
+  const [creatingPlaceholder, setCreatingPlaceholder] = useState(false);
+
   function load() {
     setLoading(true);
     Promise.all([
@@ -483,6 +489,32 @@ export default function AdminManagement({
     load();
   }
 
+  // Creates a placeholder player via the service-role edge function (needs
+  // a real, permanently-banned auth.users row behind the scenes — see that
+  // function's comment) then reloads the member list so the new "Guest"
+  // shows up immediately, ready to be picked in Match Entry/Competitions.
+  async function createPlaceholderPlayer() {
+    const name = placeholderName.trim();
+    if (!name) return;
+    setCreatingPlaceholder(true);
+    const { error } = await supabase.functions.invoke("create-placeholder-player", {
+      body: { display_name: name },
+    });
+    setCreatingPlaceholder(false);
+    if (error) {
+      if (error instanceof FunctionsHttpError) {
+        const body = await error.context.json().catch(() => null);
+        toast.error(body?.error ?? "Couldn't add this player.");
+      } else {
+        toast.error("Couldn't reach the server to add this player — check your connection and try again.");
+      }
+      return;
+    }
+    toast.success(`${name} added as a guest player`);
+    setPlaceholderName("");
+    load();
+  }
+
   async function deletePlayer(player: PlayerStatus) {
     if (!(await confirm(`Permanently delete ${player.display_name}'s account? This can't be undone.`, { danger: true }))) {
       return;
@@ -660,6 +692,33 @@ export default function AdminManagement({
         )}
       </CollapsibleCard>
 
+      <CollapsibleCard title="Add a placeholder player">
+        <p className="stat-meta" style={{ marginTop: 0 }}>
+          For members who haven't signed up yet — this adds them to the club with a "Guest" tag so you can still
+          register them in matches and competitions. They can't sign in with this account; if they join for real
+          later, they can sign up normally alongside it.
+        </p>
+        <div style={{ display: "flex", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
+          <input
+            type="text"
+            value={placeholderName}
+            onChange={(e) => setPlaceholderName(e.target.value)}
+            placeholder="Player's name"
+            style={{ flex: "1 1 160px", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)" }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") createPlaceholderPlayer();
+            }}
+          />
+          <button
+            disabled={creatingPlaceholder || !placeholderName.trim()}
+            onClick={createPlaceholderPlayer}
+            style={{ flex: "0 0 auto", width: "auto", marginTop: 0 }}
+          >
+            {creatingPlaceholder ? "Adding…" : "Add player"}
+          </button>
+        </div>
+      </CollapsibleCard>
+
       <div className="card">
         <h2 style={{ marginTop: 0 }}>Members</h2>
         <input
@@ -757,6 +816,22 @@ export default function AdminManagement({
                   >
                     {p.display_name}
                   </div>
+                  {p.is_placeholder && (
+                    <span
+                      title="Added by an admin — hasn't signed up themselves"
+                      style={{
+                        flexShrink: 0,
+                        padding: "1px 6px",
+                        borderRadius: 999,
+                        background: "var(--border)",
+                        color: "var(--text-muted)",
+                        fontSize: "0.68rem",
+                        fontWeight: 700,
+                      }}
+                    >
+                      Guest
+                    </span>
+                  )}
                   <button
                     onClick={() => {
                       setNameDrafts((prev) => ({ ...prev, [p.id]: p.display_name }));

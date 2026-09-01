@@ -523,6 +523,25 @@ export default function Leaderboard({
             <Avatar name={p.display_name} url={p.avatar_url} size={28} />
             <span className="name" style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {p.display_name}
+              {/* Admin-created dummy account (2026-09-01) — see
+                  types.ts's is_placeholder comment. */}
+              {p.is_placeholder && (
+                <span
+                  title="Added by an admin — hasn't signed up themselves"
+                  style={{
+                    marginLeft: 6,
+                    padding: "1px 6px",
+                    borderRadius: 999,
+                    background: "var(--border)",
+                    color: "var(--text-muted)",
+                    fontSize: "0.68rem",
+                    fontWeight: 700,
+                    verticalAlign: "middle",
+                  }}
+                >
+                  Guest
+                </span>
+              )}
             </span>
             <FormGuide results={recentForm.get(p.id)} />
             {sort === "improved" ? (
