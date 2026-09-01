@@ -624,6 +624,19 @@ function SetupStage({
   const [savingTeam, setSavingTeam] = useState(false);
   const [teamError, setTeamError] = useState<string | null>(null);
 
+  // Editing an existing team (2026-09-01, Ben's request) — previously the
+  // only way to fix a wrong pairing was Remove + re-add from scratch. Only
+  // offered here in SetupStage, i.e. only while the competition is still
+  // "setup" — once the group stage starts, fixtures/matches reference
+  // these team ids directly, so changing who's on a team after that point
+  // would silently corrupt already-generated results.
+  const [editingTeamId, setEditingTeamId] = useState<string | null>(null);
+  const [editP1, setEditP1] = useState("");
+  const [editP2, setEditP2] = useState("");
+  const [editTeamName, setEditTeamName] = useState("");
+  const [savingEditTeam, setSavingEditTeam] = useState(false);
+  const [editTeamError, setEditTeamError] = useState<string | null>(null);
+
   const [newGroupName, setNewGroupName] = useState("");
   const [savingGroup, setSavingGroup] = useState(false);
 
@@ -651,6 +664,40 @@ function SetupStage({
     setP1("");
     setP2("");
     setTeamName("");
+    onChanged();
+  }
+
+  function startEditTeam(t: CompetitionTeamRow) {
+    setEditingTeamId(t.id);
+    setEditP1(t.player1_id);
+    setEditP2(t.player2_id);
+    setEditTeamName(t.team_name ?? "");
+    setEditTeamError(null);
+  }
+
+  function cancelEditTeam() {
+    setEditingTeamId(null);
+    setEditTeamError(null);
+  }
+
+  async function saveEditTeam(teamId: string) {
+    if (!editP1 || !editP2 || editP1 === editP2) return;
+    setSavingEditTeam(true);
+    setEditTeamError(null);
+    const { error } = await supabase
+      .from("competition_teams")
+      .update({
+        player1_id: editP1,
+        player2_id: editP2,
+        team_name: editTeamName.trim() || null,
+      })
+      .eq("id", teamId);
+    setSavingEditTeam(false);
+    if (error) {
+      setEditTeamError(error.message);
+      return;
+    }
+    setEditingTeamId(null);
     onChanged();
   }
 
@@ -788,16 +835,75 @@ function SetupStage({
 
         {teams.length > 0 && (
           <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 8 }}>
-            {teams.map((t) => (
-              <div key={t.id} className="match-row">
-                <div className="opponent">
-                  {t.team_name || `${nameById(players, t.player1_id)} & ${nameById(players, t.player2_id)}`}
+            {teams.map((t) =>
+              editingTeamId === t.id ? (
+                <div key={t.id} style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 10 }}>
+                  <label style={{ marginTop: 0 }}>Player 1</label>
+                  <PlayerSelect
+                    label=""
+                    players={players}
+                    value={editP1}
+                    onChange={setEditP1}
+                    disabledIds={[...usedPlayerIds].filter((id) => id !== t.player1_id && id !== t.player2_id).concat(editP2)}
+                  />
+                  <label>Player 2</label>
+                  <PlayerSelect
+                    label=""
+                    players={players}
+                    value={editP2}
+                    onChange={setEditP2}
+                    disabledIds={[...usedPlayerIds].filter((id) => id !== t.player1_id && id !== t.player2_id).concat(editP1)}
+                  />
+                  <label>Team name (optional)</label>
+                  <input
+                    type="text"
+                    value={editTeamName}
+                    onChange={(e) => setEditTeamName(e.target.value)}
+                    placeholder="Defaults to both names"
+                  />
+                  {editTeamError && <p className="error">{editTeamError}</p>}
+                  <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                    <button
+                      disabled={savingEditTeam || !editP1 || !editP2 || editP1 === editP2}
+                      onClick={() => saveEditTeam(t.id)}
+                      style={{ flex: "0 0 auto", width: "auto", marginTop: 0, padding: "8px 14px", fontSize: "0.85rem" }}
+                    >
+                      {savingEditTeam ? "Saving…" : "Save"}
+                    </button>
+                    <button
+                      disabled={savingEditTeam}
+                      onClick={cancelEditTeam}
+                      style={{
+                        flex: "0 0 auto",
+                        width: "auto",
+                        marginTop: 0,
+                        padding: "8px 14px",
+                        fontSize: "0.85rem",
+                        background: "transparent",
+                        color: "var(--navy-500)",
+                        border: "1px solid var(--border)",
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
                 </div>
-                <span className="link-action" role="button" tabIndex={0} onClick={() => deleteTeam(t.id)}>
-                  Remove
-                </span>
-              </div>
-            ))}
+              ) : (
+                <div key={t.id} className="match-row">
+                  <div className="opponent">
+                    {t.team_name || `${nameById(players, t.player1_id)} & ${nameById(players, t.player2_id)}`}
+                  </div>
+                  <div style={{ display: "flex", gap: 12, flexShrink: 0 }}>
+                    <span className="link-action" role="button" tabIndex={0} onClick={() => startEditTeam(t)}>
+                      Edit
+                    </span>
+                    <span className="link-action" role="button" tabIndex={0} onClick={() => deleteTeam(t.id)}>
+                      Remove
+                    </span>
+                  </div>
+                </div>
+              )
+            )}
           </div>
         )}
       </div>
