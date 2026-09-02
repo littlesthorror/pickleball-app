@@ -818,8 +818,8 @@ export default function Notices({ isAdmin, playerId }: { isAdmin: boolean; playe
             Select some text and tap B, i or U to format it, or type **bold** / *italic* / __underline__ yourself.
             Paste a YouTube link anywhere and it'll show as a tap-to-play thumbnail. Tap "Table" for a side-by-side
             list — the first line becomes the header, and each line after is a row, with columns separated by "|".
-            Tap "List" for a single long list (e.g. a roster) that flows into columns automatically — each line
-            starts with "- ".
+            Tap "List" for a bulleted list — each line starts with "- ". A short list renders as a normal
+            single-column list; a long one (12+ items, e.g. a roster) automatically flows into columns instead.
           </p>
 
           <label style={{ display: "flex", alignItems: "center", gap: 8 }}>

@@ -21,17 +21,22 @@ import { linkify } from "./linkify";
 // italic/links keep working inside table cells too.
 //
 // A second block type, added the same day at Ben's follow-up request: a
-// plain "- one item per line" list (3+ consecutive lines starting with
-// "- ") renders as an auto-flowing multi-column list instead of one long
-// vertical column — good for a long single roster (e.g. 30 confirmed
-// pairs) where, unlike the table case above, there's no natural second
-// column to pair each line against. Uses CSS columns (see .rich-list in
+// plain "- one item per line" list (2+ consecutive lines starting with
+// "- ") renders as a classic single-column bulleted list — the common
+// case (a handful of announcement points). Once a list gets long enough
+// that a single column would run the page on for a while (12+ items — e.g.
+// a 30-pair roster), it automatically switches to the auto-flowing
+// multi-column layout instead, via the .rich-list--flow modifier (see
 // index.css) so the browser decides 1/2/3 columns based on available
-// width rather than the admin having to plan a layout. Requires 3+
-// consecutive lines (higher than the table's 2) since a leading "-" is a
-// much more common thing to type in ordinary prose than "|" is, and a
-// higher bar keeps a stray dash from misfiring into a one-item list.
+// width rather than the admin having to plan a layout or pick a different
+// syntax for "long list" vs "short list". Changed 2026-09-02 from a 3+
+// line / always-flowing design at Ben's request for "a classic bulleted
+// list" — 2 lines is enough to intend a list (matches the table block's
+// own 2-line bar just below), and most real notices are short enough that
+// they were rendering as a cramped multi-column layout instead of a
+// normal list.
 const LIST_LINE = /^-\s+\S/;
+const LIST_FLOW_THRESHOLD = 12;
 
 export function renderRichBody(text: string): ReactNode[] {
   const lines = text.split("\n");
@@ -84,15 +89,16 @@ export function renderRichBody(text: string): ReactNode[] {
           </table>
         </div>
       );
-    } else if (LIST_LINE.test(line) && LIST_LINE.test(lines[i + 1] ?? "") && LIST_LINE.test(lines[i + 2] ?? "")) {
+    } else if (LIST_LINE.test(line) && LIST_LINE.test(lines[i + 1] ?? "")) {
       flushPlain();
       const items: string[] = [];
       while (i < lines.length && LIST_LINE.test(lines[i])) {
         items.push(lines[i].replace(/^-\s+/, ""));
         i++;
       }
+      const flowing = items.length >= LIST_FLOW_THRESHOLD;
       blocks.push(
-        <ul key={`list-${key++}`} className="rich-list">
+        <ul key={`list-${key++}`} className={`rich-list${flowing ? " rich-list--flow" : ""}`}>
           {items.map((item, ii) => (
             <li key={ii}>{linkify(item)}</li>
           ))}

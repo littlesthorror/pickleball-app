@@ -324,7 +324,8 @@ export default function FAQ({ isAdmin }: { isAdmin: boolean }) {
             Paste a YouTube link anywhere in the answer and it'll show as a tap-to-play thumbnail. Type
             **bold** / *italic* / __underline__, or tap "Table" for a side-by-side list — the first line
             becomes the header, and each line after is a row, with columns separated by "|". Tap "List"
-            for a single long list that flows into columns automatically — each line starts with "- ".
+            for a bulleted list — each line starts with "- ". A short list renders as a normal single-column
+            list; a long one (12+ items) automatically flows into columns instead.
           </p>
 
           <label>Order (lower shows first, optional)</label>

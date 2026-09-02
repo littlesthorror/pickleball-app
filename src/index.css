@@ -1194,18 +1194,24 @@ textarea {
   border-bottom: none;
 }
 
-/* ── Rich-text auto-flowing lists (Notices, FAQ) ─────────────────────────
-   Added 2026-08-31 — see lib/richBody.tsx. For a single long roster (e.g.
-   30 confirmed pairs) with no natural second column to pair against, "- "
-   lines flow into as many ~130px columns as the screen fits rather than
-   one long scroll — column-width (not column-count) so it adapts itself
-   per device instead of the admin having to pick a column count. */
+/* ── Rich-text lists (Notices, FAQ) ───────────────────────────────────────
+   Added 2026-08-31, reworked 2026-09-02 — see lib/richBody.tsx. Base
+   .rich-list is a classic single-column bulleted list — the common case
+   (a handful of announcement points). Once a list is long enough that one
+   column would run the page on for a while (8+ items — e.g. a 30-pair
+   roster), richBody.tsx adds the .rich-list--flow modifier below, which
+   switches it to auto-flowing ~130px columns instead — column-width (not
+   column-count) so it adapts itself per device rather than the admin
+   having to plan a layout. */
 .rich-list {
-  columns: 130px;
-  column-gap: 16px;
   list-style: none;
   margin: 10px 0;
   padding: 0;
+}
+
+.rich-list--flow {
+  columns: 130px;
+  column-gap: 16px;
 }
 
 /* Actual bullet markers (2026-09-02, Ben's request) — the block previously
