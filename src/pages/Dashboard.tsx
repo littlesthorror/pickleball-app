@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -15,7 +15,7 @@ import ShareCard from "../components/ShareCard";
 import SeasonWrappedCard from "../components/SeasonWrappedCard";
 import { computeBadges, getFrameTier } from "../lib/badges";
 import type { MonthlyFinish, CompetitionPlacement, SeasonTop10Finish, FrameTier } from "../lib/badges";
-import { fireConfetti } from "../lib/confetti";
+import { fireConfetti, fireBalloons } from "../lib/confetti";
 import { useToast } from "../components/Toast";
 import { computeSeasonWrappedStats } from "../lib/seasonWrapped";
 import type { SeasonWrappedStats } from "../lib/seasonWrappedImage";
@@ -492,61 +492,6 @@ export default function Dashboard({
   // this profile (not a self-facing preference like hide_own_rating).
   const frameTier = useMemo(() => getFrameTier(badges.length), [badges]);
 
-  // Confetti + toast the first time you see a new badge or frame tier on
-  // your OWN dashboard (2026-09-02, Ben's request). Badges are recomputed
-  // fresh every render (see computeBadges' doc comment), so "new" is
-  // tracked client-side: a per-player localStorage snapshot of the badge
-  // ids/frame tier already seen. First-ever load just seeds the snapshot
-  // silently — nobody with 15 existing badges should get 15 confetti
-  // bursts the moment this feature ships. Only genuinely new achievements
-  // after that baseline fire anything. Deliberately skipped when browsing
-  // someone else's profile (isOwnProfile false) — this is a celebration
-  // for the account owner, not something to trigger by looking at others.
-  useEffect(() => {
-    if (!isOwnProfile || loading || !player) return;
-
-    const seenBadgesKey = `sideline_seen_badges_${player.id}`;
-    const seenFrameKey = `sideline_seen_frame_${player.id}`;
-
-    let seenBadgeIds: string[] | null = null;
-    try {
-      const raw = localStorage.getItem(seenBadgesKey);
-      seenBadgeIds = raw ? (JSON.parse(raw) as string[]) : null;
-    } catch {
-      seenBadgeIds = null;
-    }
-    const seenFrame = localStorage.getItem(seenFrameKey) as FrameTier | "none" | null;
-
-    const currentBadgeIds = badges.map((b) => b.id);
-    const isFirstRun = seenBadgeIds === null;
-
-    if (!isFirstRun) {
-      const newlyEarned = badges.filter((b) => !seenBadgeIds!.includes(b.id));
-      const frameUpgraded = seenFrame !== null && seenFrame !== (frameTier ?? "none") && frameTier !== null;
-
-      if (frameUpgraded) {
-        fireConfetti({ colors: ["#d4a017", "#b5722f", "#9aa4b2", "#ffffff"], pieceCount: 220 });
-        toast.success(`New avatar frame unlocked: ${frameTier![0].toUpperCase()}${frameTier!.slice(1)}!`);
-      } else if (newlyEarned.length > 0) {
-        fireConfetti();
-        toast.success(
-          newlyEarned.length === 1
-            ? `New badge earned: ${newlyEarned[0].emoji} ${newlyEarned[0].label}!`
-            : `${newlyEarned.length} new badges earned!`
-        );
-      }
-    }
-
-    try {
-      localStorage.setItem(seenBadgesKey, JSON.stringify(currentBadgeIds));
-      localStorage.setItem(seenFrameKey, frameTier ?? "none");
-    } catch {
-      // Storage full/unavailable (e.g. private browsing) — non-critical,
-      // worst case is a repeated celebration next visit.
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOwnProfile, loading, player, badges, frameTier]);
-
   // 30-day change and personal best — both derived from the same history
   // array already loaded for the chart, so no extra query needed. Mirrors
   // the leaderboard's delta_30d logic: null means the player joined less
@@ -572,6 +517,163 @@ export default function Dashboard({
     }
     return best;
   }, [history, player]);
+
+  // Rolling count-up animation for the rating number (2026-09-02, Ben's
+  // request — part of the same "fun stuff" batch as the confetti below).
+  // Dashboard fetches fresh on every mount, so there's no in-memory "old"
+  // value to tween from — instead the last-shown rating is persisted per
+  // player in localStorage, and if it differs from the freshly loaded
+  // rating we animate from old to new over ~900ms rather than just
+  // snapping straight to the new number. Own profile only: for someone
+  // else's profile there's no meaningful "since you last looked" baseline.
+  const [displayedRating, setDisplayedRating] = useState<number | null>(null);
+  const ratingAnimFrame = useRef<number | null>(null);
+  useEffect(() => {
+    if (!isOwnProfile || loading || !player) return;
+    const key = `sideline_last_rating_${player.id}`;
+    const current = Math.round(player.rating);
+    let stored: number | null = null;
+    try {
+      const raw = localStorage.getItem(key);
+      stored = raw !== null ? parseInt(raw, 10) : null;
+    } catch {
+      stored = null;
+    }
+
+    if (stored === null || stored === current || Number.isNaN(stored)) {
+      setDisplayedRating(current);
+    } else {
+      const from = stored;
+      const to = current;
+      const durationMs = 900;
+      const start = performance.now();
+      const tick = (now: number) => {
+        const progress = Math.min(1, (now - start) / durationMs);
+        const eased = 1 - Math.pow(1 - progress, 3);
+        setDisplayedRating(Math.round(from + (to - from) * eased));
+        if (progress < 1) {
+          ratingAnimFrame.current = requestAnimationFrame(tick);
+        }
+      };
+      ratingAnimFrame.current = requestAnimationFrame(tick);
+    }
+
+    try {
+      localStorage.setItem(key, String(current));
+    } catch {
+      // ignore — non-critical
+    }
+
+    return () => {
+      if (ratingAnimFrame.current !== null) cancelAnimationFrame(ratingAnimFrame.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOwnProfile, loading, player?.id, player?.rating]);
+
+  // Confetti + toast the first time you see a new badge, frame tier, tier
+  // promotion, or personal best on your OWN dashboard (2026-09-02, Ben's
+  // request). All four are recomputed fresh every render, so "new" is
+  // tracked client-side via a per-player localStorage snapshot of what's
+  // already been seen. First-ever load just seeds the snapshot silently —
+  // nobody with 15 existing badges should get 15 confetti bursts the
+  // moment this feature ships. Only genuinely new achievements after that
+  // baseline fire anything. Deliberately skipped when browsing someone
+  // else's profile (isOwnProfile false) — this is a celebration for the
+  // account owner, not something to trigger by looking at others.
+  //
+  // At most one confetti burst fires per visit even if several things
+  // happened at once (richest achievement wins: frame > tier > personal
+  // best > badge) so it doesn't turn into a chaotic pile-up — but every
+  // achievement still gets its own toast, since the toast stack already
+  // handles multiple messages fine.
+  useEffect(() => {
+    if (!isOwnProfile || loading || !player) return;
+
+    const seenBadgesKey = `sideline_seen_badges_${player.id}`;
+    const seenFrameKey = `sideline_seen_frame_${player.id}`;
+    const seenTierKey = `sideline_seen_tier_${player.id}`;
+    const seenBestKey = `sideline_seen_best_${player.id}`;
+
+    let seenBadgeIds: string[] | null = null;
+    try {
+      const raw = localStorage.getItem(seenBadgesKey);
+      seenBadgeIds = raw ? (JSON.parse(raw) as string[]) : null;
+    } catch {
+      seenBadgeIds = null;
+    }
+    const seenFrame = localStorage.getItem(seenFrameKey) as FrameTier | "none" | null;
+    const seenTier = localStorage.getItem(seenTierKey);
+    const seenBestRaw = localStorage.getItem(seenBestKey);
+    const seenBest = seenBestRaw !== null ? Number(seenBestRaw) : null;
+
+    const currentBadgeIds = badges.map((b) => b.id);
+    const currentTierLabel = getTier(player.games_played).label;
+    const currentBest = Math.round(personalBest.rating);
+    const isFirstRun = seenBadgeIds === null;
+
+    if (!isFirstRun) {
+      const newlyEarned = badges.filter((b) => !seenBadgeIds!.includes(b.id));
+      const frameUpgraded = seenFrame !== null && seenFrame !== (frameTier ?? "none") && frameTier !== null;
+      const tierPromoted = seenTier !== null && seenTier !== currentTierLabel;
+      const newPersonalBest = seenBest !== null && !Number.isNaN(seenBest) && currentBest > seenBest;
+
+      if (frameUpgraded) {
+        fireConfetti({ shape: "pickleball", pieceCount: 220 });
+      } else if (tierPromoted) {
+        fireConfetti();
+      } else if (newPersonalBest) {
+        fireConfetti({ pieceCount: 90 });
+      } else if (newlyEarned.length > 0) {
+        fireConfetti();
+      }
+
+      if (frameUpgraded) {
+        toast.success(`New avatar frame unlocked: ${frameTier![0].toUpperCase()}${frameTier!.slice(1)}!`);
+      }
+      if (tierPromoted) {
+        toast.success(`Promoted to ${currentTierLabel}!`);
+      }
+      if (newPersonalBest) {
+        toast.success(`New personal best: ${currentBest}!`);
+      }
+      if (newlyEarned.length > 0) {
+        toast.success(
+          newlyEarned.length === 1
+            ? `New badge earned: ${newlyEarned[0].emoji} ${newlyEarned[0].label}!`
+            : `${newlyEarned.length} new badges earned!`
+        );
+      }
+    }
+
+    try {
+      localStorage.setItem(seenBadgesKey, JSON.stringify(currentBadgeIds));
+      localStorage.setItem(seenFrameKey, frameTier ?? "none");
+      localStorage.setItem(seenTierKey, currentTierLabel);
+      localStorage.setItem(seenBestKey, String(currentBest));
+    } catch {
+      // Storage full/unavailable (e.g. private browsing) — non-critical,
+      // worst case is a repeated celebration next visit.
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOwnProfile, loading, player, badges, frameTier, personalBest]);
+
+  // Birthday balloons (2026-09-02) — once per calendar day, on your own
+  // dashboard, on your actual birthday. Separate localStorage key per day
+  // (rather than reusing the achievement-tracking pattern above) since
+  // this needs to re-fire every year, not just once ever.
+  useEffect(() => {
+    if (!isOwnProfile || loading || !player) return;
+    if (!isBirthdayToday(player.date_of_birth)) return;
+    const todayKey = new Date().toISOString().slice(0, 10);
+    const seenKey = `sideline_birthday_shown_${player.id}_${todayKey}`;
+    if (localStorage.getItem(seenKey)) return;
+    fireBalloons();
+    try {
+      localStorage.setItem(seenKey, "1");
+    } catch {
+      // ignore — non-critical
+    }
+  }, [isOwnProfile, loading, player]);
 
   // The partner you've won the most games with — added 2026-08-11 at
   // Ben's request, shown beneath the rating graph. Same grouping approach
@@ -767,7 +869,7 @@ export default function Dashboard({
           </p>
         ) : (
           <div className="stat-hero">
-            <span className="value">{Math.round(player.rating)}</span>
+            <span className="value">{displayedRating ?? Math.round(player.rating)}</span>
             {lastDelta !== null && (
               <span className={lastDelta > 0 ? "delta-positive" : lastDelta < 0 ? "delta-negative" : "delta-neutral"}>
                 {lastDelta > 0 ? "▲" : lastDelta < 0 ? "▼" : "–"} {Math.abs(Math.round(lastDelta))} since last game
