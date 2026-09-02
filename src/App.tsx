@@ -410,40 +410,34 @@ export default function App() {
                   <button disabled={tab === "faq"} onClick={() => changeTab("faq")}>
                     FAQ
                   </button>
+                  {/* Comps/Cup share the main tab row rather than getting
+                      their own — a separate row for just two buttons read as
+                      three stacked, disconnected bars, which looked worse
+                      than the occasional wrap. They keep the blue outline
+                      (.nav-btn-special) so they still stand out, and the
+                      row's own flex-wrap/scroll handles overflow the same
+                      way it always has. Reverted 2026-09-02 per Ben's
+                      feedback. */}
+                  {(showCompetitionsTab || effectiveIsAdmin) && (
+                    <button
+                      className="nav-btn-special"
+                      disabled={tab === "competitions"}
+                      onClick={() => changeTab("competitions")}
+                    >
+                      🏆 Comps
+                    </button>
+                  )}
+                  {(showQuarterlyCupTab || isQuarterlyCupParticipant || effectiveIsAdmin) && (
+                    <button
+                      className="nav-btn-special"
+                      disabled={tab === "quarterly-cup"}
+                      onClick={() => changeTab("quarterly-cup")}
+                    >
+                      🏅 Cup
+                    </button>
+                  )}
                 </div>
               </div>
-
-              {/* Special/temporary tabs (Comps, Quarterly Cup) get their own
-                  row rather than sharing the main tab row. Previously they
-                  lived at the end of the main .nav and would unpredictably
-                  wrap — on desktop this stranded just "Quarterly Cup" alone
-                  on a second line, disconnected from the row above. A
-                  dedicated row wraps/scrolls as a unit instead, so it always
-                  looks intentional. Fixed 2026-09-02. */}
-              {(showCompetitionsTab || showQuarterlyCupTab || isQuarterlyCupParticipant || effectiveIsAdmin) && (
-                <div className="nav-wrap">
-                  <div className="nav">
-                    {(showCompetitionsTab || effectiveIsAdmin) && (
-                      <button
-                        className="nav-btn-special"
-                        disabled={tab === "competitions"}
-                        onClick={() => changeTab("competitions")}
-                      >
-                        🏆 Comps
-                      </button>
-                    )}
-                    {(showQuarterlyCupTab || isQuarterlyCupParticipant || effectiveIsAdmin) && (
-                      <button
-                        className="nav-btn-special"
-                        disabled={tab === "quarterly-cup"}
-                        onClick={() => changeTab("quarterly-cup")}
-                      >
-                        🏅 Cup
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
 
               {effectiveIsAdmin && (
                 <div className="nav">
