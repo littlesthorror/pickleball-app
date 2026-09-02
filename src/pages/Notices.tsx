@@ -689,7 +689,49 @@ export default function Notices({ isAdmin, playerId }: { isAdmin: boolean; playe
     return supabase.storage.from("notices").getPublicUrl(path).data.publicUrl;
   }
 
-  if (loading) return <PageLoading label="Loading notices…" />;
+  // "Share" a story out to WhatsApp/Messages/etc. via the device's native
+  // share sheet (2026-09-02, Ben's request) — text + link rather than a
+  // rendered image (see ShareCard.tsx for that pattern instead), since a
+  // story's body can be long-form and doesn't compress down to a fixed
+  // card layout the way a player's stats do. The link uses the existing
+  // "#notices" hash the app already supports for deep-linking a specific
+  // tab (see App.tsx — originally built for push notifications), so it
+  // actually lands the recipient on the News page, not just the app's
+  // default screen.
+  async function shareNotice(notice: NoticeRow) {
+    const plainExcerpt = (notice.body ?? "")
+      .replace(/\*\*(.+?)\*\*/g, "$1")
+      .replace(/__(.+?)__/g, "$1")
+      .replace(/\*(.+?)\*/g, "$1")
+      .replace(/^-\s+/gm, "")
+      .replace(/\s*\n\s*/g, " ")
+      .trim();
+    const excerpt = plainExcerpt.length > 140 ? `${plainExcerpt.slice(0, 140).trimEnd()}…` : plainExcerpt;
+    const url = `${window.location.origin}${window.location.pathname}#notices`;
+    const text = [notice.title, excerpt, "— via Sideline (Huntingdon Pickleball)"].filter(Boolean).join("\n\n");
+
+    const nav = navigator as Navigator & { share?: (data: ShareData) => Promise<void> };
+    if (nav.share) {
+      try {
+        await nav.share({ title: notice.title, text, url });
+      } catch (err) {
+        // AbortError just means they closed the share sheet — not a failure.
+        if (err instanceof Error && err.name !== "AbortError") {
+          toast.error(err.message);
+        }
+      }
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(`${text}\n${url}`);
+      toast.success("Copied to clipboard — paste it wherever you'd like to share it.");
+    } catch {
+      toast.error("Couldn't share or copy — your browser may not support either.");
+    }
+  }
+
+  if (loading) return <PageLoading label="Loading news…" />;
   if (error) return <p className="error">{error}</p>;
 
   const actionBtnStyle = {
@@ -704,7 +746,7 @@ export default function Notices({ isAdmin, playerId }: { isAdmin: boolean; playe
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h1 style={{ marginBottom: 0 }}>Notices</h1>
+        <h1 style={{ marginBottom: 0 }}>News</h1>
         {isAdmin && (
           <button
             style={{ marginTop: 0, width: "auto", padding: "8px 16px" }}
@@ -1035,7 +1077,7 @@ export default function Notices({ isAdmin, playerId }: { isAdmin: boolean; playe
       <div style={{ marginTop: 16 }}>
         {notices.length === 0 && (
           <p className="card stat-meta" style={{ margin: 0 }}>
-            No notices yet.
+            No news yet.
           </p>
         )}
         {notices.slice(0, visibleCount).map((n) => {
@@ -1060,19 +1102,24 @@ export default function Notices({ isAdmin, playerId }: { isAdmin: boolean; playe
                       {wasEdited(n) && <> · <span style={{ opacity: 0.75 }}>Updated {formatRelative(n.updated_at)}</span></>}
                     </div>
                   </div>
-                  {isAdmin && (
-                    <div style={{ display: "flex", gap: 2, flexShrink: 0, marginLeft: "auto" }}>
-                      <button onClick={() => togglePinned(n)} style={{ ...actionBtnStyle, color: "var(--orange-600)" }}>
-                        {n.pinned ? "Unpin" : "Pin"}
-                      </button>
-                      <button onClick={() => openEditForm(n)} style={{ ...actionBtnStyle, color: "var(--navy-500)" }}>
-                        Edit
-                      </button>
-                      <button onClick={() => handleDelete(n)} style={{ ...actionBtnStyle, color: "var(--danger)" }}>
-                        Remove
-                      </button>
-                    </div>
-                  )}
+                  <div style={{ display: "flex", gap: 2, flexShrink: 0, marginLeft: "auto" }}>
+                    <button onClick={() => shareNotice(n)} style={{ ...actionBtnStyle, color: "var(--sky-600)" }}>
+                      Share
+                    </button>
+                    {isAdmin && (
+                      <>
+                        <button onClick={() => togglePinned(n)} style={{ ...actionBtnStyle, color: "var(--orange-600)" }}>
+                          {n.pinned ? "Unpin" : "Pin"}
+                        </button>
+                        <button onClick={() => openEditForm(n)} style={{ ...actionBtnStyle, color: "var(--navy-500)" }}>
+                          Edit
+                        </button>
+                        <button onClick={() => handleDelete(n)} style={{ ...actionBtnStyle, color: "var(--danger)" }}>
+                          Remove
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
 
                 {n.body && (
