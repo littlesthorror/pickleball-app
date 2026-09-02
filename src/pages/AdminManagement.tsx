@@ -123,6 +123,11 @@ export default function AdminManagement({
   const [showCompetitionsTab, setShowCompetitionsTab] = useState(false);
   const [savingCompetitionsTab, setSavingCompetitionsTab] = useState(false);
 
+  // Quarterly Cup tab visibility (2026-09-02) — same reasoning and pattern
+  // as the Competitions tab above, for the standalone mini-league.
+  const [showQuarterlyCupTab, setShowQuarterlyCupTab] = useState(false);
+  const [savingQuarterlyCupTab, setSavingQuarterlyCupTab] = useState(false);
+
   // Draft text for each player's role title, keyed by player id — lets
   // each card have its own editable field without a form per player.
   const [roleDrafts, setRoleDrafts] = useState<Record<string, string>>({});
@@ -186,12 +191,13 @@ export default function AdminManagement({
   function loadInviteCode() {
     supabase
       .from("club_settings")
-      .select("invite_code, show_competitions_tab")
+      .select("invite_code, show_competitions_tab, show_quarterly_cup_tab")
       .single()
       .then(({ data }) => {
         setInviteCode(data?.invite_code ?? null);
         setInviteCodeInput(data?.invite_code ?? "");
         setShowCompetitionsTab(!!data?.show_competitions_tab);
+        setShowQuarterlyCupTab(!!data?.show_quarterly_cup_tab);
       });
   }
 
@@ -208,6 +214,21 @@ export default function AdminManagement({
       return;
     }
     setShowCompetitionsTab(next);
+  }
+
+  async function toggleQuarterlyCupTab() {
+    const next = !showQuarterlyCupTab;
+    setSavingQuarterlyCupTab(true);
+    const { error } = await supabase
+      .from("club_settings")
+      .update({ show_quarterly_cup_tab: next, updated_at: new Date().toISOString() })
+      .eq("id", true);
+    setSavingQuarterlyCupTab(false);
+    if (error) {
+      toast.error(`Couldn't update: ${error.message}`);
+      return;
+    }
+    setShowQuarterlyCupTab(next);
   }
 
   function loadErrorLogs() {
@@ -604,6 +625,24 @@ export default function AdminManagement({
           }
         >
           {savingCompetitionsTab ? "…" : showCompetitionsTab ? "Visible to everyone — turn off" : "Hidden from members — turn on"}
+        </button>
+      </CollapsibleCard>
+
+      <CollapsibleCard title="Quarterly Cup tab" subtitle={showQuarterlyCupTab ? "Visible to everyone" : "Hidden from members"}>
+        <p className="stat-meta" style={{ marginTop: 0 }}>
+          Off by default so it doesn't clutter navigation. Turn it on for regular members while a Quarterly Cup is
+          running — admins can always see and set one up either way.
+        </p>
+        <button
+          disabled={savingQuarterlyCupTab}
+          onClick={toggleQuarterlyCupTab}
+          style={
+            showQuarterlyCupTab
+              ? {}
+              : { background: "transparent", color: "var(--navy-500)", border: "1px solid var(--border)" }
+          }
+        >
+          {savingQuarterlyCupTab ? "…" : showQuarterlyCupTab ? "Visible to everyone — turn off" : "Hidden from members — turn on"}
         </button>
       </CollapsibleCard>
 

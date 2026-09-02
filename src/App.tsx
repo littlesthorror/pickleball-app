@@ -16,6 +16,7 @@ import Events from "./pages/Events";
 import FAQ from "./pages/FAQ";
 import Notices from "./pages/Notices";
 import Competitions from "./pages/Competitions";
+import QuarterlyCup from "./pages/QuarterlyCup";
 import type { PlayerStatus } from "./types";
 import { getCurrentSeason, isWithinNewSeasonWindow } from "./lib/seasons";
 import { logError } from "./lib/errorLogging";
@@ -45,6 +46,7 @@ const TABS = [
   "notices",
   "faq",
   "competitions",
+  "quarterly-cup",
   "match-entry",
   "manage-admins",
   "game-history",
@@ -95,6 +97,10 @@ export default function App() {
   // needing to flip the switch on first. See AdminManagement.tsx for the
   // toggle itself.
   const [showCompetitionsTab, setShowCompetitionsTab] = useState(false);
+  // Same pattern for The Quarterly Cup's tab (2026-09-02) — its own
+  // standalone mini-league, separate from both Competitions and the main
+  // Season leaderboard. See AdminManagement.tsx for the toggle itself.
+  const [showQuarterlyCupTab, setShowQuarterlyCupTab] = useState(false);
 
   useEffect(() => {
     // Reads via an RPC rather than selecting the table directly (2026-08-28
@@ -104,6 +110,7 @@ export default function App() {
     // appeared for them even once an admin switched it on. See
     // 0053_add_get_show_competitions_tab_rpc.sql.
     supabase.rpc("get_show_competitions_tab").then(({ data }) => setShowCompetitionsTab(!!data));
+    supabase.rpc("get_show_quarterly_cup_tab").then(({ data }) => setShowQuarterlyCupTab(!!data));
   }, []);
 
   useEffect(() => {
@@ -336,7 +343,7 @@ export default function App() {
                     Dashboard
                   </button>
                   <button disabled={tab === "leaderboard"} onClick={() => changeTab("leaderboard")}>
-                    Leaderboard
+                    Leaderboards
                   </button>
                   <button disabled={tab === "club-stats"} onClick={() => changeTab("club-stats")}>
                     Club stats
@@ -393,6 +400,15 @@ export default function App() {
                       🏆 Comps
                     </button>
                   )}
+                  {(showQuarterlyCupTab || effectiveIsAdmin) && (
+                    <button
+                      className="nav-btn-special"
+                      disabled={tab === "quarterly-cup"}
+                      onClick={() => changeTab("quarterly-cup")}
+                    >
+                      🏅 Quarterly Cup
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -426,6 +442,9 @@ export default function App() {
                   {tab === "leaderboard" && (
                     <Leaderboard
                       onSelectPlayer={(id, name) => setViewingPlayer({ id, name, backLabel: "Back to leaderboard" })}
+                      onViewQuarterlyCup={
+                        showQuarterlyCupTab || effectiveIsAdmin ? () => changeTab("quarterly-cup") : undefined
+                      }
                     />
                   )}
                   {tab === "club-stats" && <ClubStats />}
@@ -434,6 +453,9 @@ export default function App() {
                   {tab === "faq" && <FAQ isAdmin={effectiveIsAdmin} />}
                   {tab === "competitions" && (showCompetitionsTab || effectiveIsAdmin) && (
                     <Competitions isAdmin={effectiveIsAdmin} currentUserId={player.id} />
+                  )}
+                  {tab === "quarterly-cup" && (showQuarterlyCupTab || effectiveIsAdmin) && (
+                    <QuarterlyCup isAdmin={effectiveIsAdmin} currentUserId={player.id} />
                   )}
                   {tab === "match-entry" && effectiveIsAdmin && <MatchEntry />}
                   {tab === "manage-admins" && effectiveIsAdmin && (

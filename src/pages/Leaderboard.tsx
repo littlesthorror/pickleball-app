@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../supabaseClient";
 import Avatar from "../components/Avatar";
-import type { LeaderboardRow } from "../types";
+import type { LeaderboardRow, QuarterlyCupRow, QuarterlyCupTeamRow, QuarterlyCupMatchRow } from "../types";
 import { getCurrentSeason, getTrackedSeasons, getSeasonEndInfo } from "../lib/seasons";
+import { computeGroupStandings } from "../lib/competitionStandings";
 import PageLoading from "../components/PageLoading";
 
 type SortMode = "rating" | "improved";
@@ -178,8 +179,13 @@ function DeltaBadge({ value }: { value: number | null }) {
 
 export default function Leaderboard({
   onSelectPlayer,
+  onViewQuarterlyCup,
 }: {
   onSelectPlayer: (id: string, name: string) => void;
+  // Jumps to the Quarterly Cup tab for the full fixture list — only wired
+  // up when that tab is actually visible to the signed-in viewer (see
+  // App.tsx). Undefined just hides the "Manage" link below.
+  onViewQuarterlyCup?: () => void;
 }) {
   const [rows, setRows] = useState<LeaderboardRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -211,6 +217,17 @@ export default function Leaderboard({
   const [viewedSeasonIndex, setViewedSeasonIndex] = useState(() => Math.max(0, trackedSeasons.length - 1));
   const [seasonStandings, setSeasonStandings] = useState<SeasonStandingRow[]>([]);
   const [seasonLoading, setSeasonLoading] = useState(false);
+
+  // The Quarterly Cup (2026-09-02) — the most recently created active or
+  // completed Cup, shown as a public table here even though the fixture
+  // list itself lives on its own tab. Results are fully public (Ben
+  // confirmed this explicitly), so there's no RLS restriction to work
+  // around here, unlike the Season standings function above.
+  const [quarterlyCup, setQuarterlyCup] = useState<QuarterlyCupRow | null>(null);
+  const [quarterlyCupTeams, setQuarterlyCupTeams] = useState<QuarterlyCupTeamRow[]>([]);
+  const [quarterlyCupMatches, setQuarterlyCupMatches] = useState<
+    (QuarterlyCupMatchRow & { matches: { team_a_score: number; team_b_score: number } | null })[]
+  >([]);
   const [visibleSeasonRows, setVisibleSeasonRows] = useState(PAGE_SIZE);
 
   useEffect(() => {
@@ -286,6 +303,32 @@ export default function Leaderboard({
       .gte("played_at", monthStart)
       .then(({ data, error }) => {
         if (!error) setMonthlyMatches((data ?? []) as MonthlyMatchTeams[]);
+      });
+
+    // The Quarterly Cup — most recent active/completed one, if any. RLS on
+    // quarterly_cups etc. is "readable by any logged-in member" (results
+    // are fully public), so this is a plain select, no security-definer
+    // function needed like the Season standings above.
+    supabase
+      .from("quarterly_cups")
+      .select("*")
+      .in("status", ["active", "completed"])
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data: cup }) => {
+        setQuarterlyCup((cup as QuarterlyCupRow) ?? null);
+        if (!cup) return;
+        supabase
+          .from("quarterly_cup_teams")
+          .select("*")
+          .eq("cup_id", cup.id)
+          .then(({ data }) => setQuarterlyCupTeams((data ?? []) as QuarterlyCupTeamRow[]));
+        supabase
+          .from("quarterly_cup_matches")
+          .select("*, matches(team_a_score, team_b_score)")
+          .eq("cup_id", cup.id)
+          .then(({ data }) => setQuarterlyCupMatches((data ?? []) as typeof quarterlyCupMatches));
       });
   }, []);
 
@@ -836,6 +879,84 @@ export default function Leaderboard({
               )}
             </>
           )}
+        </div>
+      )}
+
+      {quarterlyCup && (
+        <div className="card">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+            <h2 style={{ marginBottom: 0 }}>🏅 {quarterlyCup.name}</h2>
+            {onViewQuarterlyCup && (
+              <span className="link-action" onClick={onViewQuarterlyCup}>
+                Fixtures →
+              </span>
+            )}
+          </div>
+          <p className="stat-meta" style={{ marginBottom: 12 }}>
+            {quarterlyCup.status === "completed"
+              ? "Final table."
+              : (() => {
+                  const info = quarterlyCup.mirror_season_end
+                    ? seasonEndInfo
+                    : quarterlyCup.end_date
+                    ? (() => {
+                        const lastDay = new Date(quarterlyCup.end_date + "T00:00:00");
+                        const daysLeft = Math.max(0, Math.ceil((lastDay.getTime() - Date.now()) / (24 * 60 * 60 * 1000)));
+                        return { lastDay, daysLeft };
+                      })()
+                    : null;
+                  if (!info) return "In progress.";
+                  return `Completes ${info.lastDay.toLocaleDateString(undefined, {
+                    weekday: "short",
+                    month: "short",
+                    day: "numeric",
+                  })}${info.daysLeft > 0 ? ` · ${info.daysLeft} day${info.daysLeft === 1 ? "" : "s"} left` : ""}.`;
+                })()}
+          </p>
+          {quarterlyCup.winner_team_id && (
+            <p className="stat-meta" style={{ marginTop: 0, marginBottom: 12 }}>
+              🏆 Champions:{" "}
+              <strong style={{ color: "var(--heading)" }}>
+                {(() => {
+                  const t = quarterlyCupTeams.find((t) => t.id === quarterlyCup.winner_team_id);
+                  if (!t) return "?";
+                  const nameById = new Map(rows.map((r) => [r.id, r.display_name]));
+                  return t.team_name || `${nameById.get(t.player1_id) ?? "?"} & ${nameById.get(t.player2_id) ?? "?"}`;
+                })()}
+              </strong>
+            </p>
+          )}
+          {quarterlyCupTeams.length > 0 &&
+            (() => {
+              const nameById = new Map(rows.map((r) => [r.id, r.display_name]));
+              const teamLabel = (teamId: string) => {
+                const t = quarterlyCupTeams.find((t) => t.id === teamId);
+                if (!t) return "?";
+                return t.team_name || `${nameById.get(t.player1_id) ?? "?"} & ${nameById.get(t.player2_id) ?? "?"}`;
+              };
+              const standings = computeGroupStandings(
+                quarterlyCupTeams.map((t) => t.id),
+                quarterlyCupMatches
+                  .filter((m) => m.matches)
+                  .map((m) => ({
+                    teamAId: m.team_a_id,
+                    teamBId: m.team_b_id,
+                    teamAScore: m.matches!.team_a_score,
+                    teamBScore: m.matches!.team_b_score,
+                  })),
+                quarterlyCup.scoring_system
+              );
+              return standings.map((row, i) => (
+                <div className="leaderboard-row" key={row.teamId}>
+                  <span className={`rank ${i < 3 ? "top3" : ""}`}>{i + 1}</span>
+                  <span className="name">{teamLabel(row.teamId)}</span>
+                  <span className="stat-meta" style={{ marginTop: 0, width: 70, textAlign: "right" }}>
+                    {row.played}p {row.won}w
+                  </span>
+                  <span className="rating">{row.pts}</span>
+                </div>
+              ));
+            })()}
         </div>
       )}
 

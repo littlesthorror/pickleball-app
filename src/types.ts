@@ -338,3 +338,51 @@ export interface CompetitionResultRow {
   placement: number;
   created_at: string;
 }
+
+// The Quarterly Cup (2026-09-02) — a standalone fixed-team doubles
+// mini-league, deliberately separate from both Competitions (no knockout
+// stage, just a flat table) and the main Season leaderboard. See
+// 0062_add_quarterly_cup_schema.sql. Every game played here is ALSO a real
+// row in `matches` (via quarterly_cup_matches.match_id), so it feeds the
+// same Glicko-2 engine as any normal club match — this page is only
+// responsible for team/fixture bookkeeping and simple win/loss/points
+// standings, not ratings. Unlike Competitions, results and fixtures here
+// are fully public — no participant-only RLS.
+export type QuarterlyCupStatus = "setup" | "active" | "completed";
+
+export interface QuarterlyCupRow {
+  id: string;
+  name: string;
+  status: QuarterlyCupStatus;
+  scoring_system: ScoringSystem;
+  double_round_robin: boolean;
+  // Only meaningful when mirror_season_end is false.
+  end_date: string | null;
+  // When true, the finish date always comes live from the current
+  // Season's last day (see lib/seasons.ts's getSeasonEndInfo) instead of
+  // end_date.
+  mirror_season_end: boolean;
+  winner_team_id: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface QuarterlyCupTeamRow {
+  id: string;
+  cup_id: string;
+  team_name: string | null;
+  player1_id: string;
+  player2_id: string;
+  created_at: string;
+}
+
+export interface QuarterlyCupMatchRow {
+  id: string;
+  cup_id: string;
+  team_a_id: string;
+  team_b_id: string;
+  leg: number;
+  match_id: string | null;
+  winner_team_id: string | null;
+  created_at: string;
+}
