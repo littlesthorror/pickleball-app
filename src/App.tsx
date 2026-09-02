@@ -407,17 +407,16 @@ export default function App() {
                       />
                     )}
                   </button>
-                  <button disabled={tab === "faq"} onClick={() => changeTab("faq")}>
-                    FAQ
-                  </button>
                   {/* Comps/Cup share the main tab row rather than getting
                       their own — a separate row for just two buttons read as
                       three stacked, disconnected bars, which looked worse
-                      than the occasional wrap. They keep the blue outline
+                      than the occasional wrap. They keep a colored outline
                       (.nav-btn-special) so they still stand out, and the
                       row's own flex-wrap/scroll handles overflow the same
                       way it always has. Reverted 2026-09-02 per Ben's
-                      feedback. */}
+                      feedback. Placed before FAQ (also 2026-09-02, Ben's
+                      request) so FAQ always anchors the end of the row
+                      regardless of which special tabs are currently live. */}
                   {(showCompetitionsTab || effectiveIsAdmin) && (
                     <button
                       className="nav-btn-special"
@@ -429,13 +428,16 @@ export default function App() {
                   )}
                   {(showQuarterlyCupTab || isQuarterlyCupParticipant || effectiveIsAdmin) && (
                     <button
-                      className="nav-btn-special"
+                      className="nav-btn-special nav-btn-cup"
                       disabled={tab === "quarterly-cup"}
                       onClick={() => changeTab("quarterly-cup")}
                     >
                       🏅 Cup
                     </button>
                   )}
+                  <button disabled={tab === "faq"} onClick={() => changeTab("faq")}>
+                    FAQ
+                  </button>
                 </div>
               </div>
 

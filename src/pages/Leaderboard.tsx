@@ -15,6 +15,11 @@ const PAGE_SIZE = 20;
 // Smaller page size for the two "Still establishing" lists (2026-09-01,
 // Ben's request) — top 10 initially, revealing 10 more at a time.
 const PROVISIONAL_PAGE_SIZE = 10;
+// The "unplayed" list specifically starts smaller — just 5 — since it's
+// typically longer and less interesting than "played" (everyone in it is
+// sitting untouched at 1500, so there's less to scan for). Still reveals
+// 10 more at a time past that (2026-09-02, Ben's request).
+const PROVISIONAL_UNPLAYED_INITIAL = 5;
 
 // A win-percentage "winner" with only 1-2 games played this month isn't a
 // meaningful comparison against someone who's played a dozen — this is
@@ -194,7 +199,7 @@ export default function Leaderboard({
   const [search, setSearch] = useState("");
   const [visibleEstablished, setVisibleEstablished] = useState(PAGE_SIZE);
   const [visibleProvisionalPlayed, setVisibleProvisionalPlayed] = useState(PROVISIONAL_PAGE_SIZE);
-  const [visibleProvisionalUnplayed, setVisibleProvisionalUnplayed] = useState(PROVISIONAL_PAGE_SIZE);
+  const [visibleProvisionalUnplayed, setVisibleProvisionalUnplayed] = useState(PROVISIONAL_UNPLAYED_INITIAL);
   const [monthlyHistory, setMonthlyHistory] = useState<MonthlyHistoryRow[]>([]);
   const [monthlyMatches, setMonthlyMatches] = useState<MonthlyMatchTeams[]>([]);
   const [pastClubPlayers, setPastClubPlayers] = useState<PastClubPlayer[]>([]);
@@ -399,7 +404,7 @@ export default function Leaderboard({
   useEffect(() => {
     setVisibleEstablished(PAGE_SIZE);
     setVisibleProvisionalPlayed(PROVISIONAL_PAGE_SIZE);
-    setVisibleProvisionalUnplayed(PROVISIONAL_PAGE_SIZE);
+    setVisibleProvisionalUnplayed(PROVISIONAL_UNPLAYED_INITIAL);
   }, [search, sort]);
 
   const monthLabel = useMemo(

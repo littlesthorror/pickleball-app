@@ -278,7 +278,8 @@ body {
   .nav {
     flex-wrap: wrap;
     overflow-x: visible;
-    gap: 4px;
+    gap: 2px;
+    padding: 4px;
   }
 
   .nav-wrap::after {
@@ -286,18 +287,33 @@ body {
   }
 
   .nav button {
-    padding: 8px 10px;
-    font-size: 0.8rem;
+    padding: 6px 8px;
+    font-size: 0.74rem;
   }
 
   .nav button.nav-btn-special {
-    padding: 6px 8px;
+    padding: 5px 7px;
   }
 }
 
 .nav button.nav-btn-special:disabled {
   background: var(--navy-active);
   border-color: var(--navy-active);
+  color: #fff;
+}
+
+/* Cup gets its own stroke colour, distinct from Comps' navy, so the two
+   special tabs are tellable apart at a glance (2026-09-02, Ben's request).
+   Orange is already the app's other primary accent (badges, CTAs), so it
+   reads as "within the colour scheme" rather than a random new hue. */
+.nav button.nav-btn-special.nav-btn-cup {
+  border-color: var(--orange-600);
+  color: var(--orange-600);
+}
+
+.nav button.nav-btn-special.nav-btn-cup:disabled {
+  background: var(--orange-600);
+  border-color: var(--orange-600);
   color: #fff;
 }
 

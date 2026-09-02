@@ -7,6 +7,7 @@ import { useConfirm } from "../components/ConfirmDialog";
 import { useToast } from "../components/Toast";
 import PageLoading from "../components/PageLoading";
 import type { QuarterlyCupRow, QuarterlyCupTeamRow, QuarterlyCupMatchRow, PlayerStatus, ScoringSystem } from "../types";
+import cupBanner from "../assets/quarterly-cup/cup-banner.jpg";
 
 // The Quarterly Cup (2026-09-02, Ben's request) — a standalone fixed-team
 // doubles mini-league, deliberately separate from Competitions (no
@@ -382,7 +383,19 @@ function CupDetail({
 
   return (
     <div>
-      <div className="card" style={{ background: "var(--navy-900)" }}>
+      {/* Club-supplied trophy/court photo backdrop (2026-09-02, Ben's
+          request), same treatment as the Competitions banner — a navy
+          gradient wash over the photo so the title/status text on top
+          stays readable regardless of what's underneath. */}
+      <div
+        className="card"
+        style={{
+          backgroundColor: "var(--navy-900)",
+          backgroundImage: `linear-gradient(135deg, rgba(15,37,71,0.82), rgba(22,52,96,0.82)), url(${cupBanner})`,
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+        }}
+      >
         <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
           <div style={{ minWidth: 0 }}>
             {editingName ? (
@@ -446,7 +459,13 @@ function CupDetail({
             {isAdmin && (
               <span
                 className="link-action"
-                style={{ color: "rgba(255,255,255,0.75)", fontSize: "0.78rem", marginTop: 4, display: "block" }}
+                style={{
+                  color: "var(--sky-500)",
+                  fontSize: "0.78rem",
+                  marginTop: 4,
+                  display: "block",
+                  textDecoration: "underline",
+                }}
                 onClick={() => {
                   setMirrorDraft(cup.mirror_season_end);
                   setEndDateDraft(cup.end_date ?? "");
