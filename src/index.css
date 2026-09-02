@@ -1208,9 +1208,23 @@ textarea {
   padding: 0;
 }
 
+/* Actual bullet markers (2026-09-02, Ben's request) — the block previously
+   rendered as bare lines with no visual "this is a list" cue. A custom
+   ::before dot rather than list-style: disc, so it sits flush against the
+   text at a consistent 16px offset regardless of column width, and picks
+   up the club's orange accent instead of a default black dot. */
 .rich-list li {
   break-inside: avoid;
-  padding: 3px 0;
+  padding: 3px 0 3px 16px;
+  position: relative;
+}
+
+.rich-list li::before {
+  content: "•";
+  position: absolute;
+  left: 2px;
+  color: var(--orange-600);
+  font-weight: 700;
 }
 
 /* ── Admin "preview as player" banner ──────────────────────────────── */
