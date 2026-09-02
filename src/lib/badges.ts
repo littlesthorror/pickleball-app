@@ -690,13 +690,18 @@ export function computeBadges(
 
   // ── 4 more badges added 2026-09-02 at Ben's request ────────────────────
 
-  // "Rating Rocket" — biggest single-GAME rating gain, 35+ points in one
+  // "Rating Rocket" — biggest single-GAME rating gain, 50+ points in one
   // sitting. Different angle from Rollercoaster above, which tracks the
   // full high-low RANGE across a whole month of games — this is just the
   // one biggest jump, whenever it happened. Restricted to wins so the
-  // description always reads as a clean "beat X" story.
-  const ROCKET_THRESHOLD = 35;
-  const rocketGames = history.filter((h) => h.won && h.rating_delta >= ROCKET_THRESHOLD);
+  // description always reads as a clean "beat X" story. Also restricted to
+  // game 13 onward (2026-09-02, Ben's request) — RD is at its highest in
+  // your first 12 games, so a big swing there is just how a new/uncertain
+  // rating behaves, not a genuinely notable spike the way the same jump is
+  // once your rating's settled down.
+  const ROCKET_THRESHOLD = 50;
+  const ROCKET_MIN_GAME = 12;
+  const rocketGames = history.filter((h) => h.won && h.game_number > ROCKET_MIN_GAME && h.rating_delta >= ROCKET_THRESHOLD);
   if (rocketGames.length > 0) {
     const biggest = rocketGames.reduce((best, h) => (h.rating_delta > best.rating_delta ? h : best));
     badges.push({
