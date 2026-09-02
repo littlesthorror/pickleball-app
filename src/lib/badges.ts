@@ -688,6 +688,104 @@ export function computeBadges(
     }
   }
 
+  // ── 4 more badges added 2026-09-02 at Ben's request ────────────────────
+
+  // "Rating Rocket" — biggest single-GAME rating gain, 35+ points in one
+  // sitting. Different angle from Rollercoaster above, which tracks the
+  // full high-low RANGE across a whole month of games — this is just the
+  // one biggest jump, whenever it happened. Restricted to wins so the
+  // description always reads as a clean "beat X" story.
+  const ROCKET_THRESHOLD = 35;
+  const rocketGames = history.filter((h) => h.won && h.rating_delta >= ROCKET_THRESHOLD);
+  if (rocketGames.length > 0) {
+    const biggest = rocketGames.reduce((best, h) => (h.rating_delta > best.rating_delta ? h : best));
+    badges.push({
+      id: "rating-rocket",
+      emoji: "🚀",
+      label: "Rating Rocket",
+      description: `Gained ${Math.round(biggest.rating_delta)} rating points in a single game, beating ${biggest.opponent_names} ${biggest.own_score}–${biggest.opponent_score}.`,
+      achievedAt: biggest.played_at,
+    });
+  }
+
+  // "Perfect Session" — won every game in a session of 3+ (a completely
+  // unbeaten day). Distinct from Marathon above, which only cares about
+  // raw game COUNT regardless of outcome.
+  const PERFECT_SESSION_MIN = 3;
+  const daySessions = new Map<string, { total: number; wins: number; lastPlayedAt: string }>();
+  for (const h of history) {
+    const dayKey = new Date(h.played_at).toDateString();
+    const entry = daySessions.get(dayKey) ?? { total: 0, wins: 0, lastPlayedAt: h.played_at };
+    entry.total += 1;
+    if (h.won) entry.wins += 1;
+    entry.lastPlayedAt = h.played_at;
+    daySessions.set(dayKey, entry);
+  }
+  let perfectSession: { total: number; lastPlayedAt: string } | null = null;
+  for (const day of daySessions.values()) {
+    if (day.total >= PERFECT_SESSION_MIN && day.wins === day.total) {
+      perfectSession = day;
+      break;
+    }
+  }
+  if (perfectSession) {
+    badges.push({
+      id: "perfect-session",
+      emoji: "🌟",
+      label: "Perfect Session",
+      description: `Went unbeaten across all ${perfectSession.total} games in a single session on ${new Date(
+        perfectSession.lastPlayedAt
+      ).toLocaleDateString(undefined, { month: "long", day: "numeric" })}.`,
+      achievedAt: perfectSession.lastPlayedAt,
+    });
+  }
+
+  // "Old Foes" — beaten the same opposing pair 5+ times. Grouped by the
+  // exact opponent_names string, same approach as Dream Team above but for
+  // opponents instead of teammates — a fun rivalry milestone, not a
+  // comparison against anyone's own record.
+  const OLD_FOES_THRESHOLD = 5;
+  const winsByOpponent = new Map<string, number>();
+  for (const h of history) {
+    if (h.won) winsByOpponent.set(h.opponent_names, (winsByOpponent.get(h.opponent_names) ?? 0) + 1);
+  }
+  let mostBeatenOpponent = "";
+  let mostBeatenCount = 0;
+  for (const [name, count] of winsByOpponent) {
+    if (count > mostBeatenCount) {
+      mostBeatenCount = count;
+      mostBeatenOpponent = name;
+    }
+  }
+  if (mostBeatenCount >= OLD_FOES_THRESHOLD) {
+    const winsVsThem = history.filter((h) => h.won && h.opponent_names === mostBeatenOpponent);
+    badges.push({
+      id: "old-foes",
+      emoji: "🎭",
+      label: "Old Foes",
+      description: `Beaten ${mostBeatenOpponent} ${mostBeatenCount} times now — quite the rivalry.`,
+      achievedAt: winsVsThem[OLD_FOES_THRESHOLD - 1]?.played_at ?? null,
+    });
+  }
+
+  // "Weekend Warrior" — 20+ games played on a Saturday or Sunday, combined.
+  // Pure participation, like Marathon/Well Travelled above — rewards
+  // showing up on weekends specifically, nothing to do with results.
+  const WEEKEND_GAMES = 20;
+  const weekendGames = history.filter((h) => {
+    const day = new Date(h.played_at).getDay();
+    return day === 0 || day === 6;
+  });
+  if (weekendGames.length >= WEEKEND_GAMES) {
+    badges.push({
+      id: "weekend-warrior",
+      emoji: "🏖️",
+      label: "Weekend Warrior",
+      description: `Played ${weekendGames.length} games on weekends and counting.`,
+      achievedAt: weekendGames[WEEKEND_GAMES - 1]?.played_at ?? null,
+    });
+  }
+
   return badges;
 }
 
