@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../supabaseClient";
 import { PlayerSelect, submitOneMatch } from "./MatchEntry";
 import { computeGroupStandings, generateGroupFixtures } from "../lib/competitionStandings";
@@ -813,6 +813,22 @@ function FixturesSection({
   // the whole thing.
   const myTeamIds = new Set(teams.filter((t) => t.player1_id === currentUserId || t.player2_id === currentUserId).map((t) => t.id));
   const [showAll, setShowAll] = useState(isAdmin || myTeamIds.size === 0);
+
+  // useState's initializer only runs once at mount, so it doesn't notice
+  // when isAdmin/currentUserId change without a remount — e.g. toggling
+  // "preview as regular player" while already sitting on this tab. Re-sync
+  // the default whenever the viewing identity changes so preview mode
+  // actually reflects what a real member would land on (2026-09-02, bug
+  // found via preview toggle). Deliberately NOT keyed on myTeamIds/teams so
+  // a manual "show all"/"my fixtures" click isn't undone by a data refresh.
+  const prevIdentity = useRef({ isAdmin, currentUserId });
+  useEffect(() => {
+    if (prevIdentity.current.isAdmin !== isAdmin || prevIdentity.current.currentUserId !== currentUserId) {
+      prevIdentity.current = { isAdmin, currentUserId };
+      setShowAll(isAdmin || myTeamIds.size === 0);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin, currentUserId]);
 
   const visibleMatches = showAll
     ? matches

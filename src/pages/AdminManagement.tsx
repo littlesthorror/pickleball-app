@@ -628,10 +628,14 @@ export default function AdminManagement({
         </button>
       </CollapsibleCard>
 
-      <CollapsibleCard title="Quarterly Cup tab" subtitle={showQuarterlyCupTab ? "Visible to everyone" : "Hidden from members"}>
+      <CollapsibleCard
+        title="Quarterly Cup tab"
+        subtitle={showQuarterlyCupTab ? "Visible to everyone" : "Only entered players"}
+      >
         <p className="stat-meta" style={{ marginTop: 0 }}>
-          Off by default so it doesn't clutter navigation. Turn it on for regular members while a Quarterly Cup is
-          running — admins can always see and set one up either way.
+          Players entered into a Quarterly Cup team can always see the tab, even with this off (2026-09-02) — this
+          only controls whether everyone else sees it too. Off by default so it doesn't clutter navigation for
+          members not taking part; admins can always see and set one up either way.
         </p>
         <button
           disabled={savingQuarterlyCupTab}
@@ -642,7 +646,7 @@ export default function AdminManagement({
               : { background: "transparent", color: "var(--navy-500)", border: "1px solid var(--border)" }
           }
         >
-          {savingQuarterlyCupTab ? "…" : showQuarterlyCupTab ? "Visible to everyone — turn off" : "Hidden from members — turn on"}
+          {savingQuarterlyCupTab ? "…" : showQuarterlyCupTab ? "Visible to everyone — turn off" : "Only entered players — turn on for everyone"}
         </button>
       </CollapsibleCard>
 

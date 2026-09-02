@@ -101,6 +101,12 @@ export default function App() {
   // standalone mini-league, separate from both Competitions and the main
   // Season leaderboard. See AdminManagement.tsx for the toggle itself.
   const [showQuarterlyCupTab, setShowQuarterlyCupTab] = useState(false);
+  // Entered players see the Cup tab even while the club-wide toggle above
+  // is off — they need to reach their own fixtures before the admin is
+  // ready to publish it to everyone (2026-09-02, Ben's request). Unlike
+  // club_settings, quarterly_cup_teams is readable by any logged-in member
+  // (see 0062 migration), so this is a plain select, no RPC needed.
+  const [isQuarterlyCupParticipant, setIsQuarterlyCupParticipant] = useState(false);
 
   useEffect(() => {
     // Reads via an RPC rather than selecting the table directly (2026-08-28
@@ -112,6 +118,19 @@ export default function App() {
     supabase.rpc("get_show_competitions_tab").then(({ data }) => setShowCompetitionsTab(!!data));
     supabase.rpc("get_show_quarterly_cup_tab").then(({ data }) => setShowQuarterlyCupTab(!!data));
   }, []);
+
+  useEffect(() => {
+    if (!player?.id) {
+      setIsQuarterlyCupParticipant(false);
+      return;
+    }
+    supabase
+      .from("quarterly_cup_teams")
+      .select("id")
+      .or(`player1_id.eq.${player.id},player2_id.eq.${player.id}`)
+      .limit(1)
+      .then(({ data }) => setIsQuarterlyCupParticipant((data?.length ?? 0) > 0));
+  }, [player?.id]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -401,7 +420,7 @@ export default function App() {
                   on a second line, disconnected from the row above. A
                   dedicated row wraps/scrolls as a unit instead, so it always
                   looks intentional. Fixed 2026-09-02. */}
-              {(showCompetitionsTab || showQuarterlyCupTab || effectiveIsAdmin) && (
+              {(showCompetitionsTab || showQuarterlyCupTab || isQuarterlyCupParticipant || effectiveIsAdmin) && (
                 <div className="nav-wrap">
                   <div className="nav">
                     {(showCompetitionsTab || effectiveIsAdmin) && (
@@ -413,13 +432,13 @@ export default function App() {
                         🏆 Comps
                       </button>
                     )}
-                    {(showQuarterlyCupTab || effectiveIsAdmin) && (
+                    {(showQuarterlyCupTab || isQuarterlyCupParticipant || effectiveIsAdmin) && (
                       <button
                         className="nav-btn-special"
                         disabled={tab === "quarterly-cup"}
                         onClick={() => changeTab("quarterly-cup")}
                       >
-                        🏅 Quarterly Cup
+                        🏅 Cup
                       </button>
                     )}
                   </div>
@@ -457,7 +476,9 @@ export default function App() {
                     <Leaderboard
                       onSelectPlayer={(id, name) => setViewingPlayer({ id, name, backLabel: "Back to leaderboard" })}
                       onViewQuarterlyCup={
-                        showQuarterlyCupTab || effectiveIsAdmin ? () => changeTab("quarterly-cup") : undefined
+                        showQuarterlyCupTab || isQuarterlyCupParticipant || effectiveIsAdmin
+                          ? () => changeTab("quarterly-cup")
+                          : undefined
                       }
                     />
                   )}
@@ -468,7 +489,7 @@ export default function App() {
                   {tab === "competitions" && (showCompetitionsTab || effectiveIsAdmin) && (
                     <Competitions isAdmin={effectiveIsAdmin} currentUserId={player.id} />
                   )}
-                  {tab === "quarterly-cup" && (showQuarterlyCupTab || effectiveIsAdmin) && (
+                  {tab === "quarterly-cup" && (showQuarterlyCupTab || isQuarterlyCupParticipant || effectiveIsAdmin) && (
                     <QuarterlyCup isAdmin={effectiveIsAdmin} currentUserId={player.id} />
                   )}
                   {tab === "match-entry" && effectiveIsAdmin && <MatchEntry />}
