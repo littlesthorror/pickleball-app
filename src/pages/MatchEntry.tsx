@@ -113,7 +113,10 @@ export default function MatchEntry() {
   const [players, setPlayers] = useState<PlayerStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [mode, setMode] = useState<Mode>("single");
+  // Quick entry is the default (2026-09-01, Ben's request) — most sessions
+  // involve logging several games at once, so that's the more common case
+  // to land on rather than Single entry.
+  const [mode, setMode] = useState<Mode>("quick");
 
   function loadPlayers() {
     return supabase
@@ -160,20 +163,6 @@ export default function MatchEntry() {
             on score after each submit) for the normal one-at-a-time case. */}
         <div style={{ display: "flex", border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden" }}>
           <button
-            onClick={() => setMode("single")}
-            style={{
-              marginTop: 0,
-              borderRadius: 0,
-              width: "auto",
-              padding: "8px 16px",
-              fontSize: "0.85rem",
-              background: mode === "single" ? "var(--orange-500)" : "transparent",
-              color: mode === "single" ? "#fff" : "var(--navy-500)",
-            }}
-          >
-            Single entry
-          </button>
-          <button
             onClick={() => setMode("quick")}
             style={{
               marginTop: 0,
@@ -186,6 +175,20 @@ export default function MatchEntry() {
             }}
           >
             Quick entry (×4)
+          </button>
+          <button
+            onClick={() => setMode("single")}
+            style={{
+              marginTop: 0,
+              borderRadius: 0,
+              width: "auto",
+              padding: "8px 16px",
+              fontSize: "0.85rem",
+              background: mode === "single" ? "var(--orange-500)" : "transparent",
+              color: mode === "single" ? "#fff" : "var(--navy-500)",
+            }}
+          >
+            Single entry
           </button>
         </div>
       </div>
@@ -531,6 +534,12 @@ function QuickMatchEntry({
     setSlots((prev) => prev.map((s, i) => (i === index ? emptySlot() : s)));
   }
 
+  // Resets every game slot in one go (2026-09-01, Ben's request) — instead
+  // of clicking "Clear" once per game to start over.
+  function clearAllSlots() {
+    setSlots(Array.from({ length: QUICK_SLOT_COUNT }, emptySlot));
+  }
+
   function copyPlayersFromFirst(index: number) {
     const first = slots[0];
     setSlots((prev) =>
@@ -633,11 +642,30 @@ function QuickMatchEntry({
 
   return (
     <div>
-      <p className="stat-meta" style={{ marginTop: 8 }}>
-        Fill in as many of the {QUICK_SLOT_COUNT} games below as you have, then submit them all at once. They're
-        confirmed in order (Game 1 first), so ratings stay correct even if the same four players show up in more
-        than one game here.
-      </p>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+        <p className="stat-meta" style={{ marginTop: 8, flex: "1 1 220px" }}>
+          Fill in as many of the {QUICK_SLOT_COUNT} games below as you have, then submit them all at once. They're
+          confirmed in order (Game 1 first), so ratings stay correct even if the same four players show up in more
+          than one game here.
+        </p>
+        {filledCount > 0 && (
+          <button
+            onClick={clearAllSlots}
+            style={{
+              flex: "0 0 auto",
+              width: "auto",
+              marginTop: 8,
+              padding: "8px 14px",
+              fontSize: "0.85rem",
+              background: "transparent",
+              color: "var(--danger)",
+              border: "1px solid var(--border)",
+            }}
+          >
+            Clear all
+          </button>
+        )}
+      </div>
 
       {summary && (
         <div className="predicted" style={{ background: "var(--orange-500)" }}>

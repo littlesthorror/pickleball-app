@@ -499,12 +499,26 @@ label {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  /* Gap + min-width: 0 (2026-09-01 mobile fix — Ben: the "Biggest upset"
+     card's text was "getting close and untidy" on phone) — without these,
+     the left text block had no defined size and simply pushed the score
+     into whatever narrow space was left on a phone screen, wrapping "8-7"
+     onto two lines with no breathing room from the text next to it. Now
+     the text block shrinks and wraps its own words first, gap keeps a
+     minimum breathing room between the two, and the score (below) never
+     breaks mid-number. */
+  gap: 10px;
   padding: 12px 0;
   border-bottom: 1px solid var(--border);
 }
 
 .match-row:last-child {
   border-bottom: none;
+}
+
+.match-row > *:first-child {
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .match-row .opponent {
@@ -522,7 +536,8 @@ label {
   font-variant-numeric: tabular-nums;
   font-weight: 700;
   color: var(--heading);
-  margin-right: 12px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 /* ── Leaderboard ────────────────────────────────────────────────────── */
