@@ -391,26 +391,40 @@ export default function App() {
                   <button disabled={tab === "faq"} onClick={() => changeTab("faq")}>
                     FAQ
                   </button>
-                  {(showCompetitionsTab || effectiveIsAdmin) && (
-                    <button
-                      className="nav-btn-special"
-                      disabled={tab === "competitions"}
-                      onClick={() => changeTab("competitions")}
-                    >
-                      🏆 Comps
-                    </button>
-                  )}
-                  {(showQuarterlyCupTab || effectiveIsAdmin) && (
-                    <button
-                      className="nav-btn-special"
-                      disabled={tab === "quarterly-cup"}
-                      onClick={() => changeTab("quarterly-cup")}
-                    >
-                      🏅 Quarterly Cup
-                    </button>
-                  )}
                 </div>
               </div>
+
+              {/* Special/temporary tabs (Comps, Quarterly Cup) get their own
+                  row rather than sharing the main tab row. Previously they
+                  lived at the end of the main .nav and would unpredictably
+                  wrap — on desktop this stranded just "Quarterly Cup" alone
+                  on a second line, disconnected from the row above. A
+                  dedicated row wraps/scrolls as a unit instead, so it always
+                  looks intentional. Fixed 2026-09-02. */}
+              {(showCompetitionsTab || showQuarterlyCupTab || effectiveIsAdmin) && (
+                <div className="nav-wrap">
+                  <div className="nav">
+                    {(showCompetitionsTab || effectiveIsAdmin) && (
+                      <button
+                        className="nav-btn-special"
+                        disabled={tab === "competitions"}
+                        onClick={() => changeTab("competitions")}
+                      >
+                        🏆 Comps
+                      </button>
+                    )}
+                    {(showQuarterlyCupTab || effectiveIsAdmin) && (
+                      <button
+                        className="nav-btn-special"
+                        disabled={tab === "quarterly-cup"}
+                        onClick={() => changeTab("quarterly-cup")}
+                      >
+                        🏅 Quarterly Cup
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {effectiveIsAdmin && (
                 <div className="nav">

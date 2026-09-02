@@ -950,8 +950,16 @@ export default function Leaderboard({
                 <div className="leaderboard-row" key={row.teamId}>
                   <span className={`rank ${i < 3 ? "top3" : ""}`}>{i + 1}</span>
                   <span className="name">{teamLabel(row.teamId)}</span>
-                  <span className="stat-meta" style={{ marginTop: 0, width: 70, textAlign: "right" }}>
+                  <span className="stat-meta" style={{ marginTop: 0, width: 48, textAlign: "right", fontSize: "0.78rem" }}>
                     {row.played}p {row.won}w
+                  </span>
+                  <span
+                    className="stat-meta"
+                    style={{ marginTop: 0, width: 76, textAlign: "right", whiteSpace: "nowrap", fontSize: "0.78rem" }}
+                    title="Points for–against"
+                  >
+                    {row.pointsFor}–{row.pointsAgainst} ({row.diff >= 0 ? "+" : ""}
+                    {row.diff})
                   </span>
                   <span className="rating">{row.pts}</span>
                 </div>
@@ -967,7 +975,7 @@ export default function Leaderboard({
           both are still under 12 games. */}
       {provisionalPlayed.length > 0 && (
         <div className="card">
-          <h2>Still establishing (played)</h2>
+          <h2 style={{ marginBottom: 0 }}>Still establishing (played)</h2>
           <p className="stat-meta" style={{ marginBottom: 12 }}>
             Fewer than 12 games — ratings still settling in, not yet ranked.
           </p>
@@ -1004,7 +1012,7 @@ export default function Leaderboard({
 
       {provisionalUnplayed.length > 0 && (
         <div className="card">
-          <h2>Still establishing (unplayed)</h2>
+          <h2 style={{ marginBottom: 0 }}>Still establishing (unplayed)</h2>
           <p className="stat-meta" style={{ marginBottom: 12 }}>
             Joined but haven't logged a game yet — everyone starts at 1500.
           </p>

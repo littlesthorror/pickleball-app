@@ -446,7 +446,7 @@ function CupDetail({
             {isAdmin && (
               <span
                 className="link-action"
-                style={{ color: "rgba(255,255,255,0.75)", fontSize: "0.78rem", marginTop: 4, display: "inline-block" }}
+                style={{ color: "rgba(255,255,255,0.75)", fontSize: "0.78rem", marginTop: 4, display: "block" }}
                 onClick={() => {
                   setMirrorDraft(cup.mirror_season_end);
                   setEndDateDraft(cup.end_date ?? "");
@@ -997,19 +997,19 @@ function FixtureRow({
           <input
             type="number"
             inputMode="numeric"
-            placeholder="Score A"
+            min={0}
             value={scoreA}
             onChange={(e) => setScoreA(e.target.value)}
-            style={{ width: 80 }}
+            style={{ width: 56, padding: "6px 8px" }}
           />
           <span>–</span>
           <input
             type="number"
             inputMode="numeric"
-            placeholder="Score B"
+            min={0}
             value={scoreB}
             onChange={(e) => setScoreB(e.target.value)}
-            style={{ width: 80 }}
+            style={{ width: 56, padding: "6px 8px" }}
           />
           <button disabled={submitting} onClick={editing ? saveEdit : submit} style={{ width: "auto" }}>
             {submitting ? "Saving…" : "Save"}
