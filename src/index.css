@@ -278,8 +278,8 @@ body {
   .nav {
     flex-wrap: wrap;
     overflow-x: visible;
-    gap: 2px;
-    padding: 4px;
+    gap: 4px;
+    padding: 6px;
   }
 
   .nav-wrap::after {
@@ -287,12 +287,12 @@ body {
   }
 
   .nav button {
-    padding: 6px 8px;
-    font-size: 0.74rem;
+    padding: 8px 12px;
+    font-size: 0.78rem;
   }
 
   .nav button.nav-btn-special {
-    padding: 5px 7px;
+    padding: 7px 11px;
   }
 }
 
