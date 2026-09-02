@@ -181,13 +181,15 @@ export default function ClubStats() {
       );
     });
 
-    let topPair: { names: string; count: number } | null = null;
-    for (const [key, count] of pairCounts) {
-      if (!topPair || count > topPair.count) {
+    // Top 3 most frequent partnerships, all-time — changed from a single
+    // "top pair" to a Top 3 list, 2026-09-02 at Ben's request.
+    const topPairsTop3 = Array.from(pairCounts.entries())
+      .map(([key, count]) => {
         const [a, b] = key.split("|");
-        topPair = { names: `${nameById.get(a) ?? "?"} & ${nameById.get(b) ?? "?"}`, count };
-      }
-    }
+        return { key, names: `${nameById.get(a) ?? "?"} & ${nameById.get(b) ?? "?"}`, count };
+      })
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 3);
 
     // Top 3 by total confirmed matches played, all-time — only counts
     // currently-active players (matches nameById lookup).
@@ -238,7 +240,7 @@ export default function ClubStats() {
     return {
       totalMatches: matches.length,
       totalPlayers: players.length,
-      topPair,
+      topPairsTop3,
       mostMatchesTop3,
       streakTop3,
       avatarById,
@@ -444,14 +446,21 @@ export default function ClubStats() {
       </div>
 
       <div className="card">
-        <h2>Most frequent partnership</h2>
-        <div className="match-row">
-          <div>
-            <div className="opponent">{stats.topPair ? stats.topPair.names : "—"}</div>
-            <div className="meta">teammates, not opponents</div>
-          </div>
-          <div className="score">{stats.topPair ? stats.topPair.count : "—"}</div>
-        </div>
+        <h2>Most frequent partnerships</h2>
+        <p className="stat-meta" style={{ marginBottom: 12 }}>
+          Teammates, not opponents.
+        </p>
+        {stats.topPairsTop3.length > 0 ? (
+          stats.topPairsTop3.map((p, i) => (
+            <div className="leaderboard-row" key={p.key}>
+              <span className="rank top3">{i + 1}</span>
+              <span className="name">{p.names}</span>
+              <span className="rating">{p.count}</span>
+            </div>
+          ))
+        ) : (
+          <p className="stat-meta">No matches played yet.</p>
+        )}
       </div>
 
       {pastCompetitions.length > 0 && (

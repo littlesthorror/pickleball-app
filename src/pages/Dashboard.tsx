@@ -21,7 +21,7 @@ import { computeSeasonWrappedStats } from "../lib/seasonWrapped";
 import type { SeasonWrappedStats } from "../lib/seasonWrappedImage";
 import { isBirthdayToday } from "../lib/birthday";
 import { getTier, getNextTier } from "../lib/tiers";
-import { getCurrentSeason, getTrackedSeasons } from "../lib/seasons";
+import { getCurrentSeason, getTrackedSeasons, getSeasonEndInfo } from "../lib/seasons";
 import { getEventForecast } from "../lib/weather";
 import type { EventForecast } from "../lib/weather";
 import type { Season } from "../lib/seasons";
@@ -216,6 +216,9 @@ export default function Dashboard({
   // comparison against anyone specific.
   const trackedSeasons = useMemo(() => getTrackedSeasons(), []);
   const currentSeason = useMemo(() => getCurrentSeason(), []);
+  // "Ends [date] · N days left" shown on the current season widget below
+  // (2026-09-02, Ben's request).
+  const seasonEndInfo = useMemo(() => getSeasonEndInfo(currentSeason), [currentSeason]);
   const [seasonEntries, setSeasonEntries] = useState<SeasonHistoryEntry[]>([]);
   const [seasonLoading, setSeasonLoading] = useState(trackedSeasons.length > 0);
   // Live overall leaderboard position — only fetched on your own profile
@@ -1093,6 +1096,16 @@ export default function Dashboard({
       ) : (
         <div className="card">
           <h2>{currentSeason.label}</h2>
+          <p className="stat-meta" style={{ marginTop: 0, marginBottom: 12 }}>
+            Ends{" "}
+            {seasonEndInfo.lastDay.toLocaleDateString(undefined, {
+              weekday: "short",
+              month: "short",
+              day: "numeric",
+            })}
+            {seasonEndInfo.daysLeft > 0 &&
+              ` · ${seasonEndInfo.daysLeft} day${seasonEndInfo.daysLeft === 1 ? "" : "s"} left`}
+          </p>
           {seasonLoading ? (
             <p className="stat-meta">Loading…</p>
           ) : currentSeasonEntry ? (

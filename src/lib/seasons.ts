@@ -84,6 +84,16 @@ export function getTrackedSeasons(): Season[] {
   return seasons;
 }
 
+// Last calendar day of a season, plus how many days remain from `now` —
+// added 2026-09-02 at Ben's request to show "ends [date]" on the current
+// season widget. `nextStart` is an exclusive upper bound (the instant the
+// next season begins), so the last day is just one day before that.
+export function getSeasonEndInfo(season: Season, now: Date = new Date()): { lastDay: Date; daysLeft: number } {
+  const lastDay = new Date(season.nextStart.getTime() - 24 * 60 * 60 * 1000);
+  const daysLeft = Math.max(0, Math.ceil((season.nextStart.getTime() - now.getTime()) / (24 * 60 * 60 * 1000)));
+  return { lastDay, daysLeft };
+}
+
 // How many days into a season the "new season" banner stays up for.
 const NEW_SEASON_BANNER_DAYS = 5;
 

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../supabaseClient";
 import Avatar from "../components/Avatar";
 import type { LeaderboardRow } from "../types";
-import { getCurrentSeason, getTrackedSeasons } from "../lib/seasons";
+import { getCurrentSeason, getTrackedSeasons, getSeasonEndInfo } from "../lib/seasons";
 import PageLoading from "../components/PageLoading";
 
 type SortMode = "rating" | "improved";
@@ -203,6 +203,11 @@ export default function Leaderboard({
   // never reset between seasons so nothing needs to be pre-saved.
   const trackedSeasons = useMemo(() => getTrackedSeasons(), []);
   const currentSeason = useMemo(() => getCurrentSeason(), []);
+  // "Ends [date] · N days left" shown when viewing the in-progress season
+  // below (2026-09-02, Ben's request) — past seasons already have an end
+  // date implicit in "Final standings", so this only applies to the
+  // current one.
+  const seasonEndInfo = useMemo(() => getSeasonEndInfo(currentSeason), [currentSeason]);
   const [viewedSeasonIndex, setViewedSeasonIndex] = useState(() => Math.max(0, trackedSeasons.length - 1));
   const [seasonStandings, setSeasonStandings] = useState<SeasonStandingRow[]>([]);
   const [seasonLoading, setSeasonLoading] = useState(false);
@@ -784,7 +789,10 @@ export default function Leaderboard({
           </div>
           <p className="stat-meta" style={{ marginBottom: 12 }}>
             {trackedSeasons[viewedSeasonIndex].key === currentSeason.key
-              ? "In progress — ratings carry straight over, nothing resets."
+              ? `In progress — ratings carry straight over, nothing resets. Ends ${seasonEndInfo.lastDay.toLocaleDateString(
+                  undefined,
+                  { weekday: "short", month: "short", day: "numeric" }
+                )}${seasonEndInfo.daysLeft > 0 ? ` · ${seasonEndInfo.daysLeft} day${seasonEndInfo.daysLeft === 1 ? "" : "s"} left` : ""}.`
               : "Final standings for this season."}
           </p>
           {seasonLoading ? (
