@@ -152,11 +152,13 @@ export default function QuarterlyCup({ isAdmin, currentUserId }: { isAdmin: bool
       {isAdmin && (
         <div className="card">
           <div
+            role="button"
+            tabIndex={0}
             style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}
             onClick={() => setShowNewForm((v) => !v)}
           >
             <h2 style={{ margin: 0 }}>New Quarterly Cup</h2>
-            <span className="link-action">{showNewForm ? "Hide" : "Show"}</span>
+            <span style={{ color: "var(--navy-500)", fontWeight: 700 }}>{showNewForm ? "Hide ▲" : "Show ▼"}</span>
           </div>
           {showNewForm && (
             <div style={{ marginTop: 12 }}>
@@ -795,16 +797,48 @@ function StandingsSection({
           🏆 Champions: <strong style={{ color: "var(--heading)" }}>{teamLabel(winnerTeamId)}</strong>
         </p>
       )}
-      {standings.map((row, i) => (
-        <div className="leaderboard-row" key={row.teamId}>
-          <span className={`rank ${i < 3 ? "top3" : ""}`}>{i + 1}</span>
-          <span className="name">{teamLabel(row.teamId)}</span>
-          <span className="stat-meta" style={{ marginTop: 0, width: 70, textAlign: "right" }}>
-            {row.played}p {row.won}w
-          </span>
-          <span className="rating">{row.pts}</span>
-        </div>
-      ))}
+      <div className="qc-table-wrap">
+        <table className="qc-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Team</th>
+              <th>P</th>
+              <th>W</th>
+              <th>L</th>
+              <th>PF</th>
+              <th>PA</th>
+              <th>GD</th>
+              <th>Pts</th>
+            </tr>
+          </thead>
+          <tbody>
+            {standings.map((row, i) => (
+              <tr key={row.teamId} className={row.teamId === winnerTeamId ? "qc-table-winner" : ""}>
+                <td>
+                  <span className={`qc-rank ${i < 3 ? "top3" : ""}`}>{i + 1}</span>
+                </td>
+                <td>
+                  <span className="qc-team-name">{teamLabel(row.teamId)}</span>
+                  {row.teamId === winnerTeamId ? " 🏆" : ""}
+                </td>
+                <td>{row.played}</td>
+                <td>{row.won}</td>
+                <td>{row.lost}</td>
+                <td>{row.pointsFor}</td>
+                <td>{row.pointsAgainst}</td>
+                <td>
+                  {row.diff >= 0 ? "+" : ""}
+                  {row.diff}
+                </td>
+                <td>
+                  <span className="qc-pts">{row.pts}</span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

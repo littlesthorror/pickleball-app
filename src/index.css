@@ -597,6 +597,88 @@ label {
   color: var(--heading);
 }
 
+/* Quarterly Cup league table (2026-09-02, Ben's request) — a proper
+   gridded table rather than the flex "leaderboard-row" list used
+   elsewhere, so it reads like a typical league standings table (position,
+   team, played/won/lost, points for/against, difference, points), with a
+   light baby-blue wash to set it apart from the rest of the page. Wrapped
+   in .qc-table-wrap for horizontal scroll on narrow screens rather than
+   letting columns crush.
+   Colors below are all fixed (not the theme-adaptive --heading/--text-muted/
+   --border tokens) — same reasoning as .card-admin/.badge-role: this is a
+   deliberately light surface that stays light in dark mode too (like the
+   navy-900 fixed-dark surfaces elsewhere, just inverted), so its text needs
+   fixed dark colors rather than ones that flip light in dark mode and
+   disappear against this background. */
+.qc-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.qc-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 480px;
+}
+
+.qc-table th,
+.qc-table td {
+  border: 1px solid #cfe1f4;
+  padding: 8px 10px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: #1d3050;
+}
+
+.qc-table th:first-child,
+.qc-table td:first-child,
+.qc-table th:nth-child(2),
+.qc-table td:nth-child(2) {
+  text-align: left;
+  white-space: normal;
+}
+
+.qc-table thead th {
+  background: #d6e9fb;
+  color: var(--sky-600);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.qc-table tbody tr {
+  background: #f5faff;
+}
+
+.qc-table tbody tr:nth-child(even) {
+  background: #ffffff;
+}
+
+.qc-table tbody tr.qc-table-winner {
+  background: #e6f1fb;
+}
+
+.qc-table .qc-rank {
+  font-weight: 700;
+  color: #5b6b85;
+}
+
+.qc-table .qc-rank.top3 {
+  color: var(--orange-600);
+}
+
+.qc-table .qc-team-name {
+  font-weight: 600;
+  color: #10233f;
+}
+
+.qc-table .qc-pts {
+  font-weight: 700;
+  color: #10233f;
+}
+
 /* Leaderboard form guide (2026-08-28) — last 5 results, oldest → newest
    left to right. Fixed-width dots so the strip lines up neatly across
    rows regardless of how many games a player actually has (fewer than 5
