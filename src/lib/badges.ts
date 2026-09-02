@@ -518,5 +518,193 @@ export function computeBadges(
     }
   }
 
+  // ── 7 more badges added 2026-09-01 at Ben's request ────────────────────
+
+  // "Clean Sweep" — shut your OPPONENTS out (they scored 0). The positive
+  // mirror of "First time pickled" above (which is about being shut out
+  // yourself) — just as achievable for a newer player having a great day
+  // as for the club's top rating, since it only depends on that one game's
+  // score.
+  const cleanSweep = history.find((h) => h.won && h.opponent_score === 0);
+  if (cleanSweep) {
+    badges.push({
+      id: "clean-sweep",
+      emoji: "🧹",
+      label: "Clean Sweep",
+      description: `Shut out ${cleanSweep.opponent_names} ${cleanSweep.own_score}–0.`,
+      achievedAt: cleanSweep.played_at,
+    });
+  }
+
+  // "Clutch" — 3 separate WINS by the minimum possible margin (2 points)
+  // within any 7-day window. Exact positive mirror of "Heartbreak" above —
+  // same rolling-window logic, just over qualifying wins instead of
+  // qualifying losses.
+  const minMarginWins = history
+    .filter((h) => h.won && h.own_score - h.opponent_score === 2)
+    .map((h) => new Date(h.played_at).getTime())
+    .sort((a, b) => a - b);
+  for (let i = 0; i + 2 < minMarginWins.length; i++) {
+    if (minMarginWins[i + 2] - minMarginWins[i] <= WEEK_MS) {
+      const fmt = (t: number) => new Date(t).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+      badges.push({
+        id: "clutch",
+        emoji: "🧊",
+        label: "Clutch",
+        description: `Won 3 games by just 2 points each, all within one week (${fmt(minMarginWins[i])}–${fmt(minMarginWins[i + 2])}).`,
+        achievedAt: new Date(minMarginWins[i + 2]).toISOString(),
+      });
+      break;
+    }
+  }
+
+  // "Deuce Duel" — won a game that went well past a normal finish (12+
+  // points) but was still only decided by 2 points or less — a genuinely
+  // extended, nail-biting battle, not just a high-scoring blowout (which
+  // "Standout win" above already covers from the other direction). The
+  // 12+/±2 combination was chosen by checking the club's actual early
+  // match data for a real example of this exact shape (a 13-12 game) —
+  // see the 2026-09-01 rating-swing/badge-threshold conversation.
+  const deuceDuel = history.find((h) => h.won && h.own_score >= 12 && h.own_score - h.opponent_score <= 2);
+  if (deuceDuel) {
+    badges.push({
+      id: "deuce-duel",
+      emoji: "😅",
+      label: "Deuce Duel",
+      description: `Won ${deuceDuel.own_score}–${deuceDuel.opponent_score} against ${deuceDuel.opponent_names} — a real deuce duel.`,
+      achievedAt: deuceDuel.played_at,
+    });
+  }
+
+  // "Fresh Legs" — won the first game of a day you played more than one.
+  // Nothing to do with skill level, just "showed up and started strong."
+  // History is ordered ascending, so the first entry seen for each
+  // calendar day IS that day's first game.
+  const seenDays = new Set<string>();
+  let freshLegs: PlayerMatchHistoryRow | null = null;
+  for (const h of history) {
+    const dayKey = new Date(h.played_at).toDateString();
+    if (seenDays.has(dayKey)) continue;
+    seenDays.add(dayKey);
+    if (h.won) {
+      freshLegs = h;
+      break;
+    }
+  }
+  if (freshLegs) {
+    badges.push({
+      id: "fresh-legs",
+      emoji: "🌅",
+      label: "Fresh Legs",
+      description: `Won your first game of the session on ${new Date(freshLegs.played_at).toLocaleDateString(undefined, { month: "long", day: "numeric" })} — hit the ground running.`,
+      achievedAt: freshLegs.played_at,
+    });
+  }
+
+  // "Well Travelled" — played alongside 20+ different partners. Rewards
+  // being a good clubhouse citizen (playing with lots of different
+  // people), not being good at pickleball — counterpart to "Dream Team"
+  // above, which is specifically about ONE partner.
+  const WELL_TRAVELLED_PARTNERS = 20;
+  const distinctPartners = new Set(history.map((h) => h.teammate_name));
+  if (distinctPartners.size >= WELL_TRAVELLED_PARTNERS) {
+    // Achieved date = the game that introduced the Nth distinct partner.
+    const seenPartners = new Set<string>();
+    let wellTravelledAt: string | null = null;
+    for (const h of history) {
+      seenPartners.add(h.teammate_name);
+      if (seenPartners.size >= WELL_TRAVELLED_PARTNERS) {
+        wellTravelledAt = h.played_at;
+        break;
+      }
+    }
+    badges.push({
+      id: "well-travelled",
+      emoji: "🧭",
+      label: "Well Travelled",
+      description: `Played alongside ${distinctPartners.size} different partners and counting.`,
+      achievedAt: wellTravelledAt,
+    });
+  }
+
+  // "Marathon" — 10+ games logged in a single session (same calendar day).
+  // Pure participation, not outcome — ties nicely into the Quick Entry ×4
+  // flow for busy sessions.
+  const MARATHON_GAMES = 10;
+  const gamesByDay = new Map<string, { count: number; lastPlayedAt: string }>();
+  for (const h of history) {
+    const dayKey = new Date(h.played_at).toDateString();
+    const entry = gamesByDay.get(dayKey) ?? { count: 0, lastPlayedAt: h.played_at };
+    entry.count += 1;
+    entry.lastPlayedAt = h.played_at;
+    gamesByDay.set(dayKey, entry);
+  }
+  let marathonDay: { count: number; lastPlayedAt: string } | null = null;
+  for (const day of gamesByDay.values()) {
+    if (day.count >= MARATHON_GAMES) {
+      marathonDay = day;
+      break;
+    }
+  }
+  if (marathonDay) {
+    badges.push({
+      id: "marathon",
+      emoji: "🏃",
+      label: "Marathon",
+      description: `Played ${marathonDay.count} games in a single session on ${new Date(marathonDay.lastPlayedAt).toLocaleDateString(undefined, { month: "long", day: "numeric" })} — legs of steel.`,
+      achievedAt: marathonDay.lastPlayedAt,
+    });
+  }
+
+  // "Giant Slayer" (tiered) — 3 and 10 wins against a pair who were BOTH
+  // individually rated higher than both you and your partner (the same
+  // upset condition "Bracket Buster" above checks for, just counted
+  // across your whole history instead of firing once on the first
+  // occurrence). Bracket Buster itself is left completely untouched so
+  // nobody who's already earned it loses it — this just layers repeatable
+  // milestones on top for players who keep pulling off the same kind of
+  // upset.
+  const giantSlayerWins = history.filter(
+    (h) =>
+      h.won &&
+      h.teammate_pre_rating != null &&
+      h.opponent_min_pre_rating != null &&
+      h.pre_rating < h.opponent_min_pre_rating &&
+      h.teammate_pre_rating < h.opponent_min_pre_rating
+  );
+  const giantSlayerMilestones = [
+    { count: 3, emoji: "💥💥", label: "Giant Slayer" },
+    { count: 10, emoji: "💥💥💥", label: "Legendary Giant Slayer" },
+  ];
+  for (const milestone of giantSlayerMilestones) {
+    if (giantSlayerWins.length >= milestone.count) {
+      badges.push({
+        id: `giant-slayer-${milestone.count}`,
+        emoji: milestone.emoji,
+        label: milestone.label,
+        description: `Upset a higher-rated pair ${giantSlayerWins.length} time${giantSlayerWins.length === 1 ? "" : "s"} and counting.`,
+        achievedAt: giantSlayerWins[milestone.count - 1]?.played_at ?? null,
+      });
+    }
+  }
+
   return badges;
+}
+
+// Cosmetic avatar frame tiers (2026-09-02, Ben's request) — a purely
+// decorative unlock as someone racks up total badges (computed + legacy
+// combined, i.e. badges.length from the array above). Zero gameplay/rating
+// impact, just a small flourish next to their name — appeals to
+// completionists without touching competitiveness. Ordered richest-first so
+// callers can find(t => count >= t.threshold) for the highest tier reached.
+export type FrameTier = "gold" | "silver" | "bronze";
+
+export const FRAME_TIERS: { tier: FrameTier; threshold: number; label: string }[] = [
+  { tier: "gold", threshold: 30, label: "Gold" },
+  { tier: "silver", threshold: 20, label: "Silver" },
+  { tier: "bronze", threshold: 10, label: "Bronze" },
+];
+
+export function getFrameTier(totalBadgeCount: number): FrameTier | null {
+  return FRAME_TIERS.find((t) => totalBadgeCount >= t.threshold)?.tier ?? null;
 }

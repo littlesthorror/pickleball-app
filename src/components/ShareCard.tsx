@@ -3,6 +3,7 @@ import Avatar from "./Avatar";
 import { renderShareCardImage } from "../lib/shareCardImage";
 import type { ShareCardStats } from "../lib/shareCardImage";
 import type { Badge } from "../lib/badges";
+import { getFrameTier } from "../lib/badges";
 import type { PlayerStatus } from "../types";
 import { useBodyScrollLock } from "../lib/useBodyScrollLock";
 
@@ -29,12 +30,18 @@ export default function ShareCard({
   const [working, setWorking] = useState(false);
   const [shareError, setShareError] = useState<string | null>(null);
   useBodyScrollLock(true);
+  const frameTier = getFrameTier(badges.length);
 
   async function handleShare() {
     setWorking(true);
     setShareError(null);
     try {
-      const blob = await renderShareCardImage(player, badges, { bestPartner, highestWin, leaderboardPosition });
+      const blob = await renderShareCardImage(
+        player,
+        badges,
+        { bestPartner, highestWin, leaderboardPosition },
+        frameTier
+      );
       const file = new File([blob], `${player.display_name.replace(/\s+/g, "-")}-sideline-card.png`, {
         type: "image/png",
       });
@@ -75,7 +82,7 @@ export default function ShareCard({
       <div className="share-card-wrap" onClick={(e) => e.stopPropagation()}>
         <div className="share-card">
           <div className="share-card-brand">Sideline · Huntingdon Pickleball</div>
-          <Avatar name={player.display_name} url={player.avatar_url} size={128} />
+          <Avatar name={player.display_name} url={player.avatar_url} size={128} frameTier={frameTier} />
           <div className="share-card-name">{player.display_name}</div>
           <span className={`badge ${player.is_provisional ? "badge-provisional" : "badge-established"}`}>
             {player.is_provisional ? "Provisional" : "Established"}

@@ -19,6 +19,11 @@
      calendar and event list, right up until an admin turns Private off. */
   --private-600: #7c3aed;
   --private-100: #ede4fd;
+  /* Cosmetic avatar frame tiers (2026-09-02) — badge-count unlocks, purely
+     decorative. Fixed across themes like the other brand accents above. */
+  --bronze-600: #b5722f;
+  --silver-600: #9aa4b2;
+  --gold-600: #d4a017;
   --bg: #f6f7fb;
   --card: #ffffff;
   --border: #e6e9f0;

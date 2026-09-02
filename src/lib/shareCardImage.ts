@@ -1,4 +1,4 @@
-import type { Badge } from "./badges";
+import type { Badge, FrameTier } from "./badges";
 import type { PlayerStatus } from "../types";
 // Imported (rather than referenced as a plain "/share-card-bg.jpg" public
 // path) so Vite fingerprints it with a content hash at build time — see
@@ -20,6 +20,14 @@ export interface ShareCardStats {
 }
 
 const AVATAR_PALETTE = ["#0f2547", "#e05f00", "#2c4d80", "#1a8f5e", "#7a3fb0", "#b0433f"];
+
+// Mirrors --bronze-600/--silver-600/--gold-600 in index.css — canvas can't
+// read CSS custom properties, so these are duplicated literally here.
+const FRAME_COLORS: Record<FrameTier, string> = {
+  bronze: "#b5722f",
+  silver: "#9aa4b2",
+  gold: "#d4a017",
+};
 
 function colorForName(name: string) {
   let hash = 0;
@@ -72,7 +80,8 @@ function fitText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number):
 export async function renderShareCardImage(
   player: PlayerStatus,
   badges: Badge[],
-  stats: ShareCardStats
+  stats: ShareCardStats,
+  frameTier: FrameTier | null = null
 ): Promise<Blob> {
   const W = 640;
   const H = 1000;
@@ -155,6 +164,18 @@ export async function renderShareCardImage(
     ctx.textBaseline = "alphabetic";
   }
   ctx.restore();
+
+  // Cosmetic avatar frame ring (2026-09-02) — drawn as a stroked circle
+  // just outside the avatar's own clip, same badge-count unlock as
+  // Avatar.tsx's DOM version.
+  if (frameTier) {
+    const ringWidth = Math.max(4, Math.round(avatarSize * 0.03));
+    ctx.beginPath();
+    ctx.arc(W / 2, avatarY + avatarSize / 2, avatarSize / 2 + ringWidth / 2, 0, Math.PI * 2);
+    ctx.lineWidth = ringWidth;
+    ctx.strokeStyle = FRAME_COLORS[frameTier];
+    ctx.stroke();
+  }
 
   ctx.fillStyle = "#fff";
   ctx.font = "700 34px -apple-system, system-ui, sans-serif";

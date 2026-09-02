@@ -25,6 +25,11 @@ export interface Player {
   // this just flags it for a small "Guest" tag in the UI. See
   // 0057_add_placeholder_players.sql.
   is_placeholder: boolean;
+  // "Hide my rating number from my own dashboard" (2026-09-01) — purely a
+  // self-facing preference for anyone who doesn't want to see their own
+  // number, separate from profile_visible (which controls whether OTHERS
+  // can see them on the leaderboard). See 0060_add_hide_own_rating.sql.
+  hide_own_rating: boolean;
 }
 
 // Emergency contact + medical info (2026-08-28) — moved 2026-08-31 out of

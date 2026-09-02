@@ -11,6 +11,9 @@ type SortMode = "rating" | "improved";
 // at last count) — search narrows things down instantly, and each section
 // only renders a page at a time with "show more" beneath it.
 const PAGE_SIZE = 20;
+// Smaller page size for the two "Still establishing" lists (2026-09-01,
+// Ben's request) — top 10 initially, revealing 10 more at a time.
+const PROVISIONAL_PAGE_SIZE = 10;
 
 // A win-percentage "winner" with only 1-2 games played this month isn't a
 // meaningful comparison against someone who's played a dozen — this is
@@ -184,7 +187,8 @@ export default function Leaderboard({
   const [sort, setSort] = useState<SortMode>("rating");
   const [search, setSearch] = useState("");
   const [visibleEstablished, setVisibleEstablished] = useState(PAGE_SIZE);
-  const [visibleProvisional, setVisibleProvisional] = useState(PAGE_SIZE);
+  const [visibleProvisionalPlayed, setVisibleProvisionalPlayed] = useState(PROVISIONAL_PAGE_SIZE);
+  const [visibleProvisionalUnplayed, setVisibleProvisionalUnplayed] = useState(PROVISIONAL_PAGE_SIZE);
   const [monthlyHistory, setMonthlyHistory] = useState<MonthlyHistoryRow[]>([]);
   const [monthlyMatches, setMonthlyMatches] = useState<MonthlyMatchTeams[]>([]);
   const [pastClubPlayers, setPastClubPlayers] = useState<PastClubPlayer[]>([]);
@@ -322,14 +326,32 @@ export default function Leaderboard({
     return [...list].sort((a, b) => (b.delta_30d ?? -Infinity) - (a.delta_30d ?? -Infinity));
   }, [filteredRows, sort]);
 
-  const provisional = useMemo(
-    () => [...filteredRows.filter((r) => r.is_provisional)].sort((a, b) => b.rating - a.rating),
+  // Split into two (2026-09-01, Ben's request): someone who hasn't played
+  // a single game yet is still sitting at the flat starting rating (1500),
+  // which can look — and feel — like it's ranked above a player who HAS
+  // played and dipped to, say, 1300-1400 in their first few games. Keeping
+  // "haven't played at all" separate from "played at least one game, still
+  // under 12" means a newer player who's had a rough start never has to
+  // see someone who hasn't even played yet sitting "above" them.
+  const provisionalPlayed = useMemo(
+    () =>
+      [...filteredRows.filter((r) => r.is_provisional && r.games_played > 0)].sort((a, b) => b.rating - a.rating),
+    [filteredRows]
+  );
+  // Everyone here is tied at exactly 1500 (nothing to rank by yet), so
+  // alphabetical is the only ordering that actually means anything.
+  const provisionalUnplayed = useMemo(
+    () =>
+      [...filteredRows.filter((r) => r.is_provisional && r.games_played === 0)].sort((a, b) =>
+        a.display_name.localeCompare(b.display_name)
+      ),
     [filteredRows]
   );
 
   useEffect(() => {
     setVisibleEstablished(PAGE_SIZE);
-    setVisibleProvisional(PAGE_SIZE);
+    setVisibleProvisionalPlayed(PROVISIONAL_PAGE_SIZE);
+    setVisibleProvisionalUnplayed(PROVISIONAL_PAGE_SIZE);
   }, [search, sort]);
 
   const monthLabel = useMemo(
@@ -341,9 +363,10 @@ export default function Leaderboard({
   // leaderboard) are eligible to appear in these blocks.
   const rowsById = useMemo(() => new Map(rows.map((r) => [r.id, r])), [rows]);
 
-  // Top 3 for each stat, ties broken by whoever appears first in the
-  // query results — not worth a fancier tiebreak for a monthly snapshot.
-  const { mostGamesTop3, mostWinsTop3, highestWinPctTop3, biggestMoversTop3, clubPlayer } = useMemo(() => {
+  // Top 5 for each stat (2026-09-01, raised from top 3 at Ben's request),
+  // ties broken by whoever appears first in the query results — not worth
+  // a fancier tiebreak for a monthly snapshot.
+  const { mostGamesTop5, mostWinsTop5, highestWinPctTop5, biggestMoversTop5, clubPlayer } = useMemo(() => {
     const stats = new Map<string, { games: number; wins: number; ratingGain: number }>();
     for (const h of monthlyHistory) {
       if (!rowsById.has(h.player_id)) continue;
@@ -362,29 +385,29 @@ export default function Leaderboard({
       winPct: games > 0 ? (wins / games) * 100 : 0,
     }));
 
-    const mostGamesTop3: MonthlyLeader[] = [...entries]
+    const mostGamesTop5: MonthlyLeader[] = [...entries]
       .sort((a, b) => b.games - a.games)
-      .slice(0, 3)
+      .slice(0, 5)
       .map((e) => ({ playerId: e.playerId, value: e.games }));
 
-    const mostWinsTop3: MonthlyLeader[] = [...entries]
+    const mostWinsTop5: MonthlyLeader[] = [...entries]
       .sort((a, b) => b.wins - a.wins)
-      .slice(0, 3)
+      .slice(0, 5)
       .map((e) => ({ playerId: e.playerId, value: e.wins }));
 
-    const highestWinPctTop3: MonthlyLeader[] = entries
+    const highestWinPctTop5: MonthlyLeader[] = entries
       .filter((e) => e.games >= MIN_GAMES_FOR_WIN_PCT)
       .sort((a, b) => b.winPct - a.winPct)
-      .slice(0, 3)
+      .slice(0, 5)
       .map((e) => ({ playerId: e.playerId, value: e.winPct }));
 
     // Only rewards genuine improvement — a player who lost rating this
     // month simply doesn't appear here, rather than showing up with a
     // negative value.
-    const biggestMoversTop3: MonthlyLeader[] = entries
+    const biggestMoversTop5: MonthlyLeader[] = entries
       .filter((e) => e.ratingGain > 0)
       .sort((a, b) => b.ratingGain - a.ratingGain)
-      .slice(0, 3)
+      .slice(0, 5)
       .map((e) => ({ playerId: e.playerId, value: e.ratingGain }));
 
     // "Club Player" rewards well-rounded form rather than one big number:
@@ -411,7 +434,7 @@ export default function Leaderboard({
     const clubPlayer: ClubPlayerAward | null =
       clubPlayerCandidates.sort((a, b) => b.composite - a.composite)[0] ?? null;
 
-    return { mostGamesTop3, mostWinsTop3, highestWinPctTop3, biggestMoversTop3, clubPlayer };
+    return { mostGamesTop5, mostWinsTop5, highestWinPctTop5, biggestMoversTop5, clubPlayer };
   }, [monthlyHistory, rowsById]);
 
   // Biggest upset: the confirmed match this month with the largest
@@ -482,7 +505,8 @@ export default function Leaderboard({
   if (error) return <p className="error">{error}</p>;
 
   const visibleEstablishedRows = established.slice(0, visibleEstablished);
-  const visibleProvisionalRows = provisional.slice(0, visibleProvisional);
+  const visibleProvisionalPlayedRows = provisionalPlayed.slice(0, visibleProvisionalPlayed);
+  const visibleProvisionalUnplayedRows = provisionalUnplayed.slice(0, visibleProvisionalUnplayed);
 
   return (
     <div>
@@ -603,7 +627,7 @@ export default function Leaderboard({
       <MonthlyStatCard
         title="Most games played"
         monthLabel={monthLabel}
-        leaders={mostGamesTop3}
+        leaders={mostGamesTop5}
         rowsById={rowsById}
         formatValue={(v) => String(v)}
         onSelectPlayer={onSelectPlayer}
@@ -613,7 +637,7 @@ export default function Leaderboard({
       <MonthlyStatCard
         title="Most wins"
         monthLabel={monthLabel}
-        leaders={mostWinsTop3}
+        leaders={mostWinsTop5}
         rowsById={rowsById}
         formatValue={(v) => String(v)}
         onSelectPlayer={onSelectPlayer}
@@ -623,7 +647,7 @@ export default function Leaderboard({
       <MonthlyStatCard
         title="Highest win %"
         monthLabel={monthLabel}
-        leaders={highestWinPctTop3}
+        leaders={highestWinPctTop5}
         rowsById={rowsById}
         formatValue={(v) => `${Math.round(v)}%`}
         onSelectPlayer={onSelectPlayer}
@@ -633,7 +657,7 @@ export default function Leaderboard({
       <MonthlyStatCard
         title="Biggest movers"
         monthLabel={monthLabel}
-        leaders={biggestMoversTop3}
+        leaders={biggestMoversTop5}
         rowsById={rowsById}
         formatValue={(v) => `+${Math.round(v)}`}
         onSelectPlayer={onSelectPlayer}
@@ -807,13 +831,18 @@ export default function Leaderboard({
         </div>
       )}
 
-      {provisional.length > 0 && (
+      {/* Split into "played" and "not yet played" (2026-09-01, Ben's
+          request) — see the provisionalPlayed/provisionalUnplayed memos
+          above for why: someone sitting untouched at 1500 shouldn't visibly
+          rank above someone who's actually played and dipped a bit, while
+          both are still under 12 games. */}
+      {provisionalPlayed.length > 0 && (
         <div className="card">
-          <h2>Still establishing</h2>
+          <h2>Still establishing (played)</h2>
           <p className="stat-meta" style={{ marginBottom: 12 }}>
             Fewer than 12 games — ratings still settling in, not yet ranked.
           </p>
-          {visibleProvisionalRows.map((p) => (
+          {visibleProvisionalPlayedRows.map((p) => (
             <div
               className="leaderboard-row"
               key={p.id}
@@ -828,9 +857,9 @@ export default function Leaderboard({
               <span className="rating">{Math.round(p.rating)}</span>
             </div>
           ))}
-          {provisional.length > visibleProvisional && (
+          {provisionalPlayed.length > visibleProvisionalPlayed && (
             <button
-              onClick={() => setVisibleProvisional((c) => c + PAGE_SIZE)}
+              onClick={() => setVisibleProvisionalPlayed((c) => c + PROVISIONAL_PAGE_SIZE)}
               style={{
                 marginTop: 12,
                 background: "transparent",
@@ -838,7 +867,44 @@ export default function Leaderboard({
                 border: "1px solid var(--border)",
               }}
             >
-              Show more ({provisional.length - visibleProvisional} more)
+              Show more ({provisionalPlayed.length - visibleProvisionalPlayed} more)
+            </button>
+          )}
+        </div>
+      )}
+
+      {provisionalUnplayed.length > 0 && (
+        <div className="card">
+          <h2>Still establishing (unplayed)</h2>
+          <p className="stat-meta" style={{ marginBottom: 12 }}>
+            Joined but haven't logged a game yet — everyone starts at 1500.
+          </p>
+          {visibleProvisionalUnplayedRows.map((p) => (
+            <div
+              className="leaderboard-row"
+              key={p.id}
+              style={{ cursor: "pointer" }}
+              onClick={() => onSelectPlayer(p.id, p.display_name)}
+            >
+              <span className="badge badge-provisional" style={{ minWidth: 0 }}>
+                {p.games_played}/12
+              </span>
+              <Avatar name={p.display_name} url={p.avatar_url} size={28} />
+              <span className="name">{p.display_name}</span>
+              <span className="rating">{Math.round(p.rating)}</span>
+            </div>
+          ))}
+          {provisionalUnplayed.length > visibleProvisionalUnplayed && (
+            <button
+              onClick={() => setVisibleProvisionalUnplayed((c) => c + PROVISIONAL_PAGE_SIZE)}
+              style={{
+                marginTop: 12,
+                background: "transparent",
+                color: "var(--navy-500)",
+                border: "1px solid var(--border)",
+              }}
+            >
+              Show more ({provisionalUnplayed.length - visibleProvisionalUnplayed} more)
             </button>
           )}
         </div>

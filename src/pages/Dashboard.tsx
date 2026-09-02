@@ -13,8 +13,10 @@ import { supabase } from "../supabaseClient";
 import Avatar from "../components/Avatar";
 import ShareCard from "../components/ShareCard";
 import SeasonWrappedCard from "../components/SeasonWrappedCard";
-import { computeBadges } from "../lib/badges";
-import type { MonthlyFinish, CompetitionPlacement, SeasonTop10Finish } from "../lib/badges";
+import { computeBadges, getFrameTier } from "../lib/badges";
+import type { MonthlyFinish, CompetitionPlacement, SeasonTop10Finish, FrameTier } from "../lib/badges";
+import { fireConfetti } from "../lib/confetti";
+import { useToast } from "../components/Toast";
 import { computeSeasonWrappedStats } from "../lib/seasonWrapped";
 import type { SeasonWrappedStats } from "../lib/seasonWrappedImage";
 import { isBirthdayToday } from "../lib/birthday";
@@ -47,6 +49,8 @@ const GRID_DARK = "#262f3d";
 const TICKS_LIGHT = "#667085";
 const TICKS_DARK = "#8b96a5";
 const BADGE_PAGE_SIZE = 6;
+const RECENT_MATCHES_PAGE_SIZE = 5;
+const HEAD_TO_HEAD_PAGE_SIZE = 5;
 
 // Tracks the app's dark/light theme (see App.tsx — a data-theme attribute
 // on <html>, driven by the signed-in viewer's own saved preference) so the
@@ -160,6 +164,7 @@ export default function Dashboard({
   onViewEvents?: () => void;
 }) {
   const isDarkTheme = useIsDarkTheme();
+  const toast = useToast();
   const [player, setPlayer] = useState<PlayerStatus | null>(null);
   const [history, setHistory] = useState<PlayerMatchHistoryRow[]>([]);
   const [monthlyFinishes, setMonthlyFinishes] = useState<MonthlyFinish[]>([]);
@@ -191,6 +196,11 @@ export default function Dashboard({
   // and more of them — shows the first 6 (most recently earned first) with
   // a "Show more" toggle beneath. Added 2026-08-13 at Ben's request.
   const [showAllBadges, setShowAllBadges] = useState(false);
+  // Same "show more" pattern for Recent matches and Head-to-head, both of
+  // which used to hard-cut at 5 with no way to see more. Added 2026-09-02
+  // at Ben's request.
+  const [visibleRecentCount, setVisibleRecentCount] = useState(RECENT_MATCHES_PAGE_SIZE);
+  const [visibleH2HCount, setVisibleH2HCount] = useState(HEAD_TO_HEAD_PAGE_SIZE);
   // Raw match rows involving the viewer — only fetched when looking at a
   // clubmate's dashboard, to compute "your record vs this specific
   // player" below. Uses the `matches` table directly (not
@@ -478,6 +488,65 @@ export default function Dashboard({
     });
   }, [history, player, monthlyFinishes, competitionPlacements, seasonTop10Finishes, legacyBadges]);
 
+  // Cosmetic avatar frame — purely decorative, visible to anyone viewing
+  // this profile (not a self-facing preference like hide_own_rating).
+  const frameTier = useMemo(() => getFrameTier(badges.length), [badges]);
+
+  // Confetti + toast the first time you see a new badge or frame tier on
+  // your OWN dashboard (2026-09-02, Ben's request). Badges are recomputed
+  // fresh every render (see computeBadges' doc comment), so "new" is
+  // tracked client-side: a per-player localStorage snapshot of the badge
+  // ids/frame tier already seen. First-ever load just seeds the snapshot
+  // silently — nobody with 15 existing badges should get 15 confetti
+  // bursts the moment this feature ships. Only genuinely new achievements
+  // after that baseline fire anything. Deliberately skipped when browsing
+  // someone else's profile (isOwnProfile false) — this is a celebration
+  // for the account owner, not something to trigger by looking at others.
+  useEffect(() => {
+    if (!isOwnProfile || loading || !player) return;
+
+    const seenBadgesKey = `sideline_seen_badges_${player.id}`;
+    const seenFrameKey = `sideline_seen_frame_${player.id}`;
+
+    let seenBadgeIds: string[] | null = null;
+    try {
+      const raw = localStorage.getItem(seenBadgesKey);
+      seenBadgeIds = raw ? (JSON.parse(raw) as string[]) : null;
+    } catch {
+      seenBadgeIds = null;
+    }
+    const seenFrame = localStorage.getItem(seenFrameKey) as FrameTier | "none" | null;
+
+    const currentBadgeIds = badges.map((b) => b.id);
+    const isFirstRun = seenBadgeIds === null;
+
+    if (!isFirstRun) {
+      const newlyEarned = badges.filter((b) => !seenBadgeIds!.includes(b.id));
+      const frameUpgraded = seenFrame !== null && seenFrame !== (frameTier ?? "none") && frameTier !== null;
+
+      if (frameUpgraded) {
+        fireConfetti({ colors: ["#d4a017", "#b5722f", "#9aa4b2", "#ffffff"], pieceCount: 220 });
+        toast.success(`New avatar frame unlocked: ${frameTier![0].toUpperCase()}${frameTier!.slice(1)}!`);
+      } else if (newlyEarned.length > 0) {
+        fireConfetti();
+        toast.success(
+          newlyEarned.length === 1
+            ? `New badge earned: ${newlyEarned[0].emoji} ${newlyEarned[0].label}!`
+            : `${newlyEarned.length} new badges earned!`
+        );
+      }
+    }
+
+    try {
+      localStorage.setItem(seenBadgesKey, JSON.stringify(currentBadgeIds));
+      localStorage.setItem(seenFrameKey, frameTier ?? "none");
+    } catch {
+      // Storage full/unavailable (e.g. private browsing) — non-critical,
+      // worst case is a repeated celebration next visit.
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOwnProfile, loading, player, badges, frameTier]);
+
   // 30-day change and personal best — both derived from the same history
   // array already loaded for the chart, so no extra query needed. Mirrors
   // the leaderboard's delta_30d logic: null means the player joined less
@@ -664,7 +733,9 @@ export default function Dashboard({
   const lastDelta = history.length > 0 ? history[history.length - 1].rating_delta : null;
   // Trimmed from 8 to 5 at Ben's request (2026-08-11) — Game history is
   // there for the full list; this is just a quick recent-form snapshot.
-  const recent = [...history].reverse().slice(0, 5);
+  // Starts at 5 with a "Show more" button (added 2026-09-02) rather than a
+  // hard cutoff, so it's still a snapshot by default but not a dead end.
+  const recent = [...history].reverse();
   const tier = getTier(player.games_played);
   const nextTier = getNextTier(player.games_played);
 
@@ -672,7 +743,7 @@ export default function Dashboard({
     <div>
       <div className="card">
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <Avatar name={player.display_name} url={player.avatar_url} size={55} />
+          <Avatar name={player.display_name} url={player.avatar_url} size={55} frameTier={frameTier} />
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             <span className="player-name-tag">
               {player.display_name}
@@ -690,14 +761,20 @@ export default function Dashboard({
             </div>
           </div>
         </div>
-        <div className="stat-hero">
-          <span className="value">{Math.round(player.rating)}</span>
-          {lastDelta !== null && (
-            <span className={lastDelta > 0 ? "delta-positive" : lastDelta < 0 ? "delta-negative" : "delta-neutral"}>
-              {lastDelta > 0 ? "▲" : lastDelta < 0 ? "▼" : "–"} {Math.abs(Math.round(lastDelta))} since last game
-            </span>
-          )}
-        </div>
+        {isOwnProfile && player.hide_own_rating ? (
+          <p className="stat-meta" style={{ marginTop: 8 }}>
+            You've hidden your rating number from your own dashboard — change this any time in My Account.
+          </p>
+        ) : (
+          <div className="stat-hero">
+            <span className="value">{Math.round(player.rating)}</span>
+            {lastDelta !== null && (
+              <span className={lastDelta > 0 ? "delta-positive" : lastDelta < 0 ? "delta-negative" : "delta-neutral"}>
+                {lastDelta > 0 ? "▲" : lastDelta < 0 ? "▼" : "–"} {Math.abs(Math.round(lastDelta))} since last game
+              </span>
+            )}
+          </div>
+        )}
         <p className="stat-meta">
           {player.games_played} game{player.games_played === 1 ? "" : "s"} played
           {nextTier && ` · ${nextTier.gamesToGo} more to become a ${nextTier.tier.label}`}
@@ -783,82 +860,97 @@ export default function Dashboard({
         </div>
       )}
 
-      <div className="card">
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-          <h2 style={{ marginBottom: 0 }}>Rating history</h2>
-          <div className="toggle-group">
-            <button disabled={xAxis === "games"} onClick={() => setXAxis("games")}>
-              Games
-            </button>
-            <button disabled={xAxis === "date"} onClick={() => setXAxis("date")}>
-              Date
-            </button>
-          </div>
-        </div>
-
-        <div style={{ display: "flex", gap: 24, marginBottom: 16 }}>
-          <div>
-            <div className="stat-meta" style={{ marginTop: 0 }}>Last 30 days</div>
-            {delta30d === null ? (
-              <span className="delta-neutral" style={{ fontWeight: 700 }}>New player</span>
-            ) : (
-              <span
-                className={delta30d > 0 ? "delta-positive" : delta30d < 0 ? "delta-negative" : "delta-neutral"}
-                style={{ fontWeight: 700 }}
-              >
-                {delta30d > 0 ? "+" : ""}
-                {Math.round(delta30d)}
-              </span>
-            )}
-          </div>
-          <div>
-            <div className="stat-meta" style={{ marginTop: 0 }}>Personal best</div>
-            <span style={{ fontWeight: 700, color: "var(--heading)" }}>
-              {Math.round(personalBest.rating)}
-              {personalBest.date && (
-                <span className="stat-meta" style={{ fontWeight: 400 }}> · {formatDate(personalBest.date)}</span>
-              )}
-            </span>
-          </div>
-        </div>
-
-        {chartData && (
-          <div style={{ height: 220 }}>
-            <Line
-              data={chartData}
-              options={{
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { display: false }, tooltip: { intersect: false, mode: "index" } },
-                scales: {
-                  x: {
-                    grid: { display: false },
-                    ticks: { maxTicksLimit: 6, color: isDarkTheme ? TICKS_DARK : TICKS_LIGHT },
-                  },
-                  y: {
-                    grid: { color: isDarkTheme ? GRID_DARK : GRID_LIGHT },
-                    ticks: { color: isDarkTheme ? TICKS_DARK : TICKS_LIGHT },
-                  },
-                },
-              }}
-            />
-          </div>
-        )}
-        <p className="stat-meta" style={{ marginTop: 8 }}>
-          Shaded band = rating deviation (confidence). Narrows as your rating becomes more established.
-        </p>
-        {bestPartner && (
-          <p className="stat-meta" style={{ marginTop: 8, marginBottom: 0 }}>
-            Best partner: <strong style={{ color: "var(--heading)" }}>{bestPartner.name}</strong> — {bestPartner.wins}{" "}
-            win{bestPartner.wins === 1 ? "" : "s"} together
+      {isOwnProfile && player.hide_own_rating ? (
+        <div className="card">
+          <h2 style={{ marginBottom: 4 }}>Rating history</h2>
+          <p className="stat-meta" style={{ marginTop: 0 }}>
+            You've hidden your rating number from your own dashboard — change this any time in My Account.
           </p>
-        )}
-      </div>
+          {bestPartner && (
+            <p className="stat-meta" style={{ marginTop: 8, marginBottom: 0 }}>
+              Best partner: <strong style={{ color: "var(--heading)" }}>{bestPartner.name}</strong> — {bestPartner.wins}{" "}
+              win{bestPartner.wins === 1 ? "" : "s"} together
+            </p>
+          )}
+        </div>
+      ) : (
+        <div className="card">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <h2 style={{ marginBottom: 0 }}>Rating history</h2>
+            <div className="toggle-group">
+              <button disabled={xAxis === "games"} onClick={() => setXAxis("games")}>
+                Games
+              </button>
+              <button disabled={xAxis === "date"} onClick={() => setXAxis("date")}>
+                Date
+              </button>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 24, marginBottom: 16 }}>
+            <div>
+              <div className="stat-meta" style={{ marginTop: 0 }}>Last 30 days</div>
+              {delta30d === null ? (
+                <span className="delta-neutral" style={{ fontWeight: 700 }}>New player</span>
+              ) : (
+                <span
+                  className={delta30d > 0 ? "delta-positive" : delta30d < 0 ? "delta-negative" : "delta-neutral"}
+                  style={{ fontWeight: 700 }}
+                >
+                  {delta30d > 0 ? "+" : ""}
+                  {Math.round(delta30d)}
+                </span>
+              )}
+            </div>
+            <div>
+              <div className="stat-meta" style={{ marginTop: 0 }}>Personal best</div>
+              <span style={{ fontWeight: 700, color: "var(--heading)" }}>
+                {Math.round(personalBest.rating)}
+                {personalBest.date && (
+                  <span className="stat-meta" style={{ fontWeight: 400 }}> · {formatDate(personalBest.date)}</span>
+                )}
+              </span>
+            </div>
+          </div>
+
+          {chartData && (
+            <div style={{ height: 220 }}>
+              <Line
+                data={chartData}
+                options={{
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  plugins: { legend: { display: false }, tooltip: { intersect: false, mode: "index" } },
+                  scales: {
+                    x: {
+                      grid: { display: false },
+                      ticks: { maxTicksLimit: 6, color: isDarkTheme ? TICKS_DARK : TICKS_LIGHT },
+                    },
+                    y: {
+                      grid: { color: isDarkTheme ? GRID_DARK : GRID_LIGHT },
+                      ticks: { color: isDarkTheme ? TICKS_DARK : TICKS_LIGHT },
+                    },
+                  },
+                }}
+              />
+            </div>
+          )}
+          <p className="stat-meta" style={{ marginTop: 8 }}>
+            Shaded band = rating deviation (confidence). Narrows as your rating becomes more established.
+          </p>
+          {bestPartner && (
+            <p className="stat-meta" style={{ marginTop: 8, marginBottom: 0 }}>
+              Best partner: <strong style={{ color: "var(--heading)" }}>{bestPartner.name}</strong> — {bestPartner.wins}{" "}
+              win{bestPartner.wins === 1 ? "" : "s"} together
+            </p>
+          )}
+        </div>
+      )}
 
       {(history.length > 0 || bestMonth || longestStreak >= 2) && (
         <div className="card">
           <h2>Highlights</h2>
-          {history.length > 0 && (
+          {history.length > 0 && !(isOwnProfile && player.hide_own_rating) && (
             <div className="match-row">
               <div>
                 <div className="opponent">Career high</div>
@@ -989,7 +1081,7 @@ export default function Dashboard({
       <div className="card">
         <h2>Recent matches</h2>
         {recent.length === 0 && <p className="stat-meta">No confirmed matches yet.</p>}
-        {recent.map((m) => (
+        {recent.slice(0, visibleRecentCount).map((m) => (
           <div className="match-row" key={m.match_id}>
             <div>
               <div className="opponent">
@@ -1008,6 +1100,19 @@ export default function Dashboard({
             </div>
           </div>
         ))}
+        {recent.length > visibleRecentCount && (
+          <button
+            onClick={() => setVisibleRecentCount((n) => n + RECENT_MATCHES_PAGE_SIZE)}
+            style={{
+              marginTop: 12,
+              background: "transparent",
+              color: "var(--navy-500)",
+              border: "1px solid var(--border)",
+            }}
+          >
+            Show more ({recent.length - visibleRecentCount} more)
+          </button>
+        )}
       </div>
 
       {isOwnProfile && headToHead.length > 0 && (
@@ -1016,7 +1121,7 @@ export default function Dashboard({
           <p className="stat-meta" style={{ marginBottom: 12 }}>
             Only visible to you — your own record against clubmates you've played.
           </p>
-          {headToHead.map((row) => (
+          {headToHead.slice(0, visibleH2HCount).map((row) => (
             <div className="match-row" key={row.opponent}>
               <div className="opponent">{row.opponent}</div>
               <div className="score">
@@ -1024,6 +1129,19 @@ export default function Dashboard({
               </div>
             </div>
           ))}
+          {headToHead.length > visibleH2HCount && (
+            <button
+              onClick={() => setVisibleH2HCount((n) => n + HEAD_TO_HEAD_PAGE_SIZE)}
+              style={{
+                marginTop: 12,
+                background: "transparent",
+                color: "var(--navy-500)",
+                border: "1px solid var(--border)",
+              }}
+            >
+              Show more ({headToHead.length - visibleH2HCount} more)
+            </button>
+          )}
         </div>
       )}
 

@@ -40,6 +40,7 @@ export default function Profile({
   const [dob, setDob] = useState(player.date_of_birth ?? "");
   const [dobVisible, setDobVisible] = useState(player.date_of_birth_visible);
   const [profileVisible, setProfileVisible] = useState(player.profile_visible);
+  const [hideOwnRating, setHideOwnRating] = useState(player.hide_own_rating);
   const [avatarUrl, setAvatarUrl] = useState(player.avatar_url);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -325,6 +326,7 @@ export default function Profile({
         date_of_birth_visible: dobVisible,
         avatar_url: avatarUrl,
         profile_visible: profileVisible,
+        hide_own_rating: hideOwnRating,
         profile_completed: true,
       })
       .eq("id", player.id);
@@ -461,6 +463,24 @@ export default function Profile({
           If you turn this off, you won't appear on the leaderboard and other members can't view your
           dashboard — but your matches still count and your own dashboard still works as normal. Admins
           can still see you when entering match results.
+        </p>
+
+        <label>Your rating number</label>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <input
+            id="hide-own-rating"
+            type="checkbox"
+            checked={hideOwnRating}
+            onChange={(e) => setHideOwnRating(e.target.checked)}
+          />
+          <label htmlFor="hide-own-rating" style={{ margin: 0, fontWeight: 400 }}>
+            Hide my rating number from my own dashboard
+          </label>
+        </div>
+        <p className="stat-meta">
+          For anyone who'd rather not see their own number, or feels negative about it. You'll still play,
+          still get ranked, and still show up normally to everyone else — you just won't see the number
+          yourself.
         </p>
 
         <label>Emergency contact name (optional)</label>
