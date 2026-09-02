@@ -362,7 +362,7 @@ export default function App() {
                     Dashboard
                   </button>
                   <button disabled={tab === "leaderboard"} onClick={() => changeTab("leaderboard")}>
-                    Leaderboards
+                    Leaderboard
                   </button>
                   <button disabled={tab === "club-stats"} onClick={() => changeTab("club-stats")}>
                     Club stats
@@ -392,7 +392,7 @@ export default function App() {
                     onClick={() => changeTab("notices")}
                     style={{ position: "relative" }}
                   >
-                    Notices
+                    News
                     {hasNewNotice && (
                       <span
                         style={{
