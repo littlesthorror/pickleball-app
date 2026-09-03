@@ -255,6 +255,9 @@ export interface NoticePollVote {
   player_id: string;
   option_index: number;
   created_at: string;
+  // Only present when the query joins players(display_name) — used to show
+  // who voted for what (2026-09-03).
+  players?: { display_name: string } | null;
 }
 
 // Competitions (2026-08-26) — fixed-team doubles, group stage followed by

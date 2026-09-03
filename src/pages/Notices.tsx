@@ -147,9 +147,16 @@ function NoticePoll({
         📊 {notice.poll_question}
       </div>
       {notice.poll_options.map((option, i) => {
-        const count = votes.filter((v) => v.option_index === i).length;
+        const optionVotes = votes.filter((v) => v.option_index === i);
+        const count = optionVotes.length;
         const pct = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
         const selected = myVote?.option_index === i;
+        // Who voted for this option — shown to everyone, same as the
+        // running tally itself (see the comment on NoticePoll above: these
+        // are things like "best night for socials", not secret ballots).
+        const voterNames = optionVotes
+          .map((v) => v.players?.display_name ?? "Unknown")
+          .sort((a, b) => a.localeCompare(b));
         return (
           <div
             key={i}
@@ -185,6 +192,11 @@ function NoticePoll({
                 {count} · {pct}%
               </span>
             </div>
+            {voterNames.length > 0 && (
+              <div className="stat-meta" style={{ position: "relative", marginTop: 4, marginBottom: 0, fontSize: "0.72rem" }}>
+                {voterNames.join(", ")}
+              </div>
+            )}
           </div>
         );
       })}
@@ -302,7 +314,7 @@ export default function Notices({ isAdmin, playerId }: { isAdmin: boolean; playe
         }
         supabase
           .from("notice_poll_votes")
-          .select("*")
+          .select("*, players(display_name)")
           .in("notice_id", pollNoticeIds)
           .then(({ data: voteRows, error: voteError }) => {
             if (voteError || !voteRows) return;
@@ -325,7 +337,10 @@ export default function Notices({ isAdmin, playerId }: { isAdmin: boolean; playe
       toast.error(`Couldn't record your vote: ${error.message}`);
       return;
     }
-    const { data: voteRows } = await supabase.from("notice_poll_votes").select("*").eq("notice_id", noticeId);
+    const { data: voteRows } = await supabase
+      .from("notice_poll_votes")
+      .select("*, players(display_name)")
+      .eq("notice_id", noticeId);
     setPollVotes((prev) => {
       const next = new Map(prev);
       next.set(noticeId, (voteRows ?? []) as NoticePollVote[]);
