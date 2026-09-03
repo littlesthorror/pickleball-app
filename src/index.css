@@ -679,37 +679,6 @@ label {
   color: #10233f;
 }
 
-/* Leaderboard form guide (2026-08-28) — last 5 results, oldest → newest
-   left to right. Fixed-width dots so the strip lines up neatly across
-   rows regardless of how many games a player actually has (fewer than 5
-   just shows fewer dots rather than padding). */
-.form-guide {
-  display: flex;
-  gap: 3px;
-  flex-shrink: 0;
-}
-
-.form-dot {
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.55rem;
-  font-weight: 800;
-  color: #fff;
-  line-height: 1;
-}
-
-.form-dot-win {
-  background: var(--success, #1a8f5e);
-}
-
-.form-dot-loss {
-  background: var(--danger, #b0433f);
-}
-
 /* ── Form controls ──────────────────────────────────────────────────── */
 select,
 input[type="number"],
