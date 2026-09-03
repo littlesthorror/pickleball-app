@@ -529,6 +529,31 @@ export default function Profile({
         </button>
       </div>
 
+      {!isFirstTime && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <h2 style={{ marginTop: 0 }}>Club resources</h2>
+          <p className="stat-meta" style={{ marginTop: 0 }}>
+            Print-friendly scoresheet for tracking games on court.
+          </p>
+          <a
+            href="/scoresheet.pdf"
+            download="Huntingdon-Pickleball-Scoresheet.pdf"
+            style={{
+              display: "inline-block",
+              padding: "8px 16px",
+              borderRadius: 8,
+              border: "1px solid var(--border)",
+              color: "var(--navy-500)",
+              fontWeight: 600,
+              fontSize: "0.9rem",
+              textDecoration: "none",
+            }}
+          >
+            Download scoresheet (PDF)
+          </a>
+        </div>
+      )}
+
       {!isFirstTime && isPushSupported() && (
         <div className="card" style={{ marginTop: 16 }}>
           <h2 style={{ marginTop: 0 }}>Notifications</h2>
