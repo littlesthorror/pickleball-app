@@ -56,6 +56,11 @@ const TABS = [
 ] as const;
 type Tab = (typeof TABS)[number];
 
+// Smart matchmaking (2026-09-04) — switched off 2026-09-05 at Ben's request
+// while it's parked for now. Nothing's been removed, just gated behind this
+// one flag: flip it back to true to bring the nav button and tab back.
+const MATCHMAKING_ENABLED = false;
+
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [player, setPlayer] = useState<PlayerStatus | null>(null);
@@ -77,6 +82,7 @@ export default function App() {
   // browser's own Back button does).
   const [tab, setTab] = useState<Tab>(() => {
     const hash = window.location.hash.replace("#", "");
+    if (hash === "matchmaking" && !MATCHMAKING_ENABLED) return "dashboard";
     return (TABS as readonly string[]).includes(hash) ? (hash as Tab) : "dashboard";
   });
 
@@ -448,9 +454,11 @@ export default function App() {
                   <button disabled={tab === "match-entry"} onClick={() => changeTab("match-entry")}>
                     Enter match
                   </button>
-                  <button disabled={tab === "matchmaking"} onClick={() => changeTab("matchmaking")}>
-                    Matchmaking
-                  </button>
+                  {MATCHMAKING_ENABLED && (
+                    <button disabled={tab === "matchmaking"} onClick={() => changeTab("matchmaking")}>
+                      Matchmaking
+                    </button>
+                  )}
                   <button disabled={tab === "manage-admins"} onClick={() => changeTab("manage-admins")}>
                     Admins
                   </button>
@@ -494,7 +502,7 @@ export default function App() {
                     <QuarterlyCup isAdmin={effectiveIsAdmin} currentUserId={player.id} />
                   )}
                   {tab === "match-entry" && effectiveIsAdmin && <MatchEntry />}
-                  {tab === "matchmaking" && effectiveIsAdmin && <Matchmaking />}
+                  {tab === "matchmaking" && MATCHMAKING_ENABLED && effectiveIsAdmin && <Matchmaking />}
                   {tab === "manage-admins" && effectiveIsAdmin && (
                     <AdminManagement
                       currentUserId={session.user.id}
