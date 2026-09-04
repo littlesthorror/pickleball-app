@@ -891,6 +891,12 @@ textarea {
   border-radius: 12px;
   padding: 10px 12px;
   text-align: center;
+  /* Grid items default to min-width: auto, meaning they'll grow to fit an
+     unbroken string (an opponent pairing, a long name) instead of
+     respecting the 1fr track — which was defeating the ellipsis truncation
+     on .share-card-stat-value below and pushing the right-hand column off
+     the edge of the card. min-width: 0 lets the track actually win. */
+  min-width: 0;
 }
 
 .share-card-stat-label {

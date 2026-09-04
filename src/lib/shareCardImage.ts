@@ -15,7 +15,9 @@ import shareCardBgUrl from "../assets/share-card-bg.jpg";
 
 export interface ShareCardStats {
   bestPartner: { name: string; wins: number } | null;
-  highestWin: { opponentNames: string; opponentRating: number } | null;
+  // Longest winning streak ever (2026-09-04, replacing "Highest win" —
+  // shorter values fit the stat box more reliably across screen sizes).
+  longestStreak: number;
   leaderboardPosition: { rank: number; totalRanked: number } | null;
 }
 
@@ -212,13 +214,14 @@ export async function renderShareCardImage(
     ? `#${stats.leaderboardPosition.rank} of ${stats.leaderboardPosition.totalRanked}`
     : "—";
   const bestPartnerValue = stats.bestPartner ? stats.bestPartner.name : "—";
-  const highestWinValue = stats.highestWin ? `vs ${stats.highestWin.opponentNames}` : "—";
+  const streakValue =
+    stats.longestStreak > 0 ? `${stats.longestStreak} game${stats.longestStreak === 1 ? "" : "s"}` : "—";
 
   const cells: { label: string; value: string }[] = [
     { label: "GAMES PLAYED", value: String(player.games_played) },
     { label: "LEADERBOARD", value: leaderboardValue },
     { label: "BEST PARTNER", value: bestPartnerValue },
-    { label: "HIGHEST WIN", value: highestWinValue },
+    { label: "LONGEST STREAK", value: streakValue },
   ];
 
   cells.forEach((cell, i) => {

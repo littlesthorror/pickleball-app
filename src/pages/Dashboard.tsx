@@ -700,21 +700,6 @@ export default function Dashboard({
     return name ? { name, wins } : null;
   }, [history]);
 
-  // Best win of your career so far — the highest-rated opponent pairing
-  // you've beaten. Uses each match's lower-rated opponent as the yardstick
-  // (the same "at least this good" proxy the Bracket Buster badge already
-  // uses), since that's the only opponent-strength figure captured per
-  // match — no extra query needed, `history` already has it. Shown on the
-  // share card as a highlight-reel stat.
-  const highestWin = useMemo(() => {
-    let best: PlayerMatchHistoryRow | null = null;
-    for (const h of history) {
-      if (!h.won || h.opponent_min_pre_rating == null) continue;
-      if (!best || h.opponent_min_pre_rating > (best.opponent_min_pre_rating ?? -Infinity)) best = h;
-    }
-    return best ? { opponentNames: best.opponent_names, opponentRating: Math.round(best.opponent_min_pre_rating!) } : null;
-  }, [history]);
-
   // Grouped by exact opponent pairing (that's what the data has — a 2v2
   // match's "opponent" is really a pair, and different pairings against the
   // same person are kept separate rather than trying to split credit per
@@ -760,6 +745,10 @@ export default function Dashboard({
   // Longest winning streak ever, not just the currently active one (that's
   // what Club Stats shows across the whole club) — `history` is already
   // ordered oldest-first by game_number, so a single forward pass works.
+  // Also shown on the share card (2026-09-04, replacing "Highest win" —
+  // Ben's call, a streak reads better as a highlight-reel stat and it's
+  // shorter, which was contributing to the stat box overflowing on some
+  // screens).
   const longestStreak = useMemo(() => {
     let best = 0;
     let current = 0;
@@ -1281,7 +1270,7 @@ export default function Dashboard({
           player={player}
           badges={badges}
           bestPartner={bestPartner}
-          highestWin={highestWin}
+          longestStreak={longestStreak}
           leaderboardPosition={leaderboardPosition}
           onClose={() => setShowShareCard(false)}
         />

@@ -19,7 +19,7 @@ export default function ShareCard({
   player,
   badges,
   bestPartner,
-  highestWin,
+  longestStreak,
   leaderboardPosition,
   onClose,
 }: ShareCardStats & {
@@ -39,7 +39,7 @@ export default function ShareCard({
       const blob = await renderShareCardImage(
         player,
         badges,
-        { bestPartner, highestWin, leaderboardPosition },
+        { bestPartner, longestStreak, leaderboardPosition },
         frameTier
       );
       const file = new File([blob], `${player.display_name.replace(/\s+/g, "-")}-sideline-card.png`, {
@@ -108,8 +108,10 @@ export default function ShareCard({
               <div className="share-card-stat-value">{bestPartner ? bestPartner.name : "—"}</div>
             </div>
             <div className="share-card-stat">
-              <div className="share-card-stat-label">Highest win</div>
-              <div className="share-card-stat-value">{highestWin ? `vs ${highestWin.opponentNames}` : "—"}</div>
+              <div className="share-card-stat-label">Longest streak</div>
+              <div className="share-card-stat-value">
+                {longestStreak > 0 ? `${longestStreak} game${longestStreak === 1 ? "" : "s"}` : "—"}
+              </div>
             </div>
           </div>
 

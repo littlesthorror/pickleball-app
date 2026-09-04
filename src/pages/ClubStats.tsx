@@ -18,6 +18,11 @@ import PageLoading from "../components/PageLoading";
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, Filler);
 
 interface MatchTeams {
+  // id/played_at added for the Top 7 trajectory chart below — used to work
+  // out each confirmed match's position in the club's own chronological
+  // game count (see clubGameNumberByMatchId).
+  id: string;
+  played_at: string;
   team_a_player_1_id: string;
   team_a_player_2_id: string;
   team_b_player_1_id: string;
@@ -29,8 +34,10 @@ interface HistoryRow {
   played_at: string;
   won: boolean;
   // Added for the Top 7 trajectory chart below — the player's rating as
-  // it stood right after this match.
+  // it stood right after this match, and which match it was (to look up
+  // that match's club-wide game number).
   post_rating: number;
+  match_id: string;
 }
 
 // A "streak" of 1 isn't really a streak — this is the minimum consecutive
@@ -47,8 +54,6 @@ const TOP_N = 7;
 // the app's own navy/orange brand pair lead, then five more distinguishable
 // hues fill out the rest.
 const TRAJECTORY_COLORS = ["#e05f00", "#0f2547", "#3c92f2", "#16a34a", "#a855f7", "#be123c", "#0891b2"];
-
-const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
 type RangeMonths = 3 | 6 | 12;
 
@@ -83,10 +88,10 @@ export default function ClubStats() {
     Promise.all([
       supabase
         .from("matches")
-        .select("team_a_player_1_id,team_a_player_2_id,team_b_player_1_id,team_b_player_2_id")
+        .select("id,played_at,team_a_player_1_id,team_a_player_2_id,team_b_player_1_id,team_b_player_2_id")
         .eq("status", "confirmed"),
       supabase.from("player_status").select("*").eq("is_active", true),
-      supabase.from("player_match_history").select("player_id, played_at, won, post_rating"),
+      supabase.from("player_match_history").select("player_id, match_id, played_at, won, post_rating"),
     ]).then(([matchesRes, playersRes, historyRes]) => {
       if (matchesRes.error) setError(matchesRes.error.message);
       else setMatches((matchesRes.data ?? []) as MatchTeams[]);
@@ -264,29 +269,53 @@ export default function ClubStats() {
     [players]
   );
 
+  // Every confirmed match ever played, oldest first, numbered 1..N — the
+  // club's own chronological game count. Powers the trajectory chart's
+  // x-axis below (2026-09-04, Ben's request): a game-based axis reads more
+  // naturally for a club that plays several matches in one night, where
+  // "3 days apart" could mean anywhere from zero to a dozen games. Built
+  // from ALL confirmed matches, not just the top 7's, so "game 280" means
+  // the same thing regardless of who played it.
+  const clubGameNumberByMatchId = useMemo(() => {
+    const sorted = [...matches].sort(
+      (a, b) => new Date(a.played_at).getTime() - new Date(b.played_at).getTime()
+    );
+    const map = new Map<string, number>();
+    sorted.forEach((m, i) => map.set(m.id, i + 1));
+    return map;
+  }, [matches]);
+
   // Builds a multi-line dataset of each top-7 player's rating right after
-  // every confirmed match they played within the selected window. Chart.js
-  // is used with a plain linear x-axis (days since the earliest point in
-  // view) rather than its time scale, since that needs a date-adapter
-  // package this project doesn't otherwise depend on — the tick/tooltip
-  // callbacks below convert those day-offsets back into real dates.
+  // every confirmed match they played within the selected window. The
+  // x-axis is the club's own game count, re-based so the first club game
+  // to fall inside the selected window reads as "1" — e.g. selecting 6m
+  // when that covers club games 280-590 plots game 280 at x=1, game 281
+  // at x=2, and so on. That start point (windowStart) is worked out from
+  // every confirmed match in the window, not just the top 7's, so it lines
+  // up with "games played by the club" rather than just these 7 players'.
   const trajectory = useMemo(() => {
-    if (topPlayers.length === 0) return null;
+    if (topPlayers.length === 0 || matches.length === 0) return null;
     const topIds = new Set(topPlayers.map((p) => p.id));
     const cutoff = new Date();
     cutoff.setMonth(cutoff.getMonth() - rangeMonths);
     const cutoffMs = cutoff.getTime();
 
+    const windowGameNumbers = matches
+      .filter((m) => new Date(m.played_at).getTime() >= cutoffMs)
+      .map((m) => clubGameNumberByMatchId.get(m.id))
+      .filter((n): n is number => n !== undefined);
+    if (windowGameNumbers.length === 0) return null;
+    const windowStart = Math.min(...windowGameNumbers);
+
     const relevant = history.filter((h) => topIds.has(h.player_id) && new Date(h.played_at).getTime() >= cutoffMs);
     if (relevant.length === 0) return null;
 
-    const minTime = Math.min(...relevant.map((h) => new Date(h.played_at).getTime()));
-
-    const byPlayer = new Map<string, { x: number; y: number }[]>();
+    const byPlayer = new Map<string, { x: number; y: number; gameNumber: number }[]>();
     for (const h of relevant) {
-      const days = (new Date(h.played_at).getTime() - minTime) / MS_PER_DAY;
+      const gameNumber = clubGameNumberByMatchId.get(h.match_id);
+      if (gameNumber === undefined) continue;
       const list = byPlayer.get(h.player_id) ?? [];
-      list.push({ x: days, y: h.post_rating });
+      list.push({ x: gameNumber - windowStart + 1, y: h.post_rating, gameNumber });
       byPlayer.set(h.player_id, list);
     }
 
@@ -309,8 +338,8 @@ export default function ClubStats() {
       .filter((d): d is NonNullable<typeof d> => d !== null);
 
     if (datasets.length === 0) return null;
-    return { datasets, minTime };
-  }, [history, topPlayers, rangeMonths]);
+    return { datasets };
+  }, [history, matches, clubGameNumberByMatchId, topPlayers, rangeMonths]);
 
   if (loading) return <PageLoading label="Loading club stats…" />;
   if (error) return <p className="error">{error}</p>;
@@ -355,7 +384,8 @@ export default function ClubStats() {
           </div>
         </div>
         <p className="stat-meta" style={{ marginBottom: 12 }}>
-          Whoever's currently rated highest, updated automatically as the standings change.
+          Whoever's currently rated highest, updated automatically as the standings change. X-axis is the
+          club's own game count for the selected range, not calendar days.
         </p>
         {trajectory ? (
           <div style={{ height: 280 }}>
@@ -374,12 +404,7 @@ export default function ClubStats() {
                     callbacks: {
                       title: (items) => {
                         if (!items.length) return "";
-                        const t = trajectory.minTime + Number(items[0].parsed.x) * MS_PER_DAY;
-                        return new Date(t).toLocaleDateString(undefined, {
-                          day: "numeric",
-                          month: "short",
-                          year: "numeric",
-                        });
+                        return `Game ${Math.round(Number(items[0].parsed.x))}`;
                       },
                     },
                   },
@@ -387,14 +412,14 @@ export default function ClubStats() {
                 scales: {
                   x: {
                     type: "linear",
+                    min: 1,
                     grid: { display: false },
+                    title: { display: true, text: "Club game #", color: "#667085", font: { size: 11 } },
                     ticks: {
                       color: "#667085",
                       maxTicksLimit: 6,
-                      callback: (value) => {
-                        const t = trajectory.minTime + Number(value) * MS_PER_DAY;
-                        return new Date(t).toLocaleDateString(undefined, { day: "numeric", month: "short" });
-                      },
+                      precision: 0,
+                      callback: (value) => Math.round(Number(value)),
                     },
                   },
                   y: { grid: { color: "#eef1f6" }, ticks: { color: "#667085" } },
