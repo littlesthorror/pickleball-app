@@ -12,6 +12,7 @@ import { Line } from "react-chartjs-2";
 import { supabase } from "../supabaseClient";
 import Avatar from "../components/Avatar";
 import ShareCard from "../components/ShareCard";
+import MatchPredictor from "../components/MatchPredictor";
 import SeasonWrappedCard from "../components/SeasonWrappedCard";
 import { computeBadges, getFrameTier } from "../lib/badges";
 import type { MonthlyFinish, CompetitionPlacement, SeasonTop10Finish, FrameTier } from "../lib/badges";
@@ -1264,6 +1265,8 @@ export default function Dashboard({
           )}
         </div>
       )}
+
+      {isOwnProfile && <MatchPredictor />}
 
       {isOwnProfile && showShareCard && (
         <ShareCard
