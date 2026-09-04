@@ -3,6 +3,7 @@ import { supabase } from "../supabaseClient";
 import Avatar from "../components/Avatar";
 import { useDraft } from "../lib/useDraft";
 import { planRounds, serializeRounds, hydrateRounds, ROUND_PRESETS } from "../lib/matchmaking";
+import type { PairingStyle } from "../lib/matchmaking";
 import type { PlayerStatus } from "../types";
 import PageLoading from "../components/PageLoading";
 
@@ -33,6 +34,7 @@ export default function Matchmaking() {
   const [draft, setDraft] = useDraft(MATCHMAKING_DRAFT_KEY, {
     selectedIdsJson: "",
     numRounds: String(ROUND_PRESETS.sixty),
+    pairingStyle: "balanced",
     planJson: "",
   });
 
@@ -59,6 +61,7 @@ export default function Matchmaking() {
   }, [draft.selectedIdsJson]);
 
   const numRounds = Number(draft.numRounds) || ROUND_PRESETS.sixty;
+  const pairingStyle = (draft.pairingStyle === "mixed" ? "mixed" : "balanced") as PairingStyle;
 
   // Rehydrated from player IDs against whichever players are currently
   // loaded — see hydrateRounds' own comment on why this can come back null.
@@ -85,8 +88,16 @@ export default function Matchmaking() {
     setDraft((d) => ({ ...d, selectedIdsJson: "", planJson: "" }));
   }
 
+  function clearPlan() {
+    setDraft((d) => ({ ...d, planJson: "" }));
+  }
+
   function setNumRounds(n: number) {
     setDraft((d) => ({ ...d, numRounds: String(n) }));
+  }
+
+  function setPairingStyle(style: PairingStyle) {
+    setDraft((d) => ({ ...d, pairingStyle: style }));
   }
 
   const presentPlayers = players.filter((p) => selected.has(p.id));
@@ -94,7 +105,7 @@ export default function Matchmaking() {
   const benchSize = presentPlayers.length - courtsCount * 4;
 
   function generate() {
-    const newPlan = planRounds(presentPlayers, numRounds);
+    const newPlan = planRounds(presentPlayers, numRounds, pairingStyle);
     setDraft((d) => ({ ...d, planJson: JSON.stringify(serializeRounds(newPlan)) }));
   }
 
@@ -135,7 +146,7 @@ export default function Matchmaking() {
   return (
     <div>
       <h1>Smart matchmaking</h1>
-      <p style={{ color: "#475569" }}>
+      <p className="stat-meta">
         Check off who's here tonight and Sideline will suggest balanced courts round by round, based on
         everyone's current rating. It's a planning tool only — nothing here gets saved to anyone's record, so
         once games are played, enter the real results through "Enter match" as normal.
@@ -211,6 +222,21 @@ export default function Matchmaking() {
           style={{ width: 100 }}
         />
 
+        <label style={{ marginTop: 20 }}>Pairing style</label>
+        <div className="toggle-group">
+          <button disabled={pairingStyle === "balanced"} onClick={() => setPairingStyle("balanced")}>
+            Balanced
+          </button>
+          <button disabled={pairingStyle === "mixed"} onClick={() => setPairingStyle("mixed")}>
+            Mix skill levels
+          </button>
+        </div>
+        <p className="stat-meta" style={{ marginTop: 6 }}>
+          {pairingStyle === "mixed"
+            ? "Pairs each court's strongest and weakest player together as partners, so the top players aren't always just facing each other."
+            : "Picks whichever team split on each court gives the closest predicted result."}
+        </p>
+
         <button style={{ marginTop: 16 }} disabled={courtsCount < 1} onClick={generate}>
           {plan ? "Regenerate" : "Suggest matchups"}
         </button>
@@ -226,6 +252,9 @@ export default function Matchmaking() {
             <div style={{ display: "flex", gap: 14 }}>
               <span className="link-action" role="button" tabIndex={0} onClick={() => window.print()}>
                 Print
+              </span>
+              <span className="link-action" role="button" tabIndex={0} onClick={clearPlan}>
+                Clear matchups
               </span>
             </div>
           </div>

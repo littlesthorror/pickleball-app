@@ -27,6 +27,14 @@ export interface RoundPlan {
 
 export const ROUND_PRESETS = { sixty: 5, ninety: 7 } as const;
 
+// "Balanced" (the default) picks whichever of the 3 possible team splits
+// gives the closest predicted 50/50 result. "Mixed" is Ben's request
+// (2026-09-05) to guard against a "closed shop" where the same strong
+// players just keep facing each other — it deliberately pairs each court's
+// highest- and lowest-rated player together as partners instead, every
+// time, regardless of what that does to the predicted result.
+export type PairingStyle = "balanced" | "mixed";
+
 // How close two possible team-splits' win probabilities need to be (as a
 // fraction, e.g. 0.05 = 5 percentage points) before we stop treating the
 // slightly-more-balanced one as strictly better and instead prefer whichever
@@ -48,13 +56,22 @@ function shuffle<T>(arr: T[]): T[] {
   return copy;
 }
 
-// Of the 3 ways to split 4 players into two 2v2 teams, picks whichever is
-// closest to a 50/50 predicted result — falling back to partner variety
-// among any splits that are within BALANCE_TOLERANCE of the best one, so a
-// group that comes up more than once across a session's rounds doesn't
-// always get split the identical way.
-function bestSplit(four: PlayerStatus[], partnerCounts: Map<string, number>): CourtMatchup {
+// Of the 3 ways to split 4 players into two 2v2 teams, "balanced" picks
+// whichever is closest to a 50/50 predicted result — falling back to
+// partner variety among any splits that are within BALANCE_TOLERANCE of the
+// best one, so a group that comes up more than once across a session's
+// rounds doesn't always get split the identical way. "Mixed" skips that
+// search entirely and always pairs this court's strongest and weakest
+// player together (w+z), the two middling players together (x+y) — see
+// PairingStyle's own comment.
+function bestSplit(four: PlayerStatus[], partnerCounts: Map<string, number>, pairingStyle: PairingStyle): CourtMatchup {
   const [w, x, y, z] = four;
+
+  if (pairingStyle === "mixed") {
+    const prob = predictedWinProbability(averageTeam(w, z), averageTeam(x, y));
+    return { teamA: [w, z], teamB: [x, y], teamAProbability: prob };
+  }
+
   const combos: [PlayerStatus, PlayerStatus, PlayerStatus, PlayerStatus][] = [
     [w, z, x, y],
     [w, y, x, z],
@@ -84,7 +101,11 @@ function bestSplit(four: PlayerStatus[], partnerCounts: Map<string, number>): Co
  * only across THIS plan — it has no memory of previous sessions, same as
  * the Match Predictor.
  */
-export function planRounds(presentPlayers: PlayerStatus[], numRounds: number): RoundPlan[] {
+export function planRounds(
+  presentPlayers: PlayerStatus[],
+  numRounds: number,
+  pairingStyle: PairingStyle = "balanced"
+): RoundPlan[] {
   const courtsCount = Math.floor(presentPlayers.length / 4);
   if (courtsCount < 1) return [];
   const benchSize = presentPlayers.length - courtsCount * 4;
@@ -118,7 +139,7 @@ export function planRounds(presentPlayers: PlayerStatus[], numRounds: number): R
     const courts: CourtMatchup[] = [];
     for (let c = 0; c < courtsCount; c++) {
       const four = [tiers[0][c], tiers[1][c], tiers[2][c], tiers[3][c]];
-      const matchup = bestSplit(four, partnerCounts);
+      const matchup = bestSplit(four, partnerCounts, pairingStyle);
       courts.push(matchup);
 
       const keyA = pairKey(matchup.teamA[0].id, matchup.teamA[1].id);
