@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "./supabaseClient";
 import MatchEntry from "./pages/MatchEntry";
+import Matchmaking from "./pages/Matchmaking";
 import Login from "./pages/Login";
 import AdminManagement from "./pages/AdminManagement";
 import GameHistory from "./pages/GameHistory";
@@ -48,6 +49,7 @@ const TABS = [
   "competitions",
   "quarterly-cup",
   "match-entry",
+  "matchmaking",
   "manage-admins",
   "game-history",
   "profile",
@@ -284,7 +286,7 @@ export default function App() {
     setPreviewAsPlayer(next);
     // Bounce back to the dashboard if entering preview mode from a tab a
     // regular player wouldn't have access to.
-    if (next && (tab === "match-entry" || tab === "manage-admins")) {
+    if (next && (tab === "match-entry" || tab === "matchmaking" || tab === "manage-admins")) {
       setTab("dashboard");
     }
   }
@@ -446,6 +448,9 @@ export default function App() {
                   <button disabled={tab === "match-entry"} onClick={() => changeTab("match-entry")}>
                     Enter match
                   </button>
+                  <button disabled={tab === "matchmaking"} onClick={() => changeTab("matchmaking")}>
+                    Matchmaking
+                  </button>
                   <button disabled={tab === "manage-admins"} onClick={() => changeTab("manage-admins")}>
                     Admins
                   </button>
@@ -489,6 +494,7 @@ export default function App() {
                     <QuarterlyCup isAdmin={effectiveIsAdmin} currentUserId={player.id} />
                   )}
                   {tab === "match-entry" && effectiveIsAdmin && <MatchEntry />}
+                  {tab === "matchmaking" && effectiveIsAdmin && <Matchmaking />}
                   {tab === "manage-admins" && effectiveIsAdmin && (
                     <AdminManagement
                       currentUserId={session.user.id}
