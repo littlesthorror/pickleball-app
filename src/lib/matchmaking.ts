@@ -133,3 +133,60 @@ export function planRounds(presentPlayers: PlayerStatus[], numRounds: number): R
 
   return rounds;
 }
+
+// ── Persisting a generated plan across tab switches (2026-09-05) ──────────
+// Matchmaking.tsx stores the plan in sessionStorage via useDraft (see that
+// hook's own comment) so switching to "Enter match" mid-session and back
+// doesn't lose the round-by-round plan already worked out. useDraft is
+// deliberately string-only, so the plan is serialized down to player IDs
+// (not full PlayerStatus objects — no need to duplicate everyone's rating
+// etc. in storage) and rehydrated against whichever players are currently
+// loaded.
+
+export interface SerializedCourt {
+  teamAIds: [string, string];
+  teamBIds: [string, string];
+  teamAProbability: number;
+}
+
+export interface SerializedRound {
+  courts: SerializedCourt[];
+  sittingOutIds: string[];
+}
+
+export function serializeRounds(rounds: RoundPlan[]): SerializedRound[] {
+  return rounds.map((r) => ({
+    courts: r.courts.map((c) => ({
+      teamAIds: [c.teamA[0].id, c.teamA[1].id],
+      teamBIds: [c.teamB[0].id, c.teamB[1].id],
+      teamAProbability: c.teamAProbability,
+    })),
+    sittingOutIds: r.sittingOut.map((p) => p.id),
+  }));
+}
+
+// Returns null if any referenced player can no longer be found (e.g.
+// deactivated since the plan was made) — a half-populated court would be
+// more confusing than just asking the admin to regenerate.
+export function hydrateRounds(serialized: SerializedRound[], byId: Map<string, PlayerStatus>): RoundPlan[] | null {
+  const rounds: RoundPlan[] = [];
+  for (const r of serialized) {
+    const courts: CourtMatchup[] = [];
+    for (const c of r.courts) {
+      const a1 = byId.get(c.teamAIds[0]);
+      const a2 = byId.get(c.teamAIds[1]);
+      const b1 = byId.get(c.teamBIds[0]);
+      const b2 = byId.get(c.teamBIds[1]);
+      if (!a1 || !a2 || !b1 || !b2) return null;
+      courts.push({ teamA: [a1, a2], teamB: [b1, b2], teamAProbability: c.teamAProbability });
+    }
+    const sittingOut: PlayerStatus[] = [];
+    for (const id of r.sittingOutIds) {
+      const p = byId.get(id);
+      if (!p) return null;
+      sittingOut.push(p);
+    }
+    rounds.push({ courts, sittingOut });
+  }
+  return rounds;
+}

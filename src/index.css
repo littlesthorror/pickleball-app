@@ -1618,3 +1618,33 @@ textarea {
     transform: rotate(360deg);
   }
 }
+
+/* ── Print (2026-09-05, added for Matchmaking's "Print" button) ─────────
+   Generic "print just this one element" utility — hides everything else on
+   the page (nav, forms, other cards) regardless of what's around it, so
+   it's reusable by any future printable view, not just the matchmaking
+   plan. .print-only is the inverse: content that only shows up in the
+   printed output (a title/date line that doesn't need to clutter the
+   on-screen card). */
+.print-only {
+  display: none;
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .print-area,
+  .print-area * {
+    visibility: visible;
+  }
+  .print-area {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+  }
+  .print-only {
+    display: block;
+  }
+}
