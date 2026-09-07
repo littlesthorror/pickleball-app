@@ -1283,6 +1283,36 @@ export function computeBadges(
     });
   }
 
+  // "Court Regular" — played 30+ games within a single calendar month.
+  // Added 2026-09-07 at Ben's request, same non-retroactive pattern as the
+  // rest of this batch (historySinceNewBadges only) — a player who happened
+  // to have a 30-game month before this badge existed shouldn't be handed
+  // it retroactively. Only needs to trigger once (the first month it
+  // happens), not per-month, so it stops as soon as it finds a qualifying
+  // month rather than tracking every month going forward.
+  const COURT_REGULAR_GAMES = 30;
+  const gamesByMonth = new Map<string, PlayerMatchHistoryRow[]>();
+  let courtRegularAt: string | null = null;
+  for (const h of historySinceNewBadges) {
+    const d = new Date(h.played_at);
+    const monthKey = `${d.getFullYear()}-${d.getMonth()}`;
+    const list = gamesByMonth.get(monthKey) ?? [];
+    list.push(h);
+    gamesByMonth.set(monthKey, list);
+    if (!courtRegularAt && list.length === COURT_REGULAR_GAMES) {
+      courtRegularAt = h.played_at;
+    }
+  }
+  if (courtRegularAt) {
+    badges.push({
+      id: "court-regular",
+      emoji: "📆",
+      label: "Court Regular",
+      description: `Played ${COURT_REGULAR_GAMES} games in a single calendar month — hardly left the court.`,
+      achievedAt: courtRegularAt,
+    });
+  }
+
   return badges;
 }
 
