@@ -1238,18 +1238,28 @@ export default function Notices({ isAdmin, playerId }: { isAdmin: boolean; playe
             </div>
           );
         })}
-        {notices.length > visibleCount && (
-          <button
-            onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
-            style={{
-              marginTop: 0,
-              background: "transparent",
-              color: "var(--navy-500)",
-              border: "1px solid var(--border)",
-            }}
-          >
-            Show more ({notices.length - visibleCount} more)
-          </button>
+        {(notices.length > visibleCount || visibleCount > PAGE_SIZE) && (
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            {notices.length > visibleCount && (
+              <button
+                onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
+                style={{
+                  width: "auto",
+                  marginTop: 0,
+                  background: "transparent",
+                  color: "var(--navy-500)",
+                  border: "1px solid var(--border)",
+                }}
+              >
+                Show more ({notices.length - visibleCount} more)
+              </button>
+            )}
+            {visibleCount > PAGE_SIZE && (
+              <span className="link-action" role="button" tabIndex={0} onClick={() => setVisibleCount(PAGE_SIZE)}>
+                Show less
+              </span>
+            )}
+          </div>
         )}
       </div>
 

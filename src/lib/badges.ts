@@ -793,13 +793,33 @@ export function computeBadges(
 
   // ── 7 more badges added 2026-09-07 at Ben's request ────────────────────
 
+  // Non-retroactive (2026-09-07, Ben's request) — he added "The Thief" and
+  // was immediately awarded it for a win from the previous week, which read
+  // as odd: the badge only just started existing, so it shouldn't reach
+  // back into games played before it did. Every badge ABOVE this point
+  // still sweeps full history the moment it's added (that's how the
+  // Rollercoaster/Bracket Buster/etc. badges got their first holders, and
+  // changing that retroactively would strip badges people already have —
+  // not something to do without asking). This batch of 7 is the first to
+  // use the new pattern instead: only games played on/after each badge's
+  // own introduction date are considered, so nothing already in the past
+  // when the badge shipped can trigger it. Future badge additions should
+  // follow this same approach — filter history to
+  // `h.played_at >= introducedAt` before running the detection logic,
+  // rather than running it against the full `history` array.
+  const NEW_BADGES_INTRODUCED_AT = "2026-09-07T00:00:00Z";
+  const historySinceNewBadges = history.filter(
+    (h) => new Date(h.played_at).getTime() >= new Date(NEW_BADGES_INTRODUCED_AT).getTime()
+  );
+
   // "Titanic" — won a game 19–12, then got pickled (shut out 0) in the very
   // next game. Needs two CONSECUTIVE entries in history (already ordered
   // ascending by game_number) — not just "happened at some point," the two
-  // have to be back to back.
-  for (let i = 0; i + 1 < history.length; i++) {
-    const first = history[i];
-    const next = history[i + 1];
+  // have to be back to back. Only looks at games since this badge was
+  // introduced (see historySinceNewBadges above).
+  for (let i = 0; i + 1 < historySinceNewBadges.length; i++) {
+    const first = historySinceNewBadges[i];
+    const next = historySinceNewBadges[i + 1];
     if (first.won && first.own_score === 19 && first.opponent_score === 12 && !next.won && next.own_score === 0) {
       badges.push({
         id: "titanic",
@@ -813,10 +833,11 @@ export function computeBadges(
   }
 
   // "Slumdog" — lost 0–10, then won the very next game 12–10. The exact
-  // rags-to-riches reversal, back to back.
-  for (let i = 0; i + 1 < history.length; i++) {
-    const first = history[i];
-    const next = history[i + 1];
+  // rags-to-riches reversal, back to back. Only games since this badge was
+  // introduced (see historySinceNewBadges above).
+  for (let i = 0; i + 1 < historySinceNewBadges.length; i++) {
+    const first = historySinceNewBadges[i];
+    const next = historySinceNewBadges[i + 1];
     if (
       !first.won &&
       first.own_score === 0 &&
@@ -836,8 +857,9 @@ export function computeBadges(
     }
   }
 
-  // "Stranger Thing" — a game that finished 11–11, a genuine deadlock.
-  const strangerThing = history.find((h) => h.own_score === 11 && h.opponent_score === 11);
+  // "Stranger Thing" — a game that finished 11–11, a genuine deadlock. Only
+  // games since this badge was introduced (see historySinceNewBadges above).
+  const strangerThing = historySinceNewBadges.find((h) => h.own_score === 11 && h.opponent_score === 11);
   if (strangerThing) {
     badges.push({
       id: "stranger-thing",
@@ -853,8 +875,12 @@ export function computeBadges(
   // opponent_combined_pre_rating, added to the player_match_history view
   // specifically for this badge). Different from Bracket Buster/Giant
   // Slayer above, which only check whether BOTH opponents individually
-  // outrated you, regardless of by how much combined.
-  const thiefWins = history.filter((h) => h.won && h.opponent_combined_pre_rating != null);
+  // outrated you, regardless of by how much combined. Only wins since this
+  // badge was introduced (see historySinceNewBadges above) — otherwise
+  // adding this badge would immediately reach back and award it for a win
+  // from before it existed, which is exactly what "not retroactive" means
+  // to avoid.
+  const thiefWins = historySinceNewBadges.filter((h) => h.won && h.opponent_combined_pre_rating != null);
   if (thiefWins.length > 0) {
     const biggest = thiefWins.reduce((best, h) =>
       (h.opponent_combined_pre_rating as number) > (best.opponent_combined_pre_rating as number) ? h : best
@@ -871,7 +897,9 @@ export function computeBadges(
   }
 
   // "Destroyer" — won a game with over 20 points to your opponents' zero.
-  const destroyer = history.find((h) => h.won && h.own_score > 20 && h.opponent_score === 0);
+  // Only games since this badge was introduced (see historySinceNewBadges
+  // above).
+  const destroyer = historySinceNewBadges.find((h) => h.won && h.own_score > 20 && h.opponent_score === 0);
   if (destroyer) {
     badges.push({
       id: "destroyer",
@@ -882,14 +910,18 @@ export function computeBadges(
     });
   }
 
-  // "Absolute Tank" — scored over 30 points in a single game, win or lose.
-  const tank = history.find((h) => h.own_score > 30);
+  // "Absolute Tank" — scored over 30 points in a single WINNING game.
+  // Changed 2026-09-07 (Ben's request) from "win or lose" to require a win —
+  // scoring big in a losing effort didn't feel like it should carry the
+  // same weight as doing it while actually winning. Only games since this
+  // badge was introduced (see historySinceNewBadges above).
+  const tank = historySinceNewBadges.find((h) => h.won && h.own_score > 30);
   if (tank) {
     badges.push({
       id: "absolute-tank",
       emoji: "🛡️",
       label: "Absolute Tank",
-      description: `Scored ${tank.own_score} points in a single game against ${tank.opponent_names}.`,
+      description: `Scored ${tank.own_score} points in a single winning game against ${tank.opponent_names}.`,
       achievedAt: tank.played_at,
     });
   }
@@ -899,10 +931,12 @@ export function computeBadges(
   // about your win COUNT against a pair, not how often you've come up
   // against them in the first place. Requires having actually faced them a
   // handful of times (3+) first — otherwise "most frequent" is meaningless
-  // noise off just one or two early games.
+  // noise off just one or two early games. Only games since this badge was
+  // introduced (see historySinceNewBadges above) — both the frequency count
+  // and the qualifying win start fresh from the badge's introduction date.
   const DOUBLE_DISRUPTOR_MIN_MEETINGS = 3;
   const opponentFrequency = new Map<string, number>();
-  for (const h of history) {
+  for (const h of historySinceNewBadges) {
     opponentFrequency.set(h.opponent_names, (opponentFrequency.get(h.opponent_names) ?? 0) + 1);
   }
   let mostFrequentOpponent = "";
@@ -914,7 +948,7 @@ export function computeBadges(
     }
   }
   if (mostFrequentCount >= DOUBLE_DISRUPTOR_MIN_MEETINGS) {
-    const disruptorWin = history.find((h) => h.won && h.opponent_names === mostFrequentOpponent);
+    const disruptorWin = historySinceNewBadges.find((h) => h.won && h.opponent_names === mostFrequentOpponent);
     if (disruptorWin) {
       badges.push({
         id: "double-disruptor",

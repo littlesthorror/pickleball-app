@@ -7,7 +7,7 @@ import { getEventForecast } from "../lib/weather";
 import type { EventForecast } from "../lib/weather";
 import { useBodyScrollLock } from "../lib/useBodyScrollLock";
 import { compressImageFile } from "../lib/imageCompress";
-import type { EventPosterPlaceholder, EventRow } from "../types";
+import type { EventPosterPlaceholder, EventRow, NoticeAttachment } from "../types";
 import { useConfirm } from "../components/ConfirmDialog";
 import { useToast } from "../components/Toast";
 import PageLoading from "../components/PageLoading";
@@ -57,44 +57,6 @@ function formatEventTime(timeStr: string | null) {
   return date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 }
 
-// Clamps a long event description to roughly 2-3 paragraphs for the initial
-// view (2026-09-07, Ben's request — "event listings are getting pretty
-// long"). Paragraphs are whatever's separated by blank lines in what the
-// admin typed; .rich-text's white-space: pre-wrap means we don't need to
-// re-join with <br/> elements, the raw newlines render as-is. If there
-// aren't multiple paragraphs (one big block of text), falls back to a
-// character-count clamp so a single wall-of-text description still gets
-// truncated rather than slipping through untouched.
-const DESC_PREVIEW_PARAGRAPHS = 3;
-const DESC_PREVIEW_CHARS = 400;
-
-function truncateDescription(description: string | null): {
-  previewText: string;
-  fullText: string;
-  isTruncated: boolean;
-} {
-  const fullText = description ?? "";
-  const paragraphs = fullText.split(/\n\s*\n/).filter((p) => p.trim().length > 0);
-
-  if (paragraphs.length > DESC_PREVIEW_PARAGRAPHS) {
-    return {
-      previewText: paragraphs.slice(0, DESC_PREVIEW_PARAGRAPHS).join("\n\n"),
-      fullText,
-      isTruncated: true,
-    };
-  }
-
-  if (fullText.length > DESC_PREVIEW_CHARS) {
-    return {
-      previewText: fullText.slice(0, DESC_PREVIEW_CHARS).trimEnd() + "…",
-      fullText,
-      isTruncated: true,
-    };
-  }
-
-  return { previewText: fullText, fullText, isTruncated: false };
-}
-
 // Combines the date + optional time into a real Date object, local time —
 // used both for sorting same-day events by time of day, and for working
 // out when an event's 24-hour "still visible" window ends.
@@ -113,6 +75,16 @@ function eventStart(e: EventRow): Date {
 function posterUrl(path: string) {
   const { data } = supabase.storage.from("notices").getPublicUrl(path);
   return data.publicUrl;
+}
+
+// Attachments (2026-09-07, Ben's request) reuse the exact same file/image
+// split and storage approach as Notices' attachments — same "notices"
+// bucket, same {path, name} shape (see NoticeAttachment in types.ts).
+const IMAGE_EXTENSIONS = ["jpg", "jpeg", "png", "gif", "webp", "avif", "heic"];
+
+function isImageFile(fileName: string) {
+  const ext = fileName.split(".").pop()?.toLowerCase() ?? "";
+  return IMAGE_EXTENSIONS.includes(ext);
 }
 
 function toDateStr(d: Date) {
@@ -412,10 +384,6 @@ function EventTicketModal({
   const [rsvpLoading, setRsvpLoading] = useState(true);
   const [rsvpSaving, setRsvpSaving] = useState(false);
   const [rsvpError, setRsvpError] = useState<string | null>(null);
-  // Long descriptions get clamped to ~2-3 paragraphs with a "Show more"
-  // toggle (2026-09-07, Ben's request) — some event write-ups run long and
-  // were pushing the RSVP button off the bottom of the ticket popup.
-  const [descExpanded, setDescExpanded] = useState(false);
 
   async function fetchRsvps() {
     setRsvpLoading(true);
@@ -488,7 +456,6 @@ function EventTicketModal({
   const visual = posterVisual(event);
   const spotsFull = event.capacity != null && goingCount >= event.capacity;
   const spotsPct = event.capacity ? Math.min(100, Math.round((goingCount / event.capacity) * 100)) : 0;
-  const { previewText, isTruncated, fullText } = truncateDescription(event.description);
 
   return (
     <div className="ticket-overlay" onClick={onClose}>
@@ -554,23 +521,49 @@ function EventTicketModal({
           )}
 
           {event.description && (
-            <div style={{ marginTop: 16 }}>
-              <p className="rich-text" style={{ marginTop: 0, marginBottom: 0 }}>
-                {linkify(descExpanded ? fullText : previewText)}
-              </p>
-              {isTruncated && (
-                <span
-                  className="link-action"
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => setDescExpanded((v) => !v)}
-                  style={{ display: "inline-block", marginTop: 6 }}
-                >
-                  {descExpanded ? "Show less" : "Show more"}
-                </span>
-              )}
-            </div>
+            <p className="rich-text" style={{ marginTop: 16, marginBottom: 0 }}>
+              {linkify(event.description)}
+            </p>
           )}
+
+          {(event.attachments ?? []).length > 0 && (() => {
+            const imageAtts = (event.attachments ?? []).filter((a) => isImageFile(a.name));
+            const fileAtts = (event.attachments ?? []).filter((a) => !isImageFile(a.name));
+            return (
+              <>
+                {imageAtts.length > 0 && (
+                  <div className="notice-photo-grid" style={{ marginTop: 12 }}>
+                    {imageAtts.map((a) => (
+                      <button
+                        key={a.path}
+                        type="button"
+                        className="notice-photo-thumb"
+                        onClick={() => onZoom(posterUrl(a.path))}
+                      >
+                        <img src={posterUrl(a.path)} alt={a.name} loading="lazy" />
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {fileAtts.length > 0 && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+                    {fileAtts.map((a) => (
+                      <span
+                        key={a.path}
+                        className="link-action"
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => window.open(posterUrl(a.path), "_blank", "noopener,noreferrer")}
+                        style={{ display: "inline-block", fontWeight: 600, fontSize: "0.85rem" }}
+                      >
+                        📎 {a.name}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </>
+            );
+          })()}
 
           {event.rsvp_enabled && event.capacity != null && (
             <div style={{ marginTop: 18 }}>
@@ -727,6 +720,13 @@ export default function Events({ isAdmin, playerId }: { isAdmin: boolean; player
   const [posterFile, setPosterFile] = useState<File | null>(null);
   const [existingPosterPath, setExistingPosterPath] = useState<string | null>(null);
   const [removePoster, setRemovePoster] = useState(false);
+  // File/photo attachments (2026-09-07, Ben's request) — same "existing +
+  // marked for removal + newly chosen" pattern as poster above, and as
+  // Notices.tsx's attachments (see that file's own comment on why removal
+  // is deferred to save time rather than immediate).
+  const [existingAttachments, setExistingAttachments] = useState<NoticeAttachment[]>([]);
+  const [removedAttachmentPaths, setRemovedAttachmentPaths] = useState<Set<string>>(new Set());
+  const [newAttachmentFiles, setNewAttachmentFiles] = useState<File[]>([]);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -802,7 +802,10 @@ export default function Events({ isAdmin, playerId }: { isAdmin: boolean; player
   useEffect(() => {
     if (!editingId || events.length === 0) return;
     const ev = events.find((e) => e.id === editingId);
-    if (ev) setExistingPosterPath(ev.poster_path);
+    if (ev) {
+      setExistingPosterPath(ev.poster_path);
+      setExistingAttachments(ev.attachments ?? []);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editingId, events]);
 
@@ -811,6 +814,9 @@ export default function Events({ isAdmin, playerId }: { isAdmin: boolean; player
     setExistingPosterPath(null);
     setPosterFile(null);
     setRemovePoster(false);
+    setExistingAttachments([]);
+    setRemovedAttachmentPaths(new Set());
+    setNewAttachmentFiles([]);
     setSaveError(null);
   }
 
@@ -819,6 +825,9 @@ export default function Events({ isAdmin, playerId }: { isAdmin: boolean; player
     setExistingPosterPath(null);
     setPosterFile(null);
     setRemovePoster(false);
+    setExistingAttachments([]);
+    setRemovedAttachmentPaths(new Set());
+    setNewAttachmentFiles([]);
     setSaveError(null);
   }
 
@@ -844,7 +853,30 @@ export default function Events({ isAdmin, playerId }: { isAdmin: boolean; player
     setExistingPosterPath(e.poster_path);
     setPosterFile(null);
     setRemovePoster(false);
+    setExistingAttachments(e.attachments ?? []);
+    setRemovedAttachmentPaths(new Set());
+    setNewAttachmentFiles([]);
     setSaveError(null);
+  }
+
+  function handleAttachmentFilesChosen(ev: ChangeEvent<HTMLInputElement>) {
+    const chosen = Array.from(ev.target.files ?? []);
+    setNewAttachmentFiles((prev) => [...prev, ...chosen]);
+    // Reset so choosing the same file again later still fires a change event.
+    ev.target.value = "";
+  }
+
+  function toggleRemoveExistingAttachment(path: string) {
+    setRemovedAttachmentPaths((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  }
+
+  function removeNewAttachment(index: number) {
+    setNewAttachmentFiles((prev) => prev.filter((_, i) => i !== index));
   }
 
   function handlePosterChange(ev: ChangeEvent<HTMLInputElement>) {
@@ -941,6 +973,50 @@ export default function Events({ isAdmin, playerId }: { isAdmin: boolean; player
       await supabase.from("events").update({ poster_path: null }).eq("id", eventId);
       if (existingPosterPath) {
         await supabase.storage.from("notices").remove([existingPosterPath]);
+      }
+    }
+
+    // Attachments — uploaded after the event row exists so the storage path
+    // can be scoped under the event's own id, same pattern as the poster
+    // above. New files are compressed if they're images (same reasoning as
+    // the poster: these get fetched by every member who opens the event).
+    if (eventId && (newAttachmentFiles.length > 0 || removedAttachmentPaths.size > 0)) {
+      const uploaded: NoticeAttachment[] = [];
+      for (const f of newAttachmentFiles) {
+        let toUpload: File = f;
+        if (isImageFile(f.name)) {
+          try {
+            toUpload = await compressImageFile(f);
+          } catch (err) {
+            setSaveError(
+              `Event saved, but one attachment couldn't be processed: ${err instanceof Error ? err.message : "unknown error"}`
+            );
+            setSaving(false);
+            load();
+            return;
+          }
+        }
+        const ext = toUpload.name.split(".").pop() || "dat";
+        const path = `events/${eventId}/attachment-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+        const { error: uploadError } = await supabase.storage
+          .from("notices")
+          .upload(path, toUpload, { cacheControl: "31536000" });
+        if (uploadError) {
+          setSaveError(`Event saved, but an attachment failed to upload: ${uploadError.message}`);
+          setSaving(false);
+          load();
+          return;
+        }
+        uploaded.push({ path, name: f.name });
+      }
+
+      const keptExisting = existingAttachments.filter((a) => !removedAttachmentPaths.has(a.path));
+      const attachments = [...keptExisting, ...uploaded];
+      await supabase.from("events").update({ attachments }).eq("id", eventId);
+
+      const toRemove = existingAttachments.filter((a) => removedAttachmentPaths.has(a.path)).map((a) => a.path);
+      if (toRemove.length > 0) {
+        await supabase.storage.from("notices").remove(toRemove);
       }
     }
 
@@ -1195,6 +1271,97 @@ export default function Events({ isAdmin, playerId }: { isAdmin: boolean; player
             </>
           )}
 
+          <label>Photo attachment (optional)</label>
+          <input type="file" accept="image/*" multiple onChange={handleAttachmentFilesChosen} />
+          <p className="stat-meta" style={{ marginTop: 4 }}>
+            Opens your phone's Photos/Gallery — add as many as you like. Separate from the poster image above,
+            which is just the header banner.
+          </p>
+
+          <label>File attachment (optional)</label>
+          <input type="file" multiple onChange={handleAttachmentFilesChosen} />
+          <p className="stat-meta" style={{ marginTop: 4 }}>
+            For non-photo files (team sheets, rules, PDFs, etc.).
+          </p>
+
+          {existingAttachments.length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+              {existingAttachments.map((a) => {
+                const removed = removedAttachmentPaths.has(a.path);
+                return (
+                  <div
+                    key={a.path}
+                    style={{
+                      opacity: removed ? 0.45 : 1,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      border: "1px solid var(--border)",
+                      borderRadius: 8,
+                      padding: "4px 8px",
+                      fontSize: "0.78rem",
+                    }}
+                  >
+                    <span>
+                      {isImageFile(a.name) ? "🖼️" : "📎"} {a.name}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => toggleRemoveExistingAttachment(a.path)}
+                      style={{
+                        marginTop: 0,
+                        width: "auto",
+                        padding: "2px 6px",
+                        fontSize: "0.7rem",
+                        background: "transparent",
+                        color: removed ? "var(--success)" : "var(--danger)",
+                      }}
+                    >
+                      {removed ? "Undo" : "Remove"}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {newAttachmentFiles.length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+              {newAttachmentFiles.map((f, i) => (
+                <div
+                  key={`${f.name}-${i}`}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    border: "1px solid var(--border)",
+                    borderRadius: 8,
+                    padding: "4px 8px",
+                    fontSize: "0.78rem",
+                  }}
+                >
+                  <span>
+                    {isImageFile(f.name) ? "🖼️" : "📎"} {f.name}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => removeNewAttachment(i)}
+                    style={{
+                      marginTop: 0,
+                      width: "auto",
+                      padding: "2px 6px",
+                      fontSize: "0.7rem",
+                      background: "transparent",
+                      color: "var(--danger)",
+                    }}
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
           {saveError && <p className="error">{saveError}</p>}
 
           <button disabled={saving || !draft.title.trim() || !draft.eventDate} onClick={handleSave}>
@@ -1247,18 +1414,28 @@ export default function Events({ isAdmin, playerId }: { isAdmin: boolean; player
             onDelete={() => handleDelete(e.id)}
           />
         ))}
-        {upcoming.length > visibleUpcoming && (
-          <button
-            onClick={() => setVisibleUpcoming((c) => c + PAGE_SIZE)}
-            style={{
-              marginTop: 12,
-              background: "transparent",
-              color: "var(--navy-500)",
-              border: "1px solid var(--border)",
-            }}
-          >
-            Show more ({upcoming.length - visibleUpcoming} more)
-          </button>
+        {(upcoming.length > visibleUpcoming || visibleUpcoming > PAGE_SIZE) && (
+          <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 12 }}>
+            {upcoming.length > visibleUpcoming && (
+              <button
+                onClick={() => setVisibleUpcoming((c) => c + PAGE_SIZE)}
+                style={{
+                  width: "auto",
+                  marginTop: 0,
+                  background: "transparent",
+                  color: "var(--navy-500)",
+                  border: "1px solid var(--border)",
+                }}
+              >
+                Show more ({upcoming.length - visibleUpcoming} more)
+              </button>
+            )}
+            {visibleUpcoming > PAGE_SIZE && (
+              <span className="link-action" role="button" tabIndex={0} onClick={() => setVisibleUpcoming(PAGE_SIZE)}>
+                Show less
+              </span>
+            )}
+          </div>
         )}
       </div>
 
@@ -1276,18 +1453,28 @@ export default function Events({ isAdmin, playerId }: { isAdmin: boolean; player
               onDelete={() => handleDelete(e.id)}
             />
           ))}
-          {past.length > visiblePast && (
-            <button
-              onClick={() => setVisiblePast((c) => c + PAGE_SIZE)}
-              style={{
-                marginTop: 12,
-                background: "transparent",
-                color: "var(--navy-500)",
-                border: "1px solid var(--border)",
-              }}
-            >
-              Show more ({past.length - visiblePast} more)
-            </button>
+          {(past.length > visiblePast || visiblePast > PAGE_SIZE) && (
+            <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 12 }}>
+              {past.length > visiblePast && (
+                <button
+                  onClick={() => setVisiblePast((c) => c + PAGE_SIZE)}
+                  style={{
+                    width: "auto",
+                    marginTop: 0,
+                    background: "transparent",
+                    color: "var(--navy-500)",
+                    border: "1px solid var(--border)",
+                  }}
+                >
+                  Show more ({past.length - visiblePast} more)
+                </button>
+              )}
+              {visiblePast > PAGE_SIZE && (
+                <span className="link-action" role="button" tabIndex={0} onClick={() => setVisiblePast(PAGE_SIZE)}>
+                  Show less
+                </span>
+              )}
+            </div>
           )}
         </div>
       )}

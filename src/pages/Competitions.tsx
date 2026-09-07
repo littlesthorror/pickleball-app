@@ -76,7 +76,12 @@ export default function Competitions({ isAdmin, currentUserId }: { isAdmin: bool
         } else {
           const rows = (data ?? []) as CompetitionRow[];
           setCompetitions(rows);
-          setSelectedId((prev) => prev ?? rows[0]?.id ?? null);
+          // Defaults to the newest ACTIVE (not-yet-completed) competition
+          // rather than just the newest overall (2026-09-07, Ben's request,
+          // alongside the archive below) — otherwise a club running lots of
+          // competitions would land on a wrapped-up one by default just
+          // because it happened to be created most recently.
+          setSelectedId((prev) => prev ?? rows.find((c) => c.status !== "completed")?.id ?? null);
         }
       });
   }
@@ -146,6 +151,45 @@ export default function Competitions({ isAdmin, currentUserId }: { isAdmin: bool
   const selected = competitions.find((c) => c.id === selectedId) ?? null;
   const newFormOpen = showNewForm ?? competitions.length === 0;
 
+  // Completed competitions move into a collapsed archive below (2026-09-07,
+  // Ben's request — "we plan to run a lot of comps and looking at how to
+  // manage this effectively"). Active ones keep behaving exactly as
+  // before, via the "Viewing" selector.
+  const activeCompetitions = competitions.filter((c) => c.status !== "completed");
+  const archivedCompetitions = competitions.filter((c) => c.status === "completed");
+
+  // Winner name per archived competition, for the collapsed row's subtitle
+  // — fetched once for the whole archive rather than per-row, since it's
+  // just placement-1 results plus the teams they belong to. Doesn't block
+  // rendering the rows themselves; a row's winner line just fills in once
+  // this resolves.
+  const [archiveWinners, setArchiveWinners] = useState<Map<string, string>>(new Map());
+  useEffect(() => {
+    if (archivedCompetitions.length === 0) {
+      setArchiveWinners(new Map());
+      return;
+    }
+    const ids = archivedCompetitions.map((c) => c.id);
+    Promise.all([
+      supabase.from("competition_results").select("competition_id, team_id").in("competition_id", ids).eq("placement", 1),
+      supabase.from("competition_teams").select("id, team_name, player1_id, player2_id").in("competition_id", ids),
+    ]).then(([resultsRes, teamsRes]) => {
+      const teamById = new Map((teamsRes.data ?? []).map((t) => [t.id, t]));
+      const nameById = new Map(players.map((p) => [p.id, p.display_name]));
+      const map = new Map<string, string>();
+      for (const r of resultsRes.data ?? []) {
+        const t = teamById.get(r.team_id);
+        if (!t) continue;
+        map.set(
+          r.competition_id,
+          t.team_name || `${nameById.get(t.player1_id) ?? "?"} & ${nameById.get(t.player2_id) ?? "?"}`
+        );
+      }
+      setArchiveWinners(map);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [competitions, players]);
+
   if (loading) return <PageLoading label="Loading competitions…" />;
   if (error) return <p className="error">{error}</p>;
 
@@ -157,11 +201,11 @@ export default function Competitions({ isAdmin, currentUserId }: { isAdmin: bool
         everyone's normal club rating too.
       </p>
 
-      {competitions.length > 1 && (
+      {activeCompetitions.length > 1 && (
         <div className="card">
           <label style={{ marginTop: 0 }}>Viewing</label>
           <select value={selectedId ?? ""} onChange={(e) => setSelectedId(e.target.value)}>
-            {competitions.map((c) => (
+            {activeCompetitions.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name} ({c.status})
               </option>
@@ -232,7 +276,7 @@ export default function Competitions({ isAdmin, currentUserId }: { isAdmin: bool
         </div>
       )}
 
-      {!selected && (
+      {!selected && archivedCompetitions.length === 0 && (
         <p className="stat-meta">
           {isAdmin ? "Create your first competition above." : "No competitions have been set up yet."}
         </p>
@@ -255,6 +299,97 @@ export default function Competitions({ isAdmin, currentUserId }: { isAdmin: bool
             (competitions.length - 1 - competitions.findIndex((c) => c.id === selected.id)) % COMPETITION_BANNERS.length
           }
         />
+      )}
+
+      {archivedCompetitions.length > 0 && (
+        <div style={{ marginTop: selected ? 24 : 0 }}>
+          <h2 style={{ marginBottom: 4 }}>Competition archive</h2>
+          <p className="stat-meta" style={{ marginBottom: 12 }}>
+            Completed competitions, collapsed to keep this page manageable — tap one to see its full standings
+            and bracket.
+          </p>
+          {archivedCompetitions.map((c) => (
+            <CompetitionArchiveRow
+              key={c.id}
+              competition={c}
+              winnerLabel={archiveWinners.get(c.id) ?? null}
+              players={players}
+              isAdmin={isAdmin}
+              currentUserId={currentUserId}
+              onCompetitionChanged={loadCompetitions}
+              onDelete={handleDeleteCompetition}
+              bannerIndex={
+                (competitions.length - 1 - competitions.findIndex((x) => x.id === c.id)) % COMPETITION_BANNERS.length
+              }
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// A completed competition, collapsed to just its name/date/winner with a
+// tap-to-expand toggle (2026-09-07, Ben's request — running lots of
+// competitions was turning this page into an ever-growing scroll of full
+// banners/brackets for comps nobody needed to look at again). Expanding
+// mounts the exact same CompetitionDetail used for the active "Viewing"
+// competition above, so editing/deleting/reopening a past competition
+// still works identically — this is purely a display wrapper.
+function CompetitionArchiveRow({
+  competition,
+  winnerLabel,
+  players,
+  isAdmin,
+  currentUserId,
+  onCompetitionChanged,
+  onDelete,
+  bannerIndex,
+}: {
+  competition: CompetitionRow;
+  winnerLabel: string | null;
+  players: PlayerStatus[];
+  isAdmin: boolean;
+  currentUserId: string;
+  onCompetitionChanged: () => void;
+  onDelete: (id: string) => void;
+  bannerIndex: number;
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className="card" style={{ marginTop: 10 }}>
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => setExpanded((v) => !v)}
+        style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, cursor: "pointer" }}
+      >
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}>🏆 {competition.name}</div>
+          <div className="stat-meta" style={{ marginTop: 2 }}>
+            {competition.event_date
+              ? new Date(competition.event_date).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" })
+              : "No date set"}
+            {winnerLabel && <> · Winner: {winnerLabel}</>}
+          </div>
+        </div>
+        <span style={{ color: "var(--navy-500)", fontWeight: 700, flexShrink: 0 }}>
+          {expanded ? "Hide ▲" : "Show ▼"}
+        </span>
+      </div>
+      {expanded && (
+        <div style={{ marginTop: 16 }}>
+          <CompetitionDetail
+            competition={competition}
+            players={players}
+            isAdmin={isAdmin}
+            currentUserId={currentUserId}
+            onCompetitionChanged={onCompetitionChanged}
+            onDelete={onDelete}
+            bannerIndex={bannerIndex}
+          />
+        </div>
       )}
     </div>
   );

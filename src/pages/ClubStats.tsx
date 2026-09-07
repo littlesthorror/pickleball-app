@@ -338,6 +338,13 @@ export default function ClubStats() {
       .filter((n): n is number => n !== undefined);
     if (windowGameNumbers.length === 0) return null;
     const windowStart = Math.min(...windowGameNumbers);
+    // The most recent club-wide game within the window — used below to pin
+    // the x-axis's max exactly there (2026-09-07, Ben's request). Chart.js's
+    // linear scale otherwise auto-rounds its max up to the next "nice" tick
+    // value past the actual last data point, which left a stretch of
+    // trailing white space after the last plotted game.
+    const windowEnd = Math.max(...windowGameNumbers);
+    const maxX = windowEnd - windowStart + 1;
 
     const relevant = history.filter((h) => topIds.has(h.player_id) && new Date(h.played_at).getTime() >= cutoffMs);
     if (relevant.length === 0) return null;
@@ -370,7 +377,7 @@ export default function ClubStats() {
       .filter((d): d is NonNullable<typeof d> => d !== null);
 
     if (datasets.length === 0) return null;
-    return { datasets };
+    return { datasets, maxX };
   }, [history, matches, clubGameNumberByMatchId, topPlayers, rangeMonths]);
 
   if (loading) return <PageLoading label="Loading club stats…" />;
@@ -445,6 +452,7 @@ export default function ClubStats() {
                   x: {
                     type: "linear",
                     min: 1,
+                    max: trajectory.maxX,
                     grid: { display: false },
                     title: { display: true, text: "Club game #", color: "#667085", font: { size: 11 } },
                     ticks: {

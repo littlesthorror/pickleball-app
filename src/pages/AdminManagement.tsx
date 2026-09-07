@@ -1153,13 +1153,22 @@ export default function AdminManagement({
         <p className="stat-meta">No members match "{search}".</p>
       )}
 
-      {remaining > 0 && (
-        <button
-          onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
-          style={{ background: "transparent", color: "var(--navy-500)", border: "1px solid var(--border)" }}
-        >
-          Show more ({remaining} more)
-        </button>
+      {(remaining > 0 || visibleCount > PAGE_SIZE) && (
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          {remaining > 0 && (
+            <button
+              onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
+              style={{ width: "auto", background: "transparent", color: "var(--navy-500)", border: "1px solid var(--border)" }}
+            >
+              Show more ({remaining} more)
+            </button>
+          )}
+          {visibleCount > PAGE_SIZE && (
+            <span className="link-action" role="button" tabIndex={0} onClick={() => setVisibleCount(PAGE_SIZE)}>
+              Show less
+            </span>
+          )}
+        </div>
       )}
     </div>
   );

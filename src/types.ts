@@ -149,6 +149,9 @@ export interface EventRow {
   // a non-admin's Supabase query for events simply never returns these
   // rows at all.
   is_private: boolean;
+  // Added 2026-09-07 (Ben's request) — file/photo attachments, same shape
+  // and same "notices" storage bucket as NoticeAttachment/notices.attachments.
+  attachments: NoticeAttachment[];
 }
 
 // Admin-granted "legacy badge" (2026-08-28) — see 0049_add_legacy_badges.sql
