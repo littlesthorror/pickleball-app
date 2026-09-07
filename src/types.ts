@@ -316,6 +316,13 @@ export interface CompetitionGroupRow {
   competition_id: string;
   name: string;
   sort_order: number;
+  // Court scheduling (2026-09-07, Ben's request) — the range of courts this
+  // group plays on, e.g. start_court=1, court_count=2 means courts 1-2. Set
+  // in the Setup stage, right before fixtures are generated. Both null
+  // until an admin sets them; a group with no court info just displays/
+  // exports as a flat fixture list, same as before this feature existed.
+  start_court: number | null;
+  court_count: number | null;
   created_at: string;
 }
 
@@ -343,6 +350,11 @@ export interface CompetitionMatchRow {
   // always 1 for a single round robin or a knockout match. Added
   // 2026-08-27.
   leg: number;
+  // Which no-clash round this group-stage fixture belongs to (2026-09-07)
+  // — assigned by the circle-method scheduler in generateGroupFixtures()
+  // so no team plays twice in the same round. Null for knockout matches
+  // and for group fixtures generated before this column existed.
+  round: number | null;
   created_at: string;
 }
 

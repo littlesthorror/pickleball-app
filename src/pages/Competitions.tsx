@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../supabaseClient";
 import { PlayerSelect, submitOneMatch } from "./MatchEntry";
-import { computeGroupStandings, generateGroupFixtures } from "../lib/competitionStandings";
+import { computeGroupStandings, generateGroupFixtures, scheduleFixturesByCourt } from "../lib/competitionStandings";
+import { buildFixturesDocxBlob, downloadBlob } from "../lib/fixturesDocx";
 import { useConfirm } from "../components/ConfirmDialog";
 import { useToast } from "../components/Toast";
 import PageLoading from "../components/PageLoading";
@@ -952,6 +953,7 @@ function SetupStage({
         team_a_id: f.teamAId,
         team_b_id: f.teamBId,
         leg: f.leg,
+        round: f.round,
       }));
     });
 
@@ -1139,6 +1141,7 @@ function SetupStage({
                   ))}
                 </select>
               )}
+              <GroupCourtFields group={g} onChanged={onChanged} />
             </div>
           );
         })}
@@ -1154,6 +1157,60 @@ function SetupStage({
 
 function nameById(players: PlayerStatus[], id: string): string {
   return players.find((p) => p.id === id)?.display_name ?? "?";
+}
+
+// Per-group court range (2026-09-07, Ben's request) — deliberately its own
+// small component rather than inline state in SetupStage, since each
+// group's draft values need to be independent and this keeps that
+// isolated. Lives here in Setup (not at competition-creation time) because
+// by the point you're setting up groups you usually know the day's actual
+// court layout, whereas that's rarely known when the competition is first
+// created. Saved on blur rather than on every keystroke — a group's court
+// numbers aren't read anywhere until fixtures are generated and viewed, so
+// there's no need to write on every character typed.
+function GroupCourtFields({ group, onChanged }: { group: CompetitionGroupRow; onChanged: () => void }) {
+  const [startCourt, setStartCourt] = useState(group.start_court?.toString() ?? "");
+  const [courtCount, setCourtCount] = useState(group.court_count?.toString() ?? "");
+
+  async function save() {
+    const parsedStart = startCourt.trim() ? Number(startCourt) : null;
+    const parsedCount = courtCount.trim() ? Number(courtCount) : null;
+    if (parsedStart === group.start_court && parsedCount === group.court_count) return;
+    await supabase
+      .from("competition_groups")
+      .update({ start_court: parsedStart, court_count: parsedCount })
+      .eq("id", group.id);
+    onChanged();
+  }
+
+  return (
+    <div style={{ display: "flex", gap: 10, alignItems: "flex-end", marginTop: 10 }}>
+      <div style={{ flex: "0 0 auto" }}>
+        <label style={{ marginTop: 0, fontSize: "0.78rem" }}>Starting court</label>
+        <input
+          type="number"
+          min={1}
+          value={startCourt}
+          onChange={(e) => setStartCourt(e.target.value)}
+          onBlur={save}
+          placeholder="e.g. 1"
+          style={{ maxWidth: 90 }}
+        />
+      </div>
+      <div style={{ flex: "0 0 auto" }}>
+        <label style={{ marginTop: 0, fontSize: "0.78rem" }}>Number of courts</label>
+        <input
+          type="number"
+          min={1}
+          value={courtCount}
+          onChange={(e) => setCourtCount(e.target.value)}
+          onBlur={save}
+          placeholder="e.g. 2"
+          style={{ maxWidth: 90 }}
+        />
+      </div>
+    </div>
+  );
 }
 
 // ── Group standings (shown during groups, knockout, and completed) ─────
@@ -1311,32 +1368,88 @@ function GroupFixturesSection({
           </select>
         </>
       )}
-      {groupsToShow.map((g) => (
-        <div key={g.id} style={{ marginBottom: 16, marginTop: groups.length > 1 ? 16 : 0 }}>
-          <strong>{g.name}</strong>
-          {matches
-            .filter((m) => m.group_id === g.id)
-            .map((m) => (
-              <FixtureRow
-                key={m.id}
-                match={m}
-                teamLabel={teamLabel}
-                isAdmin={isAdmin}
-                currentUserId={currentUserId}
-                onChanged={onChanged}
-                locked={competition.status === "completed"}
-              />
+      {groupsToShow.map((g) => {
+        const groupMatches = matches.filter((m) => m.group_id === g.id);
+        // Round/Court layout (2026-09-07, Ben's request) — only kicks in
+        // once a group has both start_court and court_count set (see
+        // GroupCourtFields in SetupStage); otherwise scheduleFixturesByCourt
+        // hands every match back with printedRound/court both null and this
+        // renders exactly as it always did, a flat list in fixture order.
+        const scheduled = scheduleFixturesByCourt(groupMatches, g.start_court ?? 0, g.court_count ?? 0);
+        const isScheduled = scheduled.some((m) => m.printedRound != null);
+        if (!isScheduled) {
+          return (
+            <div key={g.id} style={{ marginBottom: 16, marginTop: groups.length > 1 ? 16 : 0 }}>
+              <strong>{g.name}</strong>
+              {groupMatches.map((m) => (
+                <FixtureRow
+                  key={m.id}
+                  match={m}
+                  teamLabel={teamLabel}
+                  isAdmin={isAdmin}
+                  currentUserId={currentUserId}
+                  onChanged={onChanged}
+                  locked={competition.status === "completed"}
+                />
+              ))}
+            </div>
+          );
+        }
+        const byPrintedRound = new Map<number, typeof scheduled>();
+        for (const m of scheduled) {
+          const key = m.printedRound ?? 0;
+          const list = byPrintedRound.get(key) ?? [];
+          list.push(m);
+          byPrintedRound.set(key, list);
+        }
+        const printedRounds = [...byPrintedRound.keys()].sort((a, b) => a - b);
+        return (
+          <div key={g.id} style={{ marginBottom: 16, marginTop: groups.length > 1 ? 16 : 0 }}>
+            <strong>{g.name}</strong>
+            {printedRounds.map((round) => (
+              <div key={round} style={{ marginTop: 10 }}>
+                <div className="stat-meta" style={{ fontWeight: 700, marginBottom: 2 }}>
+                  Round {round}
+                </div>
+                {byPrintedRound.get(round)!.map((m) => (
+                  <FixtureRow
+                    key={m.id}
+                    match={m}
+                    teamLabel={teamLabel}
+                    isAdmin={isAdmin}
+                    currentUserId={currentUserId}
+                    onChanged={onChanged}
+                    locked={competition.status === "completed"}
+                    courtLabel={m.court != null ? `Court ${m.court}` : undefined}
+                  />
+                ))}
+              </div>
             ))}
-        </div>
-      ))}
+          </div>
+        );
+      })}
       {isAdmin && (
-        <button
-          disabled={advancing}
-          onClick={advanceToKnockout}
-          style={{ background: "transparent", color: "var(--navy-500)", border: "1px solid var(--border)" }}
-        >
-          {advancing ? "Advancing…" : "Advance to knockout stage"}
-        </button>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <button
+            disabled={advancing}
+            onClick={advanceToKnockout}
+            style={{ background: "transparent", color: "var(--navy-500)", border: "1px solid var(--border)" }}
+          >
+            {advancing ? "Advancing…" : "Advance to knockout stage"}
+          </button>
+          <button
+            onClick={() => {
+              // Exports EVERY group's fixtures, not just whichever one is
+              // currently shown in the group switcher above — an admin
+              // printing a hard copy for the day needs the whole thing.
+              const blob = buildFixturesDocxBlob(competition, groups, matches, teamLabel);
+              downloadBlob(`${competition.name.replace(/[/\\?%*:|"<>]/g, "-")} - Fixtures.docx`, blob);
+            }}
+            style={{ background: "transparent", color: "var(--navy-500)", border: "1px solid var(--border)" }}
+          >
+            Save fixtures as Word doc
+          </button>
+        </div>
       )}
     </div>
   );
@@ -1377,6 +1490,7 @@ function FixtureRow({
   currentUserId,
   onChanged,
   locked,
+  courtLabel,
 }: {
   match: CompetitionMatchRow & { matches: { team_a_score: number; team_b_score: number } | null };
   teamLabel: (id: string) => string;
@@ -1384,6 +1498,10 @@ function FixtureRow({
   currentUserId: string;
   onChanged: () => void;
   locked: boolean;
+  // "Court N" chip (2026-09-07) — set when the fixture's group has court
+  // scheduling configured (see GroupFixturesSection/scheduleFixturesByCourt).
+  // Undefined for knockout matches and unscheduled groups, same as before.
+  courtLabel?: string;
 }) {
   const confirm = useConfirm();
   const played = !!match.matches;
@@ -1558,6 +1676,23 @@ function FixtureRow({
     <div className="match-row" style={{ flexWrap: "wrap" }}>
       <div className="opponent" style={{ flex: "1 1 100%" }}>
         {teamLabel(match.team_a_id)} vs {teamLabel(match.team_b_id)}
+        {courtLabel && (
+          <span
+            style={{
+              display: "inline-block",
+              marginLeft: 8,
+              padding: "1px 8px",
+              borderRadius: 999,
+              background: "var(--bg-subtle, rgba(15,37,71,0.06))",
+              color: "var(--navy-500)",
+              fontSize: "0.72rem",
+              fontWeight: 700,
+              verticalAlign: "middle",
+            }}
+          >
+            {courtLabel}
+          </span>
+        )}
         {match.group_id && match.leg === 2 && (
           <span className="stat-meta" style={{ display: "block", marginTop: 2, fontWeight: 400 }}>
             2nd meeting
