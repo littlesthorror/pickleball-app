@@ -397,7 +397,11 @@ function CompetitionArchiveRow({
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className="card" style={{ marginTop: 10 }}>
+    // Gold stroke (2026-09-07, Ben's request) — visually marks these as
+    // "done and settled" trophies rather than just another card, matching
+    // the gold used for the frame-tier/podium colouring elsewhere
+    // (--gold-600 in index.css).
+    <div className="card" style={{ marginTop: 10, border: "1px solid var(--gold-600)" }}>
       <div
         role="button"
         tabIndex={0}
@@ -1444,8 +1448,8 @@ function GroupFixturesSection({
               borderTop: "1px solid var(--border)",
             }}
           >
-            <strong style={{ fontSize: "0.9rem" }}>Edit teams</strong>
-            <span style={{ color: "var(--navy-500)", fontWeight: 700, fontSize: "0.85rem" }}>
+            <strong style={{ fontSize: "0.9rem", color: "var(--danger)" }}>Edit teams</strong>
+            <span style={{ color: "var(--danger)", fontWeight: 700, fontSize: "0.85rem" }}>
               {showEditTeams ? "Hide ▲" : "Show ▼"}
             </span>
           </div>

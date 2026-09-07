@@ -12,8 +12,11 @@ import {
 import { Line } from "react-chartjs-2";
 import { supabase } from "../supabaseClient";
 import Avatar from "../components/Avatar";
-import type { PlayerStatus } from "../types";
+import type { LegacyBadgeRow, PlayerMatchHistoryRow, PlayerStatus } from "../types";
 import PageLoading from "../components/PageLoading";
+import { computeBadges, computeCompletionistBadge, dedupeBadges } from "../lib/badges";
+import type { CompetitionPlacement, MonthlyFinish, SeasonTop10Finish } from "../lib/badges";
+import { getTrackedSeasons, getCurrentSeason } from "../lib/seasons";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, Filler);
 
@@ -32,17 +35,6 @@ interface MatchTeams {
   // played together.
   team_a_score: number;
   team_b_score: number;
-}
-
-interface HistoryRow {
-  player_id: string;
-  played_at: string;
-  won: boolean;
-  // Added for the Top 7 trajectory chart below — the player's rating as
-  // it stood right after this match, and which match it was (to look up
-  // that match's club-wide game number).
-  post_rating: number;
-  match_id: string;
 }
 
 // A "streak" of 1 isn't really a streak — this is the minimum consecutive
@@ -83,11 +75,32 @@ interface PastCompetition {
 export default function ClubStats() {
   const [matches, setMatches] = useState<MatchTeams[]>([]);
   const [players, setPlayers] = useState<PlayerStatus[]>([]);
-  const [history, setHistory] = useState<HistoryRow[]>([]);
+  // Full-column player_match_history rows, club-wide (2026-09-07, widened
+  // from a handful of columns to "*" to power the "Most badges collected"
+  // stat below — computeBadges() needs the rich per-row shape, not just
+  // the win/loss/rating fields the streak + trajectory stats used).
+  const [history, setHistory] = useState<PlayerMatchHistoryRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [rangeMonths, setRangeMonths] = useState<RangeMonths>(6);
   const [pastCompetitions, setPastCompetitions] = useState<PastCompetition[]>([]);
+
+  // Everything else "Most badges collected" needs, club-wide (2026-09-07,
+  // Ben's request) — mirrors exactly what Dashboard.tsx fetches for one
+  // player, just unfiltered by player_id so it covers everyone in a
+  // handful of queries instead of one round-trip per player. See the
+  // badgeCounts useMemo below for how these combine with `history` above
+  // to reproduce Dashboard's badge count for each player.
+  const [monthlySnapshots, setMonthlySnapshots] = useState<{ player_id: string; year_month: string; rank: number }[]>(
+    []
+  );
+  const [legacyBadgesAll, setLegacyBadgesAll] = useState<LegacyBadgeRow[]>([]);
+  const [competitionPlacementsAll, setCompetitionPlacementsAll] = useState<
+    { playerId: string; placement: 1 | 2; competitionName: string; achievedAt: string }[]
+  >([]);
+  const [seasonTop10All, setSeasonTop10All] = useState<
+    { playerId: string; seasonName: SeasonTop10Finish["seasonName"]; label: string; achievedAt: string }[]
+  >([]);
 
   useEffect(() => {
     Promise.all([
@@ -98,16 +111,108 @@ export default function ClubStats() {
         )
         .eq("status", "confirmed"),
       supabase.from("player_status").select("*").eq("is_active", true),
-      supabase.from("player_match_history").select("player_id, match_id, played_at, won, post_rating"),
+      supabase.from("player_match_history").select("*"),
     ]).then(([matchesRes, playersRes, historyRes]) => {
       if (matchesRes.error) setError(matchesRes.error.message);
       else setMatches((matchesRes.data ?? []) as MatchTeams[]);
       if (playersRes.error) setError(playersRes.error.message);
       else setPlayers((playersRes.data ?? []) as PlayerStatus[]);
       if (historyRes.error) setError(historyRes.error.message);
-      else setHistory((historyRes.data ?? []) as HistoryRow[]);
+      else setHistory((historyRes.data ?? []) as PlayerMatchHistoryRow[]);
       setLoading(false);
     });
+  }, []);
+
+  // Badge-count inputs (2026-09-07) — fetched separately from the main
+  // Promise.all above since a failure here shouldn't block the rest of the
+  // page, same reasoning as "Past competitions" below.
+  useEffect(() => {
+    supabase
+      .from("monthly_leaderboard_snapshots")
+      .select("player_id, year_month, rank")
+      .then(({ data, error }) => {
+        if (!error) setMonthlySnapshots((data ?? []) as typeof monthlySnapshots);
+      });
+
+    supabase
+      .from("legacy_badges")
+      .select("*")
+      .then(({ data, error }) => {
+        if (!error) setLegacyBadgesAll((data ?? []) as LegacyBadgeRow[]);
+      });
+
+    // Competition winner/runner-up placements, club-wide — same two-step
+    // shape as Dashboard.tsx's per-player version (competition_teams has
+    // no single player_id column, a player could be either player1 or
+    // player2), just without the player_id filter, then fanned back out to
+    // both players on each placing team below.
+    supabase
+      .from("competition_teams")
+      .select("id, player1_id, player2_id")
+      .then(({ data: teamRows, error: teamsError }) => {
+        if (teamsError || !teamRows || teamRows.length === 0) return;
+        const playersByTeamId = new Map(
+          teamRows.map((t) => [t.id as string, [t.player1_id as string, t.player2_id as string]])
+        );
+        supabase
+          .from("competition_results")
+          .select("placement, created_at, team_id, competitions(name)")
+          .in("placement", [1, 2])
+          .then(({ data: resultRows, error: resultsError }) => {
+            if (resultsError || !resultRows) return;
+            const placements: {
+              playerId: string;
+              placement: 1 | 2;
+              competitionName: string;
+              achievedAt: string;
+            }[] = [];
+            for (const r of resultRows) {
+              if (!r.competitions) continue;
+              const teamPlayers = playersByTeamId.get(r.team_id as string);
+              if (!teamPlayers) continue;
+              const competitionName = (r.competitions as unknown as { name: string }).name;
+              for (const playerId of teamPlayers) {
+                placements.push({
+                  playerId,
+                  placement: r.placement as 1 | 2,
+                  competitionName,
+                  achievedAt: r.created_at as string,
+                });
+              }
+            }
+            setCompetitionPlacementsAll(placements);
+          });
+      });
+
+    // Season Top 10 finishes, club-wide — one get_season_standings call per
+    // FINISHED tracked season (never the current, still-in-progress one,
+    // same exclusion Dashboard.tsx applies), each call already returning
+    // every player's placing for that season in one round-trip rather than
+    // one per player.
+    const tracked = getTrackedSeasons();
+    const current = getCurrentSeason();
+    const finished = tracked.filter((s) => s.key !== current.key);
+    if (finished.length === 0) return;
+    Promise.all(
+      finished.map((season) =>
+        supabase
+          .rpc("get_season_standings", {
+            p_season_start: season.start.toISOString(),
+            p_as_of: new Date(season.nextStart.getTime() - 1000).toISOString(),
+          })
+          .then(({ data, error }) => {
+            if (error || !data) return [];
+            return (data as { player_id: string; rank: number }[])
+              .filter((r) => r.rank <= 10)
+              .map((r) => ({
+                playerId: r.player_id as string,
+                seasonName: season.name,
+                label: season.label,
+                achievedAt: season.nextStart.toISOString(),
+              }));
+          })
+      )
+    ).then((results) => setSeasonTop10All(results.flat()));
   }, []);
 
   // Past competitions (2026-08-26) — completed competitions from the last
@@ -239,7 +344,7 @@ export default function ClubStats() {
     // recent-first, counting consecutive wins until the first loss. A
     // reset player's pre-reset games are already excluded by the
     // player_match_history view, so a streak never crosses a reset.
-    const historyByPlayer = new Map<string, HistoryRow[]>();
+    const historyByPlayer = new Map<string, PlayerMatchHistoryRow[]>();
     for (const h of history) {
       if (!nameById.has(h.player_id)) continue;
       const list = historyByPlayer.get(h.player_id) ?? [];
@@ -285,6 +390,81 @@ export default function ClubStats() {
       newest,
     };
   }, [matches, players, history]);
+
+  // "Most badges collected" (2026-09-07, Ben's request) — reproduces
+  // Dashboard.tsx's exact per-player badge count (computeBadges + legacy
+  // grants, deduped, plus the Completionist meta-badge) for every active
+  // player, from the club-wide data fetched above. Kept as its own memo
+  // rather than folded into `stats` since it depends on a different set of
+  // fetches (monthlySnapshots/legacyBadgesAll/etc.) that load slightly
+  // after the main Promise.all above.
+  const mostBadgesTop3 = useMemo(() => {
+    const avatarById = new Map(players.map((p) => [p.id, p.avatar_url]));
+
+    const historyByPlayer = new Map<string, PlayerMatchHistoryRow[]>();
+    for (const h of history) {
+      const list = historyByPlayer.get(h.player_id) ?? [];
+      list.push(h);
+      historyByPlayer.set(h.player_id, list);
+    }
+    for (const rows of historyByPlayer.values()) {
+      rows.sort((a, b) => a.game_number - b.game_number);
+    }
+
+    const monthlyByPlayer = new Map<string, MonthlyFinish[]>();
+    for (const r of monthlySnapshots) {
+      const list = monthlyByPlayer.get(r.player_id) ?? [];
+      list.push({ yearMonth: r.year_month, rank: r.rank });
+      monthlyByPlayer.set(r.player_id, list);
+    }
+
+    const legacyByPlayer = new Map<string, LegacyBadgeRow[]>();
+    for (const b of legacyBadgesAll) {
+      const list = legacyByPlayer.get(b.player_id) ?? [];
+      list.push(b);
+      legacyByPlayer.set(b.player_id, list);
+    }
+
+    const placementsByPlayer = new Map<string, CompetitionPlacement[]>();
+    for (const p of competitionPlacementsAll) {
+      const list = placementsByPlayer.get(p.playerId) ?? [];
+      list.push({ placement: p.placement, competitionName: p.competitionName, achievedAt: p.achievedAt });
+      placementsByPlayer.set(p.playerId, list);
+    }
+
+    const seasonTop10ByPlayer = new Map<string, SeasonTop10Finish[]>();
+    for (const s of seasonTop10All) {
+      const list = seasonTop10ByPlayer.get(s.playerId) ?? [];
+      list.push({ seasonName: s.seasonName, label: s.label, achievedAt: s.achievedAt });
+      seasonTop10ByPlayer.set(s.playerId, list);
+    }
+
+    return players
+      .map((p) => {
+        const computed = computeBadges(
+          historyByPlayer.get(p.id) ?? [],
+          p.games_played,
+          p.date_joined,
+          monthlyByPlayer.get(p.id) ?? [],
+          placementsByPlayer.get(p.id) ?? [],
+          seasonTop10ByPlayer.get(p.id) ?? []
+        );
+        const legacy = (legacyByPlayer.get(p.id) ?? []).map((b) => ({
+          id: `legacy-${b.id}`,
+          emoji: b.emoji,
+          label: b.label,
+          description: b.description,
+          achievedAt: b.achieved_at,
+        }));
+        const deduped = dedupeBadges([...computed, ...legacy]);
+        const completionist = computeCompletionistBadge(deduped);
+        const count = completionist ? deduped.length + 1 : deduped.length;
+        return { id: p.id, name: p.display_name, avatarUrl: avatarById.get(p.id) ?? null, count };
+      })
+      .filter((p) => p.count > 0)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 3);
+  }, [players, history, monthlySnapshots, legacyBadgesAll, competitionPlacementsAll, seasonTop10All]);
 
   // Whoever's currently rated highest, right now — recomputed every render
   // from live ratings rather than stored anywhere, so the chart below
@@ -507,6 +687,25 @@ export default function ClubStats() {
           ))
         ) : (
           <p className="stat-meta">Nobody's on a streak of {MIN_STREAK}+ right now.</p>
+        )}
+      </div>
+
+      <div className="card">
+        <h2>Most badges collected</h2>
+        <p className="stat-meta" style={{ marginBottom: 12 }}>
+          Total badges earned, all-time — same count shown on each player's own Dashboard.
+        </p>
+        {mostBadgesTop3.length > 0 ? (
+          mostBadgesTop3.map((p, i) => (
+            <div className="leaderboard-row" key={p.id}>
+              <span className="rank top3">{i + 1}</span>
+              <Avatar name={p.name} url={p.avatarUrl} size={28} />
+              <span className="name">{p.name}</span>
+              <span className="rating">{p.count}</span>
+            </div>
+          ))
+        ) : (
+          <p className="stat-meta">No badges earned yet.</p>
         )}
       </div>
 
