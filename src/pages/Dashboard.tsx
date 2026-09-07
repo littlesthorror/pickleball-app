@@ -14,7 +14,7 @@ import Avatar from "../components/Avatar";
 import ShareCard from "../components/ShareCard";
 import MatchPredictor from "../components/MatchPredictor";
 import SeasonWrappedCard from "../components/SeasonWrappedCard";
-import { computeBadges, dedupeBadges, getFrameTier } from "../lib/badges";
+import { computeBadges, computeCompletionistBadge, dedupeBadges, getFrameTier } from "../lib/badges";
 import type { MonthlyFinish, CompetitionPlacement, SeasonTop10Finish, FrameTier } from "../lib/badges";
 import { fireConfetti, fireBalloons } from "../lib/confetti";
 import { useToast } from "../components/Toast";
@@ -489,7 +489,15 @@ export default function Dashboard({
     // dedupeBadges' own comment. Most recently earned first — badges with
     // no known date (shouldn't happen in practice) sort to the end rather
     // than the top.
-    return dedupeBadges([...computed, ...legacy]).sort((a, b) => {
+    const deduped = dedupeBadges([...computed, ...legacy]);
+    // Completionist (2026-09-07, 50-badge threshold) has to be computed
+    // AFTER dedup, on the final merged set, since it needs to see legacy
+    // grants too and must not double-count a badge that was deduped away —
+    // see computeCompletionistBadge's own comment for why it lives outside
+    // computeBadges() entirely.
+    const completionist = computeCompletionistBadge(deduped);
+    const withCompletionist = completionist ? [...deduped, completionist] : deduped;
+    return withCompletionist.sort((a, b) => {
       if (!a.achievedAt && !b.achievedAt) return 0;
       if (!a.achievedAt) return 1;
       if (!b.achievedAt) return -1;

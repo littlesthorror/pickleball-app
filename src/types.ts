@@ -97,6 +97,11 @@ export interface PlayerMatchHistoryRow {
   // pre-game ratings (opponent_min_pre_rating above is just the lower of
   // the two, which can't tell you the combined/total strength of a pair).
   opponent_combined_pre_rating: number | null;
+  // Added 2026-09-07 for the "Mentor" badge — the teammate's OWN
+  // chronological game count as of this match (mirrors game_number above,
+  // just computed for them instead of you), used to tell whether they were
+  // still provisional (<=12 games) when you played with them.
+  teammate_game_number: number | null;
 }
 
 export type MatchStatus = "pending" | "confirmed" | "disputed";

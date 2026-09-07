@@ -30,6 +30,7 @@ function row(overrides: Partial<PlayerMatchHistoryRow>): PlayerMatchHistoryRow {
     teammate_pre_rating: null,
     opponent_min_pre_rating: null,
     opponent_combined_pre_rating: null,
+    teammate_game_number: null,
     ...overrides,
   };
 }

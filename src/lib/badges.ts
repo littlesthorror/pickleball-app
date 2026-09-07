@@ -1,5 +1,6 @@
 import type { PlayerMatchHistoryRow } from "../types";
 import type { SeasonName } from "./seasons";
+import { getSeasonForDate } from "./seasons";
 
 // One row per calendar month this player finished in the club's Top 10 —
 // fetched from monthly_leaderboard_snapshots, which is only ever populated
@@ -72,23 +73,34 @@ export function computeBadges(
     });
   }
 
-  // 1-year anniversary — purely time-based, nothing to do with results.
+  // 1-year/2-year anniversary — purely time-based, nothing to do with
+  // results. Not gated to the non-retroactive rule used for the badge
+  // batches below: this isn't reaching back into a specific past GAME the
+  // way those are, it's a live, continuously-true fact about how long
+  // you've been a member (same reasoning as the Completionist meta-badge —
+  // see computeCompletionistBadge below).
   if (dateJoined) {
     const joined = new Date(dateJoined);
-    const oneYearLater = new Date(joined);
-    oneYearLater.setFullYear(oneYearLater.getFullYear() + 1);
-    if (new Date() >= oneYearLater) {
-      badges.push({
-        id: "one-year",
-        emoji: "🎊",
-        label: "1 year using Sideline",
-        description: `Joined ${joined.toLocaleDateString(undefined, {
-          month: "long",
-          day: "numeric",
-          year: "numeric",
-        })}.`,
-        achievedAt: oneYearLater.toISOString(),
-      });
+    const anniversaryMilestones = [
+      { years: 1, id: "one-year", label: "1 year using Sideline" },
+      { years: 2, id: "two-years", label: "2 years using Sideline" },
+    ];
+    for (const milestone of anniversaryMilestones) {
+      const anniversaryDate = new Date(joined);
+      anniversaryDate.setFullYear(anniversaryDate.getFullYear() + milestone.years);
+      if (new Date() >= anniversaryDate) {
+        badges.push({
+          id: milestone.id,
+          emoji: "🎊",
+          label: milestone.label,
+          description: `Joined ${joined.toLocaleDateString(undefined, {
+            month: "long",
+            day: "numeric",
+            year: "numeric",
+          })}.`,
+          achievedAt: anniversaryDate.toISOString(),
+        });
+      }
     }
   }
 
@@ -960,6 +972,317 @@ export function computeBadges(
     }
   }
 
+  // ── 11 more badges added 2026-09-07 (batch 2) at Ben's request ─────────
+  // All non-retroactive, same historySinceNewBadges window as the batch
+  // above (same day, so it's the same cutoff). A few of these (Nemesis
+  // Slayer, Rematch, Déjà Vu, First Dance) need to know things about your
+  // FULL history to make sense at all — e.g. First Dance can't tell a
+  // genuinely new partner from a returning one without knowing every
+  // partner you've ever had — so they read `history` for that context but
+  // only ever AWARD the badge for a qualifying game inside
+  // historySinceNewBadges. That's not a loophole in "not retroactive": the
+  // thing being rewarded is always a fresh game, full history is just used
+  // to correctly recognise what's genuinely new.
+
+  // "Buzzer Beater" — win a game 11-10, the tightest possible finish.
+  const buzzerBeater = historySinceNewBadges.find((h) => h.won && h.own_score === 11 && h.opponent_score === 10);
+  if (buzzerBeater) {
+    badges.push({
+      id: "buzzer-beater",
+      emoji: "🎯",
+      label: "Buzzer Beater",
+      description: `Won 11–10 against ${buzzerBeater.opponent_names} — right down to the wire.`,
+      achievedAt: buzzerBeater.played_at,
+    });
+  }
+
+  // "Nemesis Slayer" — beat a pair after having lost to them 5+ times
+  // before. Losses are tallied across your whole history (that's just
+  // "how rivalries actually built up"), but the win that finally breaks
+  // the streak must be a fresh one.
+  const NEMESIS_THRESHOLD = 5;
+  const lossesByOpponentNemesis = new Map<string, number>();
+  let nemesisSlayerWin: PlayerMatchHistoryRow | null = null;
+  for (const h of history) {
+    if (!h.won) {
+      lossesByOpponentNemesis.set(h.opponent_names, (lossesByOpponentNemesis.get(h.opponent_names) ?? 0) + 1);
+      continue;
+    }
+    if (
+      !nemesisSlayerWin &&
+      (lossesByOpponentNemesis.get(h.opponent_names) ?? 0) >= NEMESIS_THRESHOLD &&
+      new Date(h.played_at).getTime() >= new Date(NEW_BADGES_INTRODUCED_AT).getTime()
+    ) {
+      nemesisSlayerWin = h;
+    }
+  }
+  if (nemesisSlayerWin) {
+    badges.push({
+      id: "nemesis-slayer",
+      emoji: "⚔️",
+      label: "Nemesis Slayer",
+      description: `Finally beat ${nemesisSlayerWin.opponent_names} after losing to them ${NEMESIS_THRESHOLD}+ times — the rivalry's turned.`,
+      achievedAt: nemesisSlayerWin.played_at,
+    });
+  }
+
+  // "Rematch" — lose to a pair, then beat that exact same pair the very
+  // next time you face them. "Last result vs this pair" is tracked across
+  // your whole history so it correctly knows what the PREVIOUS meeting
+  // was, but the win itself must be fresh.
+  const lastResultByOpponentRematch = new Map<string, boolean>();
+  let rematchWin: PlayerMatchHistoryRow | null = null;
+  for (const h of history) {
+    const prevWasLoss = lastResultByOpponentRematch.get(h.opponent_names) === false;
+    if (
+      h.won &&
+      prevWasLoss &&
+      !rematchWin &&
+      new Date(h.played_at).getTime() >= new Date(NEW_BADGES_INTRODUCED_AT).getTime()
+    ) {
+      rematchWin = h;
+    }
+    lastResultByOpponentRematch.set(h.opponent_names, h.won);
+  }
+  if (rematchWin) {
+    badges.push({
+      id: "rematch",
+      emoji: "🔁",
+      label: "Rematch",
+      description: `Lost to ${rematchWin.opponent_names} last time out, then beat them the very next time you met.`,
+      achievedAt: rematchWin.played_at,
+    });
+  }
+
+  // "Déjà Vu" — win two different games against the same opponents with
+  // the exact same scoreline. Scorelines are tracked across your whole
+  // history to spot the repeat, but the confirming (repeat) win must be
+  // fresh.
+  const seenScorelinesDejaVu = new Set<string>();
+  let dejaVuWin: PlayerMatchHistoryRow | null = null;
+  for (const h of history) {
+    if (!h.won) continue;
+    const key = `${h.opponent_names}|${h.own_score}-${h.opponent_score}`;
+    if (seenScorelinesDejaVu.has(key)) {
+      if (!dejaVuWin && new Date(h.played_at).getTime() >= new Date(NEW_BADGES_INTRODUCED_AT).getTime()) {
+        dejaVuWin = h;
+      }
+    } else {
+      seenScorelinesDejaVu.add(key);
+    }
+  }
+  if (dejaVuWin) {
+    badges.push({
+      id: "deja-vu",
+      emoji: "🪞",
+      label: "Déjà Vu",
+      description: `Beat ${dejaVuWin.opponent_names} ${dejaVuWin.own_score}–${dejaVuWin.opponent_score} — the exact same scoreline as a previous win against them.`,
+      achievedAt: dejaVuWin.played_at,
+    });
+  }
+
+  // "First Dance" — win a game the very first time you're paired with a
+  // partner. "Have I played with them before" is checked across your whole
+  // history (otherwise a long-standing partner would wrongly look "new"
+  // the first time you play together after this badge existed), but the
+  // winning game itself must be fresh.
+  const seenPartnersFirstDance = new Set<string>();
+  let firstDanceWin: PlayerMatchHistoryRow | null = null;
+  for (const h of history) {
+    const isNewPartner = !seenPartnersFirstDance.has(h.teammate_name);
+    seenPartnersFirstDance.add(h.teammate_name);
+    if (
+      isNewPartner &&
+      h.won &&
+      !firstDanceWin &&
+      new Date(h.played_at).getTime() >= new Date(NEW_BADGES_INTRODUCED_AT).getTime()
+    ) {
+      firstDanceWin = h;
+    }
+  }
+  if (firstDanceWin) {
+    badges.push({
+      id: "first-dance",
+      emoji: "🆕",
+      label: "First Dance",
+      description: `Won the very first game you played alongside ${firstDanceWin.teammate_name}.`,
+      achievedAt: firstDanceWin.played_at,
+    });
+  }
+
+  // "Iron Grip" — 5 wins in a row with the same partner, without a loss
+  // between them. Scoped entirely to games since this badge was
+  // introduced (see historySinceNewBadges above) — a fresh unbeaten run
+  // starting from today, rather than trying to splice together a streak
+  // that straddles the introduction date.
+  const IRON_GRIP_THRESHOLD = 5;
+  const gamesByPartnerIronGrip = new Map<string, PlayerMatchHistoryRow[]>();
+  for (const h of historySinceNewBadges) {
+    const list = gamesByPartnerIronGrip.get(h.teammate_name) ?? [];
+    list.push(h);
+    gamesByPartnerIronGrip.set(h.teammate_name, list);
+  }
+  let ironGripAt: string | null = null;
+  let ironGripPartner = "";
+  for (const [partner, games] of gamesByPartnerIronGrip) {
+    if (ironGripAt) break;
+    const sorted = [...games].sort((a, b) => a.game_number - b.game_number);
+    let streak = 0;
+    for (const g of sorted) {
+      if (g.won) {
+        streak++;
+        if (streak >= IRON_GRIP_THRESHOLD) {
+          ironGripAt = g.played_at;
+          ironGripPartner = partner;
+          break;
+        }
+      } else {
+        streak = 0;
+      }
+    }
+  }
+  if (ironGripAt) {
+    badges.push({
+      id: "iron-grip",
+      emoji: "🛡️",
+      label: "Iron Grip",
+      description: `Went ${IRON_GRIP_THRESHOLD} games unbeaten alongside ${ironGripPartner} — no cracks in that partnership.`,
+      achievedAt: ironGripAt,
+    });
+  }
+
+  // "Jekyll & Hyde" — won with a partner AND lost with that same partner
+  // on the same calendar day.
+  const dayResultsByPartner = new Map<string, { won: boolean; lost: boolean; lastAt: string }>();
+  let jekyllHydeAt: string | null = null;
+  let jekyllHydePartner = "";
+  for (const h of historySinceNewBadges) {
+    const dayKey = `${new Date(h.played_at).toDateString()}|${h.teammate_name}`;
+    const entry = dayResultsByPartner.get(dayKey) ?? { won: false, lost: false, lastAt: h.played_at };
+    if (h.won) entry.won = true;
+    else entry.lost = true;
+    entry.lastAt = h.played_at;
+    dayResultsByPartner.set(dayKey, entry);
+    if (!jekyllHydeAt && entry.won && entry.lost) {
+      jekyllHydeAt = h.played_at;
+      jekyllHydePartner = h.teammate_name;
+    }
+  }
+  if (jekyllHydeAt) {
+    badges.push({
+      id: "jekyll-hyde",
+      emoji: "🔀",
+      label: "Jekyll & Hyde",
+      description: `Won a game AND lost a game alongside ${jekyllHydePartner} on the same day.`,
+      achievedAt: jekyllHydeAt,
+    });
+  }
+
+  // "The Regular" — played on the same day of the week for 8+ consecutive
+  // weeks in a row.
+  const REGULAR_WEEKS = 8;
+  const daysByWeekday = new Map<number, number[]>();
+  for (const h of historySinceNewBadges) {
+    const d = new Date(h.played_at);
+    const dayKey = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    const list = daysByWeekday.get(d.getDay()) ?? [];
+    if (!list.includes(dayKey)) list.push(dayKey);
+    daysByWeekday.set(d.getDay(), list);
+  }
+  let regularAt: string | null = null;
+  const WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  let regularWeekday = "";
+  for (const [weekday, dayKeys] of daysByWeekday) {
+    if (regularAt) break;
+    const sorted = [...dayKeys].sort((a, b) => a - b);
+    let run = 1;
+    for (let i = 1; i < sorted.length; i++) {
+      const diffDays = Math.round((sorted[i] - sorted[i - 1]) / (24 * 60 * 60 * 1000));
+      if (diffDays === 7) {
+        run++;
+        if (run >= REGULAR_WEEKS) {
+          regularAt = new Date(sorted[i]).toISOString();
+          regularWeekday = WEEKDAY_NAMES[weekday];
+          break;
+        }
+      } else {
+        run = 1;
+      }
+    }
+  }
+  if (regularAt) {
+    badges.push({
+      id: "the-regular",
+      emoji: "📅",
+      label: "The Regular",
+      description: `Played on ${regularWeekday}s for ${REGULAR_WEEKS} weeks running — like clockwork.`,
+      achievedAt: regularAt,
+    });
+  }
+
+  // "Four Seasons" — logged games across all four (UK meteorological)
+  // seasons.
+  const seasonsPlayedIn = new Set<SeasonName>();
+  let fourSeasonsAt: string | null = null;
+  for (const h of historySinceNewBadges) {
+    seasonsPlayedIn.add(getSeasonForDate(new Date(h.played_at)).name);
+    if (seasonsPlayedIn.size === 4 && !fourSeasonsAt) fourSeasonsAt = h.played_at;
+  }
+  if (fourSeasonsAt) {
+    badges.push({
+      id: "four-seasons",
+      emoji: "🌍",
+      label: "Four Seasons",
+      description: "Played through Spring, Summer, Autumn and Winter — a full year-round member.",
+      achievedAt: fourSeasonsAt,
+    });
+  }
+
+  // "Photo Finish" (tiered) — won by exactly 1 point, 3 times then 10
+  // times. Distinct from Buzzer Beater above (a single 11-10 win) — this
+  // counts every 1-point win regardless of the actual score.
+  const marginOneWins = historySinceNewBadges.filter((h) => h.won && h.own_score - h.opponent_score === 1);
+  const photoFinishMilestones = [
+    { count: 3, emoji: "🥊", label: "Photo Finish" },
+    { count: 10, emoji: "🥊🥊", label: "Serial Photo Finisher" },
+  ];
+  for (const milestone of photoFinishMilestones) {
+    if (marginOneWins.length >= milestone.count) {
+      badges.push({
+        id: `photo-finish-${milestone.count}`,
+        emoji: milestone.emoji,
+        label: milestone.label,
+        description: `Won by exactly 1 point ${marginOneWins.length} time${marginOneWins.length === 1 ? "" : "s"} and counting.`,
+        achievedAt: marginOneWins[milestone.count - 1]?.played_at ?? null,
+      });
+    }
+  }
+
+  // "Mentor" — played alongside 10+ different partners who were still
+  // provisional (12 or fewer games played) at the time you played with
+  // them. Uses teammate_game_number (added to the player_match_history
+  // view specifically for this badge) rather than the teammate's CURRENT
+  // provisional status, since that would drift as they rack up more games.
+  const MENTOR_THRESHOLD = 10;
+  const MENTOR_PROVISIONAL_GAMES = 12;
+  const newPartnersSeenMentor = new Set<string>();
+  let mentorAt: string | null = null;
+  for (const h of historySinceNewBadges) {
+    if (h.teammate_game_number != null && h.teammate_game_number <= MENTOR_PROVISIONAL_GAMES) {
+      newPartnersSeenMentor.add(h.teammate_name);
+      if (newPartnersSeenMentor.size === MENTOR_THRESHOLD && !mentorAt) mentorAt = h.played_at;
+    }
+  }
+  if (mentorAt) {
+    badges.push({
+      id: "mentor",
+      emoji: "🎓",
+      label: "Mentor",
+      description: `Played alongside ${newPartnersSeenMentor.size} different newer players while they were still finding their feet.`,
+      achievedAt: mentorAt,
+    });
+  }
+
   return badges;
 }
 
@@ -996,6 +1319,34 @@ export function dedupeBadges(badges: Badge[]): Badge[] {
     result.push(b);
   }
   return result;
+}
+
+// "Completionist" — a meta-badge for reaching 50 total badges. This has to
+// live outside computeBadges() (called separately, by the caller, on the
+// final merged-and-deduped array — see Dashboard.tsx) because it's the only
+// badge that needs to see admin-granted legacy_badges as well as computed
+// ones, and computeBadges() has no visibility into legacy_badges at all.
+// Threshold raised from an earlier draft to 50 at Ben's request
+// (2026-09-07). achievedAt is set to the 50th badge's OWN achievedAt
+// (sorted oldest-first) rather than "today" — that's the date the milestone
+// was actually reached, which is more accurate and also isn't a
+// retroactivity violation: every one of those 50 badges is already
+// legitimately dated, this is just tallying them, not reaching back to
+// credit anything new.
+const COMPLETIONIST_THRESHOLD = 50;
+
+export function computeCompletionistBadge(finalBadges: Badge[]): Badge | null {
+  const dated = finalBadges.filter((b) => b.achievedAt && b.id !== "completionist");
+  if (dated.length < COMPLETIONIST_THRESHOLD) return null;
+  const sorted = [...dated].sort((a, b) => new Date(a.achievedAt as string).getTime() - new Date(b.achievedAt as string).getTime());
+  const milestoneBadge = sorted[COMPLETIONIST_THRESHOLD - 1];
+  return {
+    id: "completionist",
+    emoji: "🏅",
+    label: "Completionist",
+    description: `Earned ${COMPLETIONIST_THRESHOLD} badges — a Sideline completionist.`,
+    achievedAt: milestoneBadge.achievedAt,
+  };
 }
 
 // Cosmetic avatar frame tiers (2026-09-02, Ben's request) — a purely
