@@ -145,7 +145,17 @@ export default function Competitions({ isAdmin, currentUserId }: { isAdmin: bool
   async function handleDeleteCompetition(id: string) {
     const target = competitions.find((c) => c.id === id);
     if (!target) return;
-    if (!(await confirm(`Delete "${target.name}"? This removes its teams, groups, and bracket — permanently.`, { danger: true }))) return;
+    // Type-to-confirm (2026-09-07, Ben's request: "have to type the word
+    // DELETE. For safety") — this is the one truly irreversible action on
+    // this page (no undo, cascades to teams/groups/bracket/results), so it
+    // gets the extra speed bump on top of the usual danger-styled confirm.
+    if (
+      !(await confirm(`Delete "${target.name}"? This removes its teams, groups, and bracket — permanently.`, {
+        danger: true,
+        requireTypedConfirmation: "DELETE",
+      }))
+    )
+      return;
     const { error } = await supabase.from("competitions").delete().eq("id", id);
     if (error) {
       setError(error.message);
