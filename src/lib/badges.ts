@@ -791,7 +791,177 @@ export function computeBadges(
     });
   }
 
+  // ── 7 more badges added 2026-09-07 at Ben's request ────────────────────
+
+  // "Titanic" — won a game 19–12, then got pickled (shut out 0) in the very
+  // next game. Needs two CONSECUTIVE entries in history (already ordered
+  // ascending by game_number) — not just "happened at some point," the two
+  // have to be back to back.
+  for (let i = 0; i + 1 < history.length; i++) {
+    const first = history[i];
+    const next = history[i + 1];
+    if (first.won && first.own_score === 19 && first.opponent_score === 12 && !next.won && next.own_score === 0) {
+      badges.push({
+        id: "titanic",
+        emoji: "🚢",
+        label: "Titanic",
+        description: `Won 19–12 against ${first.opponent_names}, then got pickled 0–${next.opponent_score} the very next game.`,
+        achievedAt: next.played_at,
+      });
+      break;
+    }
+  }
+
+  // "Slumdog" — lost 0–10, then won the very next game 12–10. The exact
+  // rags-to-riches reversal, back to back.
+  for (let i = 0; i + 1 < history.length; i++) {
+    const first = history[i];
+    const next = history[i + 1];
+    if (
+      !first.won &&
+      first.own_score === 0 &&
+      first.opponent_score === 10 &&
+      next.won &&
+      next.own_score === 12 &&
+      next.opponent_score === 10
+    ) {
+      badges.push({
+        id: "slumdog",
+        emoji: "🐕",
+        label: "Slumdog",
+        description: `Lost 0–10, then came straight back to win 12–10 against ${next.opponent_names} the very next game.`,
+        achievedAt: next.played_at,
+      });
+      break;
+    }
+  }
+
+  // "Stranger Thing" — a game that finished 11–11, a genuine deadlock.
+  const strangerThing = history.find((h) => h.own_score === 11 && h.opponent_score === 11);
+  if (strangerThing) {
+    badges.push({
+      id: "stranger-thing",
+      emoji: "👩‍🦲",
+      label: "Stranger Thing",
+      description: `Your game against ${strangerThing.opponent_names} finished 11–11 — properly strange.`,
+      achievedAt: strangerThing.played_at,
+    });
+  }
+
+  // "The Thief" — beat the highest COMBINED-rated pairing you've ever
+  // faced (the sum of both opponents' pre-game ratings — see
+  // opponent_combined_pre_rating, added to the player_match_history view
+  // specifically for this badge). Different from Bracket Buster/Giant
+  // Slayer above, which only check whether BOTH opponents individually
+  // outrated you, regardless of by how much combined.
+  const thiefWins = history.filter((h) => h.won && h.opponent_combined_pre_rating != null);
+  if (thiefWins.length > 0) {
+    const biggest = thiefWins.reduce((best, h) =>
+      (h.opponent_combined_pre_rating as number) > (best.opponent_combined_pre_rating as number) ? h : best
+    );
+    badges.push({
+      id: "the-thief",
+      emoji: "🥷",
+      label: "The Thief",
+      description: `Beat ${biggest.opponent_names} — the highest combined-rated pair you've ever faced, at ${Math.round(
+        biggest.opponent_combined_pre_rating!
+      )} combined.`,
+      achievedAt: biggest.played_at,
+    });
+  }
+
+  // "Destroyer" — won a game with over 20 points to your opponents' zero.
+  const destroyer = history.find((h) => h.won && h.own_score > 20 && h.opponent_score === 0);
+  if (destroyer) {
+    badges.push({
+      id: "destroyer",
+      emoji: "💣",
+      label: "Destroyer",
+      description: `Won ${destroyer.own_score}–0 against ${destroyer.opponent_names} — total annihilation.`,
+      achievedAt: destroyer.played_at,
+    });
+  }
+
+  // "Absolute Tank" — scored over 30 points in a single game, win or lose.
+  const tank = history.find((h) => h.own_score > 30);
+  if (tank) {
+    badges.push({
+      id: "absolute-tank",
+      emoji: "🛡️",
+      label: "Absolute Tank",
+      description: `Scored ${tank.own_score} points in a single game against ${tank.opponent_names}.`,
+      achievedAt: tank.played_at,
+    });
+  }
+
+  // "Double Disruptor" — beaten the opposing pairing you've faced more than
+  // anyone else, at least once. Different from "Old Foes" above, which is
+  // about your win COUNT against a pair, not how often you've come up
+  // against them in the first place. Requires having actually faced them a
+  // handful of times (3+) first — otherwise "most frequent" is meaningless
+  // noise off just one or two early games.
+  const DOUBLE_DISRUPTOR_MIN_MEETINGS = 3;
+  const opponentFrequency = new Map<string, number>();
+  for (const h of history) {
+    opponentFrequency.set(h.opponent_names, (opponentFrequency.get(h.opponent_names) ?? 0) + 1);
+  }
+  let mostFrequentOpponent = "";
+  let mostFrequentCount = 0;
+  for (const [name, count] of opponentFrequency) {
+    if (count > mostFrequentCount) {
+      mostFrequentCount = count;
+      mostFrequentOpponent = name;
+    }
+  }
+  if (mostFrequentCount >= DOUBLE_DISRUPTOR_MIN_MEETINGS) {
+    const disruptorWin = history.find((h) => h.won && h.opponent_names === mostFrequentOpponent);
+    if (disruptorWin) {
+      badges.push({
+        id: "double-disruptor",
+        emoji: "🌀",
+        label: "Double Disruptor",
+        description: `Beaten ${mostFrequentOpponent} — the pairing you've faced more than anyone else (${mostFrequentCount} times).`,
+        achievedAt: disruptorWin.played_at,
+      });
+    }
+  }
+
   return badges;
+}
+
+// Trophy-style badges (competition/cup placements) are exempt from the
+// "same badge only counts once" dedup below — a player can genuinely win
+// several different competitions or cups over time, and each is its own
+// achievement. Everything else (Rollercoaster, streak badges, etc.) is
+// about a single underlying fact about you, so it should never appear
+// twice no matter how it was awarded.
+const TROPHY_ID_PREFIXES = ["competition-", "quarterly-cup-"];
+
+function isTrophyBadge(id: string): boolean {
+  return TROPHY_ID_PREFIXES.some((prefix) => id.startsWith(prefix));
+}
+
+// Removes duplicate badges by label. Added 2026-09-07 after a player ended
+// up with "Rollercoaster" twice — a legacy_badges grandfather grant (see
+// the migration referenced in the Rollercoaster comment above) plus the
+// live computeBadges() check both separately awarding it. Computed badges
+// are kept over a same-label legacy one when both are present (the caller
+// is expected to list computed badges first — see Dashboard.tsx), since
+// the computed version reflects live data rather than a point-in-time
+// admin grant.
+export function dedupeBadges(badges: Badge[]): Badge[] {
+  const seenLabels = new Set<string>();
+  const result: Badge[] = [];
+  for (const b of badges) {
+    if (isTrophyBadge(b.id)) {
+      result.push(b);
+      continue;
+    }
+    if (seenLabels.has(b.label)) continue;
+    seenLabels.add(b.label);
+    result.push(b);
+  }
+  return result;
 }
 
 // Cosmetic avatar frame tiers (2026-09-02, Ben's request) — a purely

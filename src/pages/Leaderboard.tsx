@@ -10,8 +10,10 @@ type SortMode = "rating" | "improved";
 
 // Keeps the list from growing unbounded as more members join (nearly 200
 // at last count) — search narrows things down instantly, and each section
-// only renders a page at a time with "show more" beneath it.
-const PAGE_SIZE = 20;
+// only renders a page at a time with "show more" beneath it. Reduced from
+// 20 to 15 (2026-09-07, Ben's request) for both the club leaderboard and
+// the seasonal league standings below, which share this constant.
+const PAGE_SIZE = 15;
 // Smaller page size for the two "Still establishing" lists (2026-09-01,
 // Ben's request) — top 10 initially, revealing 10 more at a time.
 const PROVISIONAL_PAGE_SIZE = 10;

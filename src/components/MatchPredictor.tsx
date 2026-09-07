@@ -37,6 +37,21 @@ export default function MatchPredictor() {
   const [teamBP1, setTeamBP1] = useState("");
   const [teamBP2, setTeamBP2] = useState("");
 
+  // Defaults to A-Z (2026-09-07, Ben's request) — much easier to find a
+  // specific name than hunting through rating order. "Based on current
+  // rankings" is offered as an alternative for when you want to eyeball
+  // who's near the top/bottom rather than search by name.
+  const [sortMode, setSortMode] = useState<"alphabetical" | "rankings">("alphabetical");
+  const sortedPlayers = useMemo(() => {
+    const copy = [...players];
+    if (sortMode === "rankings") {
+      copy.sort((a, b) => b.rating - a.rating);
+    } else {
+      copy.sort((a, b) => a.display_name.localeCompare(b.display_name));
+    }
+    return copy;
+  }, [players, sortMode]);
+
   const selectedIds = [teamAP1, teamAP2, teamBP1, teamBP2].filter(Boolean);
   const allFourPicked = selectedIds.length === 4;
   const noDuplicates = new Set(selectedIds).size === selectedIds.length;
@@ -88,25 +103,46 @@ export default function MatchPredictor() {
           </p>
         ) : (
           <>
-            {allFourPicked && (
-              <div style={{ textAlign: "right", marginTop: 8 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8, flexWrap: "wrap", gap: 8 }}>
+              <div style={{ display: "flex", gap: 6 }}>
+                <span
+                  className="link-action"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setSortMode("alphabetical")}
+                  style={sortMode === "alphabetical" ? { fontWeight: 700, textDecoration: "underline" } : undefined}
+                >
+                  A–Z
+                </span>
+                <span className="stat-meta">·</span>
+                <span
+                  className="link-action"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setSortMode("rankings")}
+                  style={sortMode === "rankings" ? { fontWeight: 700, textDecoration: "underline" } : undefined}
+                >
+                  Based on current rankings
+                </span>
+              </div>
+              {allFourPicked && (
                 <span className="link-action" role="button" tabIndex={0} onClick={clearPlayers}>
                   Clear players
                 </span>
-              </div>
-            )}
+              )}
+            </div>
 
             <label style={{ marginTop: 16 }}>Team A</label>
             <PlayerSelect
               label="Player 1"
-              players={players}
+              players={sortedPlayers}
               value={teamAP1}
               onChange={setTeamAP1}
               disabledIds={selectedIds.filter((id) => id !== teamAP1)}
             />
             <PlayerSelect
               label="Player 2"
-              players={players}
+              players={sortedPlayers}
               value={teamAP2}
               onChange={setTeamAP2}
               disabledIds={selectedIds.filter((id) => id !== teamAP2)}
@@ -115,14 +151,14 @@ export default function MatchPredictor() {
             <label style={{ marginTop: 16 }}>Team B</label>
             <PlayerSelect
               label="Player 1"
-              players={players}
+              players={sortedPlayers}
               value={teamBP1}
               onChange={setTeamBP1}
               disabledIds={selectedIds.filter((id) => id !== teamBP1)}
             />
             <PlayerSelect
               label="Player 2"
-              players={players}
+              players={sortedPlayers}
               value={teamBP2}
               onChange={setTeamBP2}
               disabledIds={selectedIds.filter((id) => id !== teamBP2)}

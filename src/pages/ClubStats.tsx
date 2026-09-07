@@ -27,6 +27,11 @@ interface MatchTeams {
   team_a_player_2_id: string;
   team_b_player_1_id: string;
   team_b_player_2_id: string;
+  // Scores added 2026-09-07 for the "Highest winning partnership" stat —
+  // needed to work out which pair actually won each match, not just who
+  // played together.
+  team_a_score: number;
+  team_b_score: number;
 }
 
 interface HistoryRow {
@@ -88,7 +93,9 @@ export default function ClubStats() {
     Promise.all([
       supabase
         .from("matches")
-        .select("id,played_at,team_a_player_1_id,team_a_player_2_id,team_b_player_1_id,team_b_player_2_id")
+        .select(
+          "id,played_at,team_a_player_1_id,team_a_player_2_id,team_b_player_1_id,team_b_player_2_id,team_a_score,team_b_score"
+        )
         .eq("status", "confirmed"),
       supabase.from("player_status").select("*").eq("is_active", true),
       supabase.from("player_match_history").select("player_id, match_id, played_at, won, post_rating"),
@@ -168,11 +175,16 @@ export default function ClubStats() {
     const avatarById = new Map(players.map((p) => [p.id, p.avatar_url]));
 
     const pairCounts = new Map<string, number>();
+    const pairWinCounts = new Map<string, number>();
     const playerGameCounts = new Map<string, number>();
 
     function addPair(a: string, b: string) {
       const key = [a, b].sort().join("|");
       pairCounts.set(key, (pairCounts.get(key) ?? 0) + 1);
+    }
+    function addPairWin(a: string, b: string) {
+      const key = [a, b].sort().join("|");
+      pairWinCounts.set(key, (pairWinCounts.get(key) ?? 0) + 1);
     }
     function addPlayer(id: string) {
       playerGameCounts.set(id, (playerGameCounts.get(id) ?? 0) + 1);
@@ -184,6 +196,14 @@ export default function ClubStats() {
       [m.team_a_player_1_id, m.team_a_player_2_id, m.team_b_player_1_id, m.team_b_player_2_id].forEach(
         addPlayer
       );
+      // "Highest winning partnership" (2026-09-07, Ben's request) — counts
+      // wins together, not just games played together (that's the separate
+      // "Most frequent partnerships" stat above).
+      if (m.team_a_score > m.team_b_score) {
+        addPairWin(m.team_a_player_1_id, m.team_a_player_2_id);
+      } else if (m.team_b_score > m.team_a_score) {
+        addPairWin(m.team_b_player_1_id, m.team_b_player_2_id);
+      }
     });
 
     // Top 3 most frequent partnerships, all-time — changed from a single
@@ -194,6 +214,17 @@ export default function ClubStats() {
         return { key, names: `${nameById.get(a) ?? "?"} & ${nameById.get(b) ?? "?"}`, count };
       })
       .sort((a, b) => b.count - a.count)
+      .slice(0, 3);
+
+    // Top 3 winningest partnerships, all-time — by total games WON
+    // together, as distinct from topPairsTop3 above (which is by total
+    // games played together, win or lose).
+    const topWinningPairsTop3 = Array.from(pairWinCounts.entries())
+      .map(([key, wins]) => {
+        const [a, b] = key.split("|");
+        return { key, names: `${nameById.get(a) ?? "?"} & ${nameById.get(b) ?? "?"}`, wins };
+      })
+      .sort((a, b) => b.wins - a.wins)
       .slice(0, 3);
 
     // Top 3 by total confirmed matches played, all-time — only counts
@@ -246,6 +277,7 @@ export default function ClubStats() {
       totalMatches: matches.length,
       totalPlayers: players.length,
       topPairsTop3,
+      topWinningPairsTop3,
       mostMatchesTop3,
       streakTop3,
       avatarById,
@@ -481,6 +513,24 @@ export default function ClubStats() {
               <span className="rank top3">{i + 1}</span>
               <span className="name">{p.names}</span>
               <span className="rating">{p.count}</span>
+            </div>
+          ))
+        ) : (
+          <p className="stat-meta">No matches played yet.</p>
+        )}
+      </div>
+
+      <div className="card">
+        <h2>Highest winning partnership</h2>
+        <p className="stat-meta" style={{ marginBottom: 12 }}>
+          Teammates with the most wins together, all-time.
+        </p>
+        {stats.topWinningPairsTop3.length > 0 ? (
+          stats.topWinningPairsTop3.map((p, i) => (
+            <div className="leaderboard-row" key={p.key}>
+              <span className="rank top3">{i + 1}</span>
+              <span className="name">{p.names}</span>
+              <span className="rating">{p.wins}</span>
             </div>
           ))
         ) : (

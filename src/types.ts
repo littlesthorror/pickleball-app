@@ -93,6 +93,10 @@ export interface PlayerMatchHistoryRow {
   // both of you).
   teammate_pre_rating: number | null;
   opponent_min_pre_rating: number | null;
+  // Added 2026-09-07 for "The Thief" badge — the SUM of both opponents'
+  // pre-game ratings (opponent_min_pre_rating above is just the lower of
+  // the two, which can't tell you the combined/total strength of a pair).
+  opponent_combined_pre_rating: number | null;
 }
 
 export type MatchStatus = "pending" | "confirmed" | "disputed";

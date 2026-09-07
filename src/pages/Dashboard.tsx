@@ -14,7 +14,7 @@ import Avatar from "../components/Avatar";
 import ShareCard from "../components/ShareCard";
 import MatchPredictor from "../components/MatchPredictor";
 import SeasonWrappedCard from "../components/SeasonWrappedCard";
-import { computeBadges, getFrameTier } from "../lib/badges";
+import { computeBadges, dedupeBadges, getFrameTier } from "../lib/badges";
 import type { MonthlyFinish, CompetitionPlacement, SeasonTop10Finish, FrameTier } from "../lib/badges";
 import { fireConfetti, fireBalloons } from "../lib/confetti";
 import { useToast } from "../components/Toast";
@@ -482,9 +482,14 @@ export default function Dashboard({
       description: b.description,
       achievedAt: b.achieved_at,
     }));
-    // Most recently earned first — badges with no known date (shouldn't
-    // happen in practice) sort to the end rather than the top.
-    return [...computed, ...legacy].sort((a, b) => {
+    // Deduped by label (2026-09-07) — a legacy grandfather grant and a
+    // live computeBadges() check can both independently award the same
+    // badge (e.g. Rollercoaster), which showed up as a visible duplicate.
+    // Trophy badges (competition/cup placements) are exempt — see
+    // dedupeBadges' own comment. Most recently earned first — badges with
+    // no known date (shouldn't happen in practice) sort to the end rather
+    // than the top.
+    return dedupeBadges([...computed, ...legacy]).sort((a, b) => {
       if (!a.achievedAt && !b.achievedAt) return 0;
       if (!a.achievedAt) return 1;
       if (!b.achievedAt) return -1;

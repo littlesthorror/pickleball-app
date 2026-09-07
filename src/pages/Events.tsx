@@ -57,6 +57,44 @@ function formatEventTime(timeStr: string | null) {
   return date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 }
 
+// Clamps a long event description to roughly 2-3 paragraphs for the initial
+// view (2026-09-07, Ben's request — "event listings are getting pretty
+// long"). Paragraphs are whatever's separated by blank lines in what the
+// admin typed; .rich-text's white-space: pre-wrap means we don't need to
+// re-join with <br/> elements, the raw newlines render as-is. If there
+// aren't multiple paragraphs (one big block of text), falls back to a
+// character-count clamp so a single wall-of-text description still gets
+// truncated rather than slipping through untouched.
+const DESC_PREVIEW_PARAGRAPHS = 3;
+const DESC_PREVIEW_CHARS = 400;
+
+function truncateDescription(description: string | null): {
+  previewText: string;
+  fullText: string;
+  isTruncated: boolean;
+} {
+  const fullText = description ?? "";
+  const paragraphs = fullText.split(/\n\s*\n/).filter((p) => p.trim().length > 0);
+
+  if (paragraphs.length > DESC_PREVIEW_PARAGRAPHS) {
+    return {
+      previewText: paragraphs.slice(0, DESC_PREVIEW_PARAGRAPHS).join("\n\n"),
+      fullText,
+      isTruncated: true,
+    };
+  }
+
+  if (fullText.length > DESC_PREVIEW_CHARS) {
+    return {
+      previewText: fullText.slice(0, DESC_PREVIEW_CHARS).trimEnd() + "…",
+      fullText,
+      isTruncated: true,
+    };
+  }
+
+  return { previewText: fullText, fullText, isTruncated: false };
+}
+
 // Combines the date + optional time into a real Date object, local time —
 // used both for sorting same-day events by time of day, and for working
 // out when an event's 24-hour "still visible" window ends.
@@ -374,6 +412,10 @@ function EventTicketModal({
   const [rsvpLoading, setRsvpLoading] = useState(true);
   const [rsvpSaving, setRsvpSaving] = useState(false);
   const [rsvpError, setRsvpError] = useState<string | null>(null);
+  // Long descriptions get clamped to ~2-3 paragraphs with a "Show more"
+  // toggle (2026-09-07, Ben's request) — some event write-ups run long and
+  // were pushing the RSVP button off the bottom of the ticket popup.
+  const [descExpanded, setDescExpanded] = useState(false);
 
   async function fetchRsvps() {
     setRsvpLoading(true);
@@ -446,6 +488,7 @@ function EventTicketModal({
   const visual = posterVisual(event);
   const spotsFull = event.capacity != null && goingCount >= event.capacity;
   const spotsPct = event.capacity ? Math.min(100, Math.round((goingCount / event.capacity) * 100)) : 0;
+  const { previewText, isTruncated, fullText } = truncateDescription(event.description);
 
   return (
     <div className="ticket-overlay" onClick={onClose}>
@@ -511,9 +554,22 @@ function EventTicketModal({
           )}
 
           {event.description && (
-            <p className="rich-text" style={{ marginTop: 16, marginBottom: 0 }}>
-              {linkify(event.description)}
-            </p>
+            <div style={{ marginTop: 16 }}>
+              <p className="rich-text" style={{ marginTop: 0, marginBottom: 0 }}>
+                {linkify(descExpanded ? fullText : previewText)}
+              </p>
+              {isTruncated && (
+                <span
+                  className="link-action"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setDescExpanded((v) => !v)}
+                  style={{ display: "inline-block", marginTop: 6 }}
+                >
+                  {descExpanded ? "Show less" : "Show more"}
+                </span>
+              )}
+            </div>
           )}
 
           {event.rsvp_enabled && event.capacity != null && (
