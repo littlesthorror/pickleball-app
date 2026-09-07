@@ -11,6 +11,7 @@ import type { EventPosterPlaceholder, EventRow, NoticeAttachment } from "../type
 import { useConfirm } from "../components/ConfirmDialog";
 import { useToast } from "../components/Toast";
 import PageLoading from "../components/PageLoading";
+import { ShowMoreLess } from "../components/ShowMoreLess";
 
 // Small self-contained weather chip — fetches its own forecast (see
 // lib/weather.ts) and renders nothing at all if the event doesn't have
@@ -1414,29 +1415,13 @@ export default function Events({ isAdmin, playerId }: { isAdmin: boolean; player
             onDelete={() => handleDelete(e.id)}
           />
         ))}
-        {(upcoming.length > visibleUpcoming || visibleUpcoming > PAGE_SIZE) && (
-          <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 12 }}>
-            {upcoming.length > visibleUpcoming && (
-              <button
-                onClick={() => setVisibleUpcoming((c) => c + PAGE_SIZE)}
-                style={{
-                  width: "auto",
-                  marginTop: 0,
-                  background: "transparent",
-                  color: "var(--navy-500)",
-                  border: "1px solid var(--border)",
-                }}
-              >
-                Show more ({upcoming.length - visibleUpcoming} more)
-              </button>
-            )}
-            {visibleUpcoming > PAGE_SIZE && (
-              <span className="link-action" role="button" tabIndex={0} onClick={() => setVisibleUpcoming(PAGE_SIZE)}>
-                Show less
-              </span>
-            )}
-          </div>
-        )}
+        <ShowMoreLess
+          hasMore={upcoming.length > visibleUpcoming}
+          expanded={visibleUpcoming > PAGE_SIZE}
+          moreCount={upcoming.length - visibleUpcoming}
+          onShowMore={() => setVisibleUpcoming((c) => c + PAGE_SIZE)}
+          onShowLess={() => setVisibleUpcoming(PAGE_SIZE)}
+        />
       </div>
 
       {past.length > 0 && (
@@ -1453,29 +1438,13 @@ export default function Events({ isAdmin, playerId }: { isAdmin: boolean; player
               onDelete={() => handleDelete(e.id)}
             />
           ))}
-          {(past.length > visiblePast || visiblePast > PAGE_SIZE) && (
-            <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 12 }}>
-              {past.length > visiblePast && (
-                <button
-                  onClick={() => setVisiblePast((c) => c + PAGE_SIZE)}
-                  style={{
-                    width: "auto",
-                    marginTop: 0,
-                    background: "transparent",
-                    color: "var(--navy-500)",
-                    border: "1px solid var(--border)",
-                  }}
-                >
-                  Show more ({past.length - visiblePast} more)
-                </button>
-              )}
-              {visiblePast > PAGE_SIZE && (
-                <span className="link-action" role="button" tabIndex={0} onClick={() => setVisiblePast(PAGE_SIZE)}>
-                  Show less
-                </span>
-              )}
-            </div>
-          )}
+          <ShowMoreLess
+            hasMore={past.length > visiblePast}
+            expanded={visiblePast > PAGE_SIZE}
+            moreCount={past.length - visiblePast}
+            onShowMore={() => setVisiblePast((c) => c + PAGE_SIZE)}
+            onShowLess={() => setVisiblePast(PAGE_SIZE)}
+          />
         </div>
       )}
 

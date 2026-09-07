@@ -7,6 +7,7 @@ import type { LegacyBadgeRow, PlayerPrivateInfo, PlayerStatus } from "../types";
 import { useConfirm } from "../components/ConfirmDialog";
 import { useToast } from "../components/Toast";
 import PageLoading from "../components/PageLoading";
+import { ShowMoreLess } from "../components/ShowMoreLess";
 
 const PAGE_SIZE = 20;
 const ERROR_LOG_LIMIT = 50;
@@ -1153,23 +1154,13 @@ export default function AdminManagement({
         <p className="stat-meta">No members match "{search}".</p>
       )}
 
-      {(remaining > 0 || visibleCount > PAGE_SIZE) && (
-        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          {remaining > 0 && (
-            <button
-              onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
-              style={{ width: "auto", background: "transparent", color: "var(--navy-500)", border: "1px solid var(--border)" }}
-            >
-              Show more ({remaining} more)
-            </button>
-          )}
-          {visibleCount > PAGE_SIZE && (
-            <span className="link-action" role="button" tabIndex={0} onClick={() => setVisibleCount(PAGE_SIZE)}>
-              Show less
-            </span>
-          )}
-        </div>
-      )}
+      <ShowMoreLess
+        hasMore={remaining > 0}
+        expanded={visibleCount > PAGE_SIZE}
+        moreCount={remaining}
+        onShowMore={() => setVisibleCount((c) => c + PAGE_SIZE)}
+        onShowLess={() => setVisibleCount(PAGE_SIZE)}
+      />
     </div>
   );
 }

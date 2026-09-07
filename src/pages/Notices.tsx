@@ -10,6 +10,7 @@ import type { NoticeAttachment, NoticePollVote, NoticeRow } from "../types";
 import { useConfirm } from "../components/ConfirmDialog";
 import { useToast } from "../components/Toast";
 import PageLoading from "../components/PageLoading";
+import { ShowMoreLess } from "../components/ShowMoreLess";
 
 const NOTICE_DRAFT_KEY = "sideline-draft-notice";
 
@@ -1238,29 +1239,13 @@ export default function Notices({ isAdmin, playerId }: { isAdmin: boolean; playe
             </div>
           );
         })}
-        {(notices.length > visibleCount || visibleCount > PAGE_SIZE) && (
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            {notices.length > visibleCount && (
-              <button
-                onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
-                style={{
-                  width: "auto",
-                  marginTop: 0,
-                  background: "transparent",
-                  color: "var(--navy-500)",
-                  border: "1px solid var(--border)",
-                }}
-              >
-                Show more ({notices.length - visibleCount} more)
-              </button>
-            )}
-            {visibleCount > PAGE_SIZE && (
-              <span className="link-action" role="button" tabIndex={0} onClick={() => setVisibleCount(PAGE_SIZE)}>
-                Show less
-              </span>
-            )}
-          </div>
-        )}
+        <ShowMoreLess
+          hasMore={notices.length > visibleCount}
+          expanded={visibleCount > PAGE_SIZE}
+          moreCount={notices.length - visibleCount}
+          onShowMore={() => setVisibleCount((c) => c + PAGE_SIZE)}
+          onShowLess={() => setVisibleCount(PAGE_SIZE)}
+        />
       </div>
 
       {lightbox && <Lightbox src={lightbox.src} alt={lightbox.alt} onClose={() => setLightbox(null)} />}

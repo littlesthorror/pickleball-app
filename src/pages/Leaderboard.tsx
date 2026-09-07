@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../supabaseClient";
 import Avatar from "../components/Avatar";
+import { ShowMoreLess } from "../components/ShowMoreLess";
 import type { LeaderboardRow, QuarterlyCupRow, QuarterlyCupTeamRow, QuarterlyCupMatchRow } from "../types";
 import { getCurrentSeason, getTrackedSeasons, getSeasonEndInfo } from "../lib/seasons";
 import { computeGroupStandings } from "../lib/competitionStandings";
@@ -609,29 +610,13 @@ export default function Leaderboard({
             )}
           </div>
         ))}
-        {(established.length > visibleEstablished || visibleEstablished > PAGE_SIZE) && (
-          <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 12 }}>
-            {established.length > visibleEstablished && (
-              <button
-                onClick={() => setVisibleEstablished((c) => c + PAGE_SIZE)}
-                style={{
-                  width: "auto",
-                  marginTop: 0,
-                  background: "transparent",
-                  color: "var(--navy-500)",
-                  border: "1px solid var(--border)",
-                }}
-              >
-                Show more ({established.length - visibleEstablished} more)
-              </button>
-            )}
-            {visibleEstablished > PAGE_SIZE && (
-              <span className="link-action" role="button" tabIndex={0} onClick={() => setVisibleEstablished(PAGE_SIZE)}>
-                Show less
-              </span>
-            )}
-          </div>
-        )}
+        <ShowMoreLess
+          hasMore={established.length > visibleEstablished}
+          expanded={visibleEstablished > PAGE_SIZE}
+          moreCount={established.length - visibleEstablished}
+          onShowMore={() => setVisibleEstablished((c) => c + PAGE_SIZE)}
+          onShowLess={() => setVisibleEstablished(PAGE_SIZE)}
+        />
         {clubPlayerRow && clubPlayer && (
           <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--border)" }}>
             <p
@@ -855,29 +840,13 @@ export default function Leaderboard({
                   </div>
                 );
               })}
-              {(seasonStandings.length > visibleSeasonRows || visibleSeasonRows > PAGE_SIZE) && (
-                <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 12 }}>
-                  {seasonStandings.length > visibleSeasonRows && (
-                    <button
-                      onClick={() => setVisibleSeasonRows((c) => c + PAGE_SIZE)}
-                      style={{
-                        width: "auto",
-                        marginTop: 0,
-                        background: "transparent",
-                        color: "var(--navy-500)",
-                        border: "1px solid var(--border)",
-                      }}
-                    >
-                      Show more ({seasonStandings.length - visibleSeasonRows} more)
-                    </button>
-                  )}
-                  {visibleSeasonRows > PAGE_SIZE && (
-                    <span className="link-action" role="button" tabIndex={0} onClick={() => setVisibleSeasonRows(PAGE_SIZE)}>
-                      Show less
-                    </span>
-                  )}
-                </div>
-              )}
+              <ShowMoreLess
+                hasMore={seasonStandings.length > visibleSeasonRows}
+                expanded={visibleSeasonRows > PAGE_SIZE}
+                moreCount={seasonStandings.length - visibleSeasonRows}
+                onShowMore={() => setVisibleSeasonRows((c) => c + PAGE_SIZE)}
+                onShowLess={() => setVisibleSeasonRows(PAGE_SIZE)}
+              />
             </>
           )}
         </div>
@@ -996,32 +965,13 @@ export default function Leaderboard({
             </div>
           ))}
           {(provisionalPlayed.length > visibleProvisionalPlayed || visibleProvisionalPlayed > PROVISIONAL_PAGE_SIZE) && (
-            <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 12 }}>
-              {provisionalPlayed.length > visibleProvisionalPlayed && (
-                <button
-                  onClick={() => setVisibleProvisionalPlayed((c) => c + PROVISIONAL_PAGE_SIZE)}
-                  style={{
-                    width: "auto",
-                    marginTop: 0,
-                    background: "transparent",
-                    color: "var(--navy-500)",
-                    border: "1px solid var(--border)",
-                  }}
-                >
-                  Show more ({provisionalPlayed.length - visibleProvisionalPlayed} more)
-                </button>
-              )}
-              {visibleProvisionalPlayed > PROVISIONAL_PAGE_SIZE && (
-                <span
-                  className="link-action"
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => setVisibleProvisionalPlayed(PROVISIONAL_PAGE_SIZE)}
-                >
-                  Show less
-                </span>
-              )}
-            </div>
+            <ShowMoreLess
+              hasMore={provisionalPlayed.length > visibleProvisionalPlayed}
+              expanded={visibleProvisionalPlayed > PROVISIONAL_PAGE_SIZE}
+              moreCount={provisionalPlayed.length - visibleProvisionalPlayed}
+              onShowMore={() => setVisibleProvisionalPlayed((c) => c + PROVISIONAL_PAGE_SIZE)}
+              onShowLess={() => setVisibleProvisionalPlayed(PROVISIONAL_PAGE_SIZE)}
+            />
           )}
         </div>
       )}
@@ -1048,32 +998,13 @@ export default function Leaderboard({
             </div>
           ))}
           {(provisionalUnplayed.length > visibleProvisionalUnplayed || visibleProvisionalUnplayed > PROVISIONAL_PAGE_SIZE) && (
-            <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 12 }}>
-              {provisionalUnplayed.length > visibleProvisionalUnplayed && (
-                <button
-                  onClick={() => setVisibleProvisionalUnplayed((c) => c + PROVISIONAL_PAGE_SIZE)}
-                  style={{
-                    width: "auto",
-                    marginTop: 0,
-                    background: "transparent",
-                    color: "var(--navy-500)",
-                    border: "1px solid var(--border)",
-                  }}
-                >
-                  Show more ({provisionalUnplayed.length - visibleProvisionalUnplayed} more)
-                </button>
-              )}
-              {visibleProvisionalUnplayed > PROVISIONAL_PAGE_SIZE && (
-                <span
-                  className="link-action"
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => setVisibleProvisionalUnplayed(PROVISIONAL_PAGE_SIZE)}
-                >
-                  Show less
-                </span>
-              )}
-            </div>
+            <ShowMoreLess
+              hasMore={provisionalUnplayed.length > visibleProvisionalUnplayed}
+              expanded={visibleProvisionalUnplayed > PROVISIONAL_PAGE_SIZE}
+              moreCount={provisionalUnplayed.length - visibleProvisionalUnplayed}
+              onShowMore={() => setVisibleProvisionalUnplayed((c) => c + PROVISIONAL_PAGE_SIZE)}
+              onShowLess={() => setVisibleProvisionalUnplayed(PROVISIONAL_PAGE_SIZE)}
+            />
           )}
         </div>
       )}

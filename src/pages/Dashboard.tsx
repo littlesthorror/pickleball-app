@@ -28,6 +28,7 @@ import type { EventForecast } from "../lib/weather";
 import type { Season } from "../lib/seasons";
 import type { EventRow, LegacyBadgeRow, PlayerMatchHistoryRow, PlayerStatus } from "../types";
 import PageLoading from "../components/PageLoading";
+import { ShowMoreLess } from "../components/ShowMoreLess";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Filler);
 
@@ -949,22 +950,19 @@ export default function Dashboard({
               {badges.find((b) => b.id === selectedBadgeId)?.description}
             </p>
           )}
-          {badges.length > BADGE_PAGE_SIZE && (
-            <button
-              onClick={() => {
-                setShowAllBadges((v) => !v);
-                setSelectedBadgeId(null);
-              }}
-              style={{
-                marginTop: 12,
-                background: "transparent",
-                color: "var(--navy-500)",
-                border: "1px solid var(--border)",
-              }}
-            >
-              {showAllBadges ? "Show less" : `Show more (${badges.length - BADGE_PAGE_SIZE} more)`}
-            </button>
-          )}
+          <ShowMoreLess
+            hasMore={!showAllBadges && badges.length > BADGE_PAGE_SIZE}
+            expanded={showAllBadges}
+            moreCount={badges.length - BADGE_PAGE_SIZE}
+            onShowMore={() => {
+              setShowAllBadges(true);
+              setSelectedBadgeId(null);
+            }}
+            onShowLess={() => {
+              setShowAllBadges(false);
+              setSelectedBadgeId(null);
+            }}
+          />
         </div>
       )}
 
@@ -1218,34 +1216,13 @@ export default function Dashboard({
             </div>
           </div>
         ))}
-        {(recent.length > visibleRecentCount || visibleRecentCount > RECENT_MATCHES_PAGE_SIZE) && (
-          <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 12 }}>
-            {recent.length > visibleRecentCount && (
-              <button
-                onClick={() => setVisibleRecentCount((n) => n + RECENT_MATCHES_PAGE_SIZE)}
-                style={{
-                  width: "auto",
-                  marginTop: 0,
-                  background: "transparent",
-                  color: "var(--navy-500)",
-                  border: "1px solid var(--border)",
-                }}
-              >
-                Show more ({recent.length - visibleRecentCount} more)
-              </button>
-            )}
-            {visibleRecentCount > RECENT_MATCHES_PAGE_SIZE && (
-              <span
-                className="link-action"
-                role="button"
-                tabIndex={0}
-                onClick={() => setVisibleRecentCount(RECENT_MATCHES_PAGE_SIZE)}
-              >
-                Show less
-              </span>
-            )}
-          </div>
-        )}
+        <ShowMoreLess
+          hasMore={recent.length > visibleRecentCount}
+          expanded={visibleRecentCount > RECENT_MATCHES_PAGE_SIZE}
+          moreCount={recent.length - visibleRecentCount}
+          onShowMore={() => setVisibleRecentCount((n) => n + RECENT_MATCHES_PAGE_SIZE)}
+          onShowLess={() => setVisibleRecentCount(RECENT_MATCHES_PAGE_SIZE)}
+        />
       </div>
 
       {isOwnProfile && headToHead.length > 0 && (
@@ -1262,34 +1239,13 @@ export default function Dashboard({
               </div>
             </div>
           ))}
-          {(headToHead.length > visibleH2HCount || visibleH2HCount > HEAD_TO_HEAD_PAGE_SIZE) && (
-            <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 12 }}>
-              {headToHead.length > visibleH2HCount && (
-                <button
-                  onClick={() => setVisibleH2HCount((n) => n + HEAD_TO_HEAD_PAGE_SIZE)}
-                  style={{
-                    width: "auto",
-                    marginTop: 0,
-                    background: "transparent",
-                    color: "var(--navy-500)",
-                    border: "1px solid var(--border)",
-                  }}
-                >
-                  Show more ({headToHead.length - visibleH2HCount} more)
-                </button>
-              )}
-              {visibleH2HCount > HEAD_TO_HEAD_PAGE_SIZE && (
-                <span
-                  className="link-action"
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => setVisibleH2HCount(HEAD_TO_HEAD_PAGE_SIZE)}
-                >
-                  Show less
-                </span>
-              )}
-            </div>
-          )}
+          <ShowMoreLess
+            hasMore={headToHead.length > visibleH2HCount}
+            expanded={visibleH2HCount > HEAD_TO_HEAD_PAGE_SIZE}
+            moreCount={headToHead.length - visibleH2HCount}
+            onShowMore={() => setVisibleH2HCount((n) => n + HEAD_TO_HEAD_PAGE_SIZE)}
+            onShowLess={() => setVisibleH2HCount(HEAD_TO_HEAD_PAGE_SIZE)}
+          />
         </div>
       )}
 

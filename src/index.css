@@ -175,6 +175,22 @@ body {
   text-decoration: underline;
 }
 
+/* ── Show more / Show less (shared, see components/ShowMoreLess.tsx) ── */
+.show-more-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 12px;
+}
+
+.show-more-btn {
+  width: auto;
+  margin-top: 0;
+  background: transparent;
+  color: var(--navy-500);
+  border: 1px solid var(--border);
+}
+
 /* ── Nav (segmented control) ───────────────────────────────────────── */
 /* Stays a single row across the top, same as the original design — but
    scrolls horizontally instead of wrapping onto extra rows or squashing

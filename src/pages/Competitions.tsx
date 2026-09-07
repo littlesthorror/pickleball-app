@@ -64,6 +64,12 @@ export default function Competitions({ isAdmin, currentUserId }: { isAdmin: bool
   // recomputed on every competitions.length change, so it doesn't yank
   // itself shut/open under an admin who's mid-edit.
   const [showNewForm, setShowNewForm] = useState<boolean | null>(null);
+  // Advanced settings sub-section (2026-09-07, Ben's request) — currently
+  // just houses "teams advancing per group", but nested separately from the
+  // main form fields so it has room to grow without cluttering the common
+  // path. Always starts collapsed — this is the exception case, not
+  // something every admin needs to touch on every competition.
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   function loadCompetitions() {
     return supabase
@@ -241,14 +247,6 @@ export default function Competitions({ isAdmin, currentUserId }: { isAdmin: bool
               />
               <label>Date (optional)</label>
               <input type="date" value={newDate} onChange={(e) => setNewDate(e.target.value)} />
-              <label>Teams advancing per group</label>
-              <input
-                type="number"
-                min={1}
-                value={newAdvance}
-                onChange={(e) => setNewAdvance(e.target.value)}
-                style={{ maxWidth: 100 }}
-              />
               <label>Scoring system</label>
               <select value={newScoring} onChange={(e) => setNewScoring(e.target.value as ScoringSystem)}>
                 <option value="standard">Standard — 2 points for a win</option>
@@ -268,6 +266,46 @@ export default function Competitions({ isAdmin, currentUserId }: { isAdmin: bool
                 />
                 Teams play each other twice (double round robin)
               </label>
+
+              {/* Advanced settings (2026-09-07, Ben's request) — nested,
+                  separately-collapsible sub-section so it has room to grow
+                  without cluttering the common "just create a competition"
+                  path. Collapsed by default every time (unlike the outer
+                  form, which opens itself when there's nothing else on the
+                  page yet) since this is the exception case. */}
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => setShowAdvanced(!showAdvanced)}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  cursor: "pointer",
+                  marginTop: 20,
+                  paddingTop: 12,
+                  borderTop: "1px solid var(--border)",
+                }}
+              >
+                <strong style={{ fontSize: "0.9rem" }}>Advanced settings</strong>
+                <span style={{ color: "var(--navy-500)", fontWeight: 700, fontSize: "0.85rem" }}>
+                  {showAdvanced ? "Hide ▲" : "Show ▼"}
+                </span>
+              </div>
+              {showAdvanced && (
+                <>
+                  <label>Auto-qualify from groups</label>
+                  <select value={newAdvance} onChange={(e) => setNewAdvance(e.target.value)}>
+                    <option value="2">Top 2 per group</option>
+                    <option value="4">Top 4 per group</option>
+                  </select>
+                  <p className="stat-meta" style={{ marginTop: 4 }}>
+                    When you move to the knockout stage, only these top finishers from each group will show up as
+                    selectable teams — no more scrolling past teams that didn't qualify.
+                  </p>
+                </>
+              )}
+
               <button disabled={creating || !newName.trim()} onClick={handleCreate} style={{ marginTop: 16 }}>
                 {creating ? "Creating…" : "Create competition"}
               </button>
@@ -710,6 +748,8 @@ function CompetitionDetail({
         <KnockoutSection
           competition={competition}
           teams={teams}
+          groups={groups}
+          groupTeams={groupTeams}
           matches={matches}
           teamLabel={teamLabel}
           isAdmin={isAdmin}
@@ -722,6 +762,8 @@ function CompetitionDetail({
         <CompletedSection
           competition={competition}
           teams={teams}
+          groups={groups}
+          groupTeams={groupTeams}
           matches={matches}
           teamLabel={teamLabel}
           isAdmin={isAdmin}
@@ -1580,6 +1622,8 @@ function FixtureRow({
 function KnockoutSection({
   competition,
   teams,
+  groups,
+  groupTeams,
   matches,
   teamLabel,
   isAdmin,
@@ -1588,6 +1632,8 @@ function KnockoutSection({
 }: {
   competition: CompetitionRow;
   teams: CompetitionTeamRow[];
+  groups: CompetitionGroupRow[];
+  groupTeams: CompetitionGroupTeamRow[];
   matches: (CompetitionMatchRow & { matches: { team_a_score: number; team_b_score: number } | null })[];
   teamLabel: (id: string) => string;
   isAdmin: boolean;
@@ -1604,6 +1650,35 @@ function KnockoutSection({
   const [completeError, setCompleteError] = useState<string | null>(null);
 
   const knockoutMatches = matches.filter((m) => m.knockout_round);
+
+  // Which teams are actually eligible for the bracket (2026-09-07, Ben's
+  // request): the top `advance_per_group` finishers from EACH group, same
+  // math as GroupStandingsSection's bolding above — reusing
+  // computeGroupStandings rather than re-deriving standings a different
+  // way. If there's no group stage at all (groups.length === 0, e.g. a
+  // straight knockout with no group phase), there's nothing to qualify
+  // from, so every team stays selectable rather than showing an empty list.
+  const qualifiedTeamIds = useMemo(() => {
+    if (groups.length === 0) return null;
+    const qualified = new Set<string>();
+    for (const g of groups) {
+      const teamIds = groupTeams.filter((gt) => gt.group_id === g.id).map((gt) => gt.team_id);
+      const played = matches
+        .filter((m) => m.group_id === g.id && m.matches)
+        .map((m) => ({
+          teamAId: m.team_a_id,
+          teamBId: m.team_b_id,
+          teamAScore: m.matches!.team_a_score,
+          teamBScore: m.matches!.team_b_score,
+        }));
+      const standings = computeGroupStandings(teamIds, played, competition.scoring_system);
+      standings.slice(0, competition.advance_per_group).forEach((row) => qualified.add(row.teamId));
+    }
+    return qualified;
+  }, [groups, groupTeams, matches, competition.scoring_system, competition.advance_per_group]);
+
+  const selectableTeams = qualifiedTeamIds ? teams.filter((t) => qualifiedTeamIds.has(t.id)) : teams;
+  const hiddenTeamCount = teams.length - selectableTeams.length;
 
   async function addMatch() {
     if (!teamA || !teamB || teamA === teamB) return;
@@ -1736,10 +1811,16 @@ function KnockoutSection({
               </option>
             ))}
           </select>
+          {qualifiedTeamIds && hiddenTeamCount > 0 && (
+            <p className="stat-meta" style={{ marginTop: 4 }}>
+              Only showing the {selectableTeams.length} team{selectableTeams.length === 1 ? "" : "s"} that qualified
+              from the group stage ({hiddenTeamCount} that didn't are hidden).
+            </p>
+          )}
           <label>Team A</label>
           <select value={teamA} onChange={(e) => setTeamA(e.target.value)}>
             <option value="">Select team…</option>
-            {teams.map((t) => (
+            {selectableTeams.map((t) => (
               <option key={t.id} value={t.id} disabled={t.id === teamB}>
                 {teamLabel(t.id)}
               </option>
@@ -1748,7 +1829,7 @@ function KnockoutSection({
           <label>Team B</label>
           <select value={teamB} onChange={(e) => setTeamB(e.target.value)}>
             <option value="">Select team…</option>
-            {teams.map((t) => (
+            {selectableTeams.map((t) => (
               <option key={t.id} value={t.id} disabled={t.id === teamA}>
                 {teamLabel(t.id)}
               </option>
@@ -1794,6 +1875,8 @@ function KnockoutSection({
 function CompletedSection({
   competition,
   teams,
+  groups,
+  groupTeams,
   matches,
   teamLabel,
   isAdmin,
@@ -1801,6 +1884,8 @@ function CompletedSection({
 }: {
   competition: CompetitionRow;
   teams: CompetitionTeamRow[];
+  groups: CompetitionGroupRow[];
+  groupTeams: CompetitionGroupTeamRow[];
   matches: (CompetitionMatchRow & { matches: { team_a_score: number; team_b_score: number } | null })[];
   teamLabel: (id: string) => string;
   isAdmin: boolean;
@@ -1853,6 +1938,64 @@ function CompletedSection({
     }
   }
 
+  // Closest match — smallest margin of victory in any single played match.
+  // Added 2026-09-07 at Ben's request, alongside a couple more stats below
+  // — framed the same positive way as Biggest win above: it names the
+  // winner of a tight, exciting game rather than calling out who "nearly
+  // lost". Same shape as biggestWin, just the opposite end of the margin.
+  let closestMatch: { winnerId: string; loserId: string; winnerScore: number; loserScore: number; margin: number } | null = null;
+  for (const m of matches) {
+    if (!m.matches || !m.winner_team_id) continue;
+    const winnerIsA = m.winner_team_id === m.team_a_id;
+    const winnerScore = winnerIsA ? m.matches.team_a_score : m.matches.team_b_score;
+    const loserScore = winnerIsA ? m.matches.team_b_score : m.matches.team_a_score;
+    const margin = winnerScore - loserScore;
+    if (margin > 0 && (!closestMatch || margin < closestMatch.margin)) {
+      closestMatch = {
+        winnerId: m.winner_team_id,
+        loserId: winnerIsA ? m.team_b_id : m.team_a_id,
+        winnerScore,
+        loserScore,
+        margin,
+      };
+    }
+  }
+
+  // Total points played — a pure aggregate across every match in the
+  // competition, not attached to any one team, so there's no way for it to
+  // read as a dig at anyone. Just a fun "how much pickleball did we play"
+  // number for the recap.
+  let totalPointsPlayed = 0;
+  for (const m of matches) {
+    if (!m.matches) continue;
+    totalPointsPlayed += m.matches.team_a_score + m.matches.team_b_score;
+  }
+
+  // Unbeaten in groups — team(s) that went through their ENTIRE group
+  // stage without a single loss. Reuses computeGroupStandings, same as
+  // GroupStandingsSection during the groups stage, scoped per group since
+  // a team's group-stage record only makes sense within its own group.
+  // Purely a positive footnote about the group phase, separate from who
+  // ultimately won the whole competition — a team can go unbeaten in
+  // groups and still not take the title, and this is a nice thing to call
+  // out for them regardless.
+  const unbeatenInGroups: string[] = [];
+  for (const g of groups) {
+    const teamIds = groupTeams.filter((gt) => gt.group_id === g.id).map((gt) => gt.team_id);
+    const played = matches
+      .filter((m) => m.group_id === g.id && m.matches)
+      .map((m) => ({
+        teamAId: m.team_a_id,
+        teamBId: m.team_b_id,
+        teamAScore: m.matches!.team_a_score,
+        teamBScore: m.matches!.team_b_score,
+      }));
+    const standings = computeGroupStandings(teamIds, played, competition.scoring_system);
+    for (const row of standings) {
+      if (row.played > 0 && row.lost === 0) unbeatenInGroups.push(row.teamId);
+    }
+  }
+
   async function reopenCompetition() {
     if (
       !(await confirm(
@@ -1898,7 +2041,7 @@ function CompletedSection({
         </div>
       )}
 
-      {(topScorer || biggestWin) && (
+      {(topScorer || biggestWin || closestMatch || totalPointsPlayed > 0 || unbeatenInGroups.length > 0) && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 4 }}>
           {topScorer && (
             <div style={{ flex: "1 1 220px", padding: "10px 12px", borderRadius: 10, background: "var(--bg-subtle, rgba(15,37,71,0.04))", border: "1px solid var(--border)" }}>
@@ -1914,6 +2057,31 @@ function CompletedSection({
               <div className="stat-meta" style={{ marginTop: 2 }}>
                 Beat {teamLabel(biggestWin.loserId)} {biggestWin.winnerScore}–{biggestWin.loserScore}
               </div>
+            </div>
+          )}
+          {closestMatch && (
+            <div style={{ flex: "1 1 220px", padding: "10px 12px", borderRadius: 10, background: "var(--bg-subtle, rgba(15,37,71,0.04))", border: "1px solid var(--border)" }}>
+              <div className="stat-meta" style={{ margin: 0 }}>😅 Closest match</div>
+              <div style={{ fontWeight: 700, marginTop: 2 }}>{teamLabel(closestMatch.winnerId)}</div>
+              <div className="stat-meta" style={{ marginTop: 2 }}>
+                Beat {teamLabel(closestMatch.loserId)} {closestMatch.winnerScore}–{closestMatch.loserScore} — right down to the wire
+              </div>
+            </div>
+          )}
+          {unbeatenInGroups.length > 0 && (
+            <div style={{ flex: "1 1 220px", padding: "10px 12px", borderRadius: 10, background: "var(--bg-subtle, rgba(15,37,71,0.04))", border: "1px solid var(--border)" }}>
+              <div className="stat-meta" style={{ margin: 0 }}>🛡️ Unbeaten in groups</div>
+              <div style={{ fontWeight: 700, marginTop: 2 }}>{unbeatenInGroups.map((id) => teamLabel(id)).join(", ")}</div>
+              <div className="stat-meta" style={{ marginTop: 2 }}>
+                Went through the group stage without dropping a single game.
+              </div>
+            </div>
+          )}
+          {totalPointsPlayed > 0 && (
+            <div style={{ flex: "1 1 220px", padding: "10px 12px", borderRadius: 10, background: "var(--bg-subtle, rgba(15,37,71,0.04))", border: "1px solid var(--border)" }}>
+              <div className="stat-meta" style={{ margin: 0 }}>🎾 Points played</div>
+              <div style={{ fontWeight: 700, marginTop: 2 }}>{totalPointsPlayed}</div>
+              <div className="stat-meta" style={{ marginTop: 2 }}>Total points scored across every game in the competition.</div>
             </div>
           )}
         </div>
