@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "./supabaseClient";
 import MatchEntry from "./pages/MatchEntry";
@@ -140,13 +140,38 @@ export default function App() {
       .then(({ data }) => setIsQuarterlyCupParticipant((data?.length ?? 0) > 0));
   }, [player?.id]);
 
+  // Tracks the previous session outside React state (2026-09-07, added
+  // while investigating Ben's report of members getting logged out
+  // "regularly") — a ref rather than the `session` state variable itself,
+  // since this effect only runs once ([] deps) and a state var read inside
+  // its closure would always see the stale initial value, never updates.
+  const sessionRef = useRef<Session | null>(null);
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
+      sessionRef.current = data.session;
       setSession(data.session);
       setLoading(false);
     });
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, newSession) => {
+      // Diagnostic-only logging for unexpected sign-outs (2026-09-07).
+      // Supabase's own auth logs showed intermittent 500s on /token
+      // ("error finding refresh token: context canceled" / a dropped
+      // connection to their auth DB) — that's on Supabase's infrastructure
+      // side, not a bug in this app, but there was previously no
+      // admin-visible record of exactly when/how often a session actually
+      // dropped client-side to confirm the two line up. This only fires
+      // when we previously HAD a session and it just went away — not on
+      // the ordinary "arrived at the login page, never signed in" case.
+      if (event === "SIGNED_OUT" && sessionRef.current) {
+        logError(
+          `Session ended unexpectedly (was signed in as auth user ${sessionRef.current.user.id})`,
+          undefined,
+          "auth.SIGNED_OUT"
+        );
+      }
+      sessionRef.current = newSession;
       setSession(newSession);
     });
 

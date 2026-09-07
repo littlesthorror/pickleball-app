@@ -1894,6 +1894,32 @@ function CompletedSection({
   const confirm = useConfirm();
   const [results, setResults] = useState<{ placement: number; team_id: string }[]>([]);
   const [reopening, setReopening] = useState(false);
+  // Pre-match ratings per (match, player) — 2026-09-07, Ben's request for
+  // an "overachiever" stat. Fetched separately here rather than folded
+  // into the shared competition_matches query every other section uses,
+  // since this is the only place that needs it. Keyed "matchId:playerId"
+  // for O(1) lookup below.
+  const [preRatings, setPreRatings] = useState<Map<string, number>>(new Map());
+
+  useEffect(() => {
+    const matchIds = matches.map((m) => m.match_id).filter((id): id is string => !!id);
+    if (matchIds.length === 0) {
+      setPreRatings(new Map());
+      return;
+    }
+    supabase
+      .from("match_participant_ratings")
+      .select("match_id, player_id, pre_rating")
+      .in("match_id", matchIds)
+      .then(({ data }) => {
+        const map = new Map<string, number>();
+        for (const row of data ?? []) {
+          map.set(`${row.match_id}:${row.player_id}`, row.pre_rating);
+        }
+        setPreRatings(map);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [competition.id]);
 
   useEffect(() => {
     supabase
@@ -1996,6 +2022,42 @@ function CompletedSection({
     }
   }
 
+  // Overachiever — 2026-09-07, Ben's request: "a team who performed better
+  // than their Rating suggested they would". Same underlying idea as
+  // Leaderboard's "Biggest Upset" card (a win where the winning side's
+  // average pre-match rating was LOWER than the losing side's — i.e. they
+  // were the "underdog" by rating, on paper, for that game), but summed
+  // across every game in the competition rather than spotlighting one, so
+  // it rewards a team that consistently punched above their rating rather
+  // than just the single biggest one-off shock. Only positive gaps count
+  // (being outrated and STILL winning) — a win as the favourite contributes
+  // nothing here, it just doesn't count against them either.
+  function avgPreRating(matchId: string | null, team: CompetitionTeamRow | undefined): number | null {
+    if (!matchId || !team) return null;
+    const a = preRatings.get(`${matchId}:${team.player1_id}`);
+    const b = preRatings.get(`${matchId}:${team.player2_id}`);
+    if (a == null || b == null) return null;
+    return (a + b) / 2;
+  }
+  const overachieveByTeam = new Map<string, number>();
+  for (const m of matches) {
+    if (!m.matches || !m.winner_team_id || !m.match_id) continue;
+    const loserTeamId = m.winner_team_id === m.team_a_id ? m.team_b_id : m.team_a_id;
+    const winnerTeam = teams.find((t) => t.id === m.winner_team_id);
+    const loserTeam = teams.find((t) => t.id === loserTeamId);
+    const winnerAvg = avgPreRating(m.match_id, winnerTeam);
+    const loserAvg = avgPreRating(m.match_id, loserTeam);
+    if (winnerAvg == null || loserAvg == null) continue;
+    const gap = loserAvg - winnerAvg;
+    if (gap > 0) {
+      overachieveByTeam.set(m.winner_team_id, (overachieveByTeam.get(m.winner_team_id) ?? 0) + gap);
+    }
+  }
+  let overachiever: { teamId: string; points: number } | null = null;
+  for (const [teamId, points] of overachieveByTeam) {
+    if (!overachiever || points > overachiever.points) overachiever = { teamId, points: Math.round(points) };
+  }
+
   async function reopenCompetition() {
     if (
       !(await confirm(
@@ -2041,7 +2103,7 @@ function CompletedSection({
         </div>
       )}
 
-      {(topScorer || biggestWin || closestMatch || totalPointsPlayed > 0 || unbeatenInGroups.length > 0) && (
+      {(topScorer || biggestWin || closestMatch || totalPointsPlayed > 0 || unbeatenInGroups.length > 0 || overachiever) && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 4 }}>
           {topScorer && (
             <div style={{ flex: "1 1 220px", padding: "10px 12px", borderRadius: 10, background: "var(--bg-subtle, rgba(15,37,71,0.04))", border: "1px solid var(--border)" }}>
@@ -2082,6 +2144,15 @@ function CompletedSection({
               <div className="stat-meta" style={{ margin: 0 }}>🎾 Points played</div>
               <div style={{ fontWeight: 700, marginTop: 2 }}>{totalPointsPlayed}</div>
               <div className="stat-meta" style={{ marginTop: 2 }}>Total points scored across every game in the competition.</div>
+            </div>
+          )}
+          {overachiever && (
+            <div style={{ flex: "1 1 220px", padding: "10px 12px", borderRadius: 10, background: "var(--bg-subtle, rgba(15,37,71,0.04))", border: "1px solid var(--border)" }}>
+              <div className="stat-meta" style={{ margin: 0 }}>📈 Overachiever</div>
+              <div style={{ fontWeight: 700, marginTop: 2 }}>{teamLabel(overachiever.teamId)}</div>
+              <div className="stat-meta" style={{ marginTop: 2 }}>
+                Won games against opponents who out-rated them by a combined {overachiever.points} points.
+              </div>
             </div>
           )}
         </div>

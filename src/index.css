@@ -1146,6 +1146,28 @@ textarea {
   word-break: break-all;
 }
 
+/* ── Per-post "Show more" clamp (News/Notices, 2026-09-07, Ben's request)
+   Clips the RENDERED content by height (not the raw text), so it can't
+   cut a table or list in half the way slicing the string could — a long
+   post's body just gets visually clipped and faded, whatever markup is
+   inside it. */
+.notice-body-clamped {
+  max-height: 160px;
+  overflow: hidden;
+  position: relative;
+}
+
+.notice-body-clamped::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 48px;
+  background: linear-gradient(180deg, transparent 0%, var(--card) 85%);
+  pointer-events: none;
+}
+
 /* ── Rich-text tables (Notices) ──────────────────────────────────────────
    Added 2026-08-31 — see lib/richBody.tsx. A notice's "|"-separated lines
    render as one of these instead of the usual <p>. Wrapped in a

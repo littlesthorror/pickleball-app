@@ -289,6 +289,24 @@ export default function Notices({ isAdmin, playerId }: { isAdmin: boolean; playe
   // feeling less crowded.
   const PAGE_SIZE = 3;
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  // Per-post "Show more" (2026-09-07, Ben's request — "for the individual
+  // posts themselves", distinct from the list-level pagination above).
+  // Clamped by rendered HEIGHT via the .notice-body-clamped CSS class
+  // (see index.css) rather than slicing n.body as a string — this content
+  // can contain rich-body tables/lists (see lib/richBody.tsx), and cutting
+  // the raw string could sever one of those mid-row. Only bodies longer
+  // than the threshold get a toggle at all; short posts render exactly as
+  // before, no clamp, no button.
+  const NOTICE_BODY_CLAMP_THRESHOLD = 400;
+  const [expandedNoticeIds, setExpandedNoticeIds] = useState<Set<string>>(new Set());
+  function toggleNoticeExpanded(id: string) {
+    setExpandedNoticeIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   function load() {
     setLoading(true);
@@ -1138,11 +1156,31 @@ export default function Notices({ isAdmin, playerId }: { isAdmin: boolean; playe
                   </div>
                 </div>
 
-                {n.body && (
-                  <div className="rich-text" style={{ margin: "10px 0 0" }}>
-                    {renderRichBody(n.body)}
-                  </div>
-                )}
+                {n.body && (() => {
+                  const isLong = n.body.length > NOTICE_BODY_CLAMP_THRESHOLD;
+                  const expanded = expandedNoticeIds.has(n.id);
+                  return (
+                    <>
+                      <div
+                        className={`rich-text${isLong && !expanded ? " notice-body-clamped" : ""}`}
+                        style={{ margin: "10px 0 0" }}
+                      >
+                        {renderRichBody(n.body)}
+                      </div>
+                      {isLong && (
+                        <span
+                          className="link-action"
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => toggleNoticeExpanded(n.id)}
+                          style={{ display: "inline-block", marginTop: 6, fontWeight: 600, fontSize: "0.85rem" }}
+                        >
+                          {expanded ? "Show less" : "Show more"}
+                        </span>
+                      )}
+                    </>
+                  );
+                })()}
 
                 {n.poll_enabled && n.poll_options.length >= 2 && (
                   <NoticePoll notice={n} playerId={playerId} votes={pollVotes.get(n.id) ?? []} onVote={handleVote} />
