@@ -738,6 +738,8 @@ function CompetitionDetail({
           competition={competition}
           groups={groups}
           matches={matches}
+          teams={teams}
+          players={players}
           teamLabel={teamLabel}
           isAdmin={isAdmin}
           currentUserId={currentUserId}
@@ -1303,6 +1305,8 @@ function GroupFixturesSection({
   competition,
   groups,
   matches,
+  teams,
+  players,
   teamLabel,
   isAdmin,
   currentUserId,
@@ -1311,6 +1315,8 @@ function GroupFixturesSection({
   competition: CompetitionRow;
   groups: CompetitionGroupRow[];
   matches: (CompetitionMatchRow & { matches: { team_a_score: number; team_b_score: number } | null })[];
+  teams: CompetitionTeamRow[];
+  players: PlayerStatus[];
   teamLabel: (id: string) => string;
   isAdmin: boolean;
   currentUserId: string;
@@ -1319,6 +1325,61 @@ function GroupFixturesSection({
   const confirm = useConfirm();
   const toast = useToast();
   const [advancing, setAdvancing] = useState(false);
+
+  // Edit teams before knockout (2026-09-07, Ben's request: "can I still
+  // have an option to go back and re-edit the teams? Just in case there's
+  // been an error?"). Previously pairings could only be fixed in Setup,
+  // before the group stage even started. Editing player1_id/player2_id on
+  // competition_teams here is safe even mid-stage — it doesn't touch
+  // competition_matches or already-recorded results at all, since a
+  // played game's score is submitted against the exact players on the
+  // team AT THAT MOMENT (see FixtureRow.submit) and stored independently
+  // from here on. The only reason to still gate it is display, not data
+  // integrity: once a team's played a game, changing its roster would
+  // make the on-screen label stop matching who actually played that
+  // earlier game, which would just be confusing. So teams stay freely
+  // editable right up until their first played group game, same
+  // affordance as SetupStage's team edit, just available later too.
+  const [showEditTeams, setShowEditTeams] = useState(false);
+  const [editingTeamId, setEditingTeamId] = useState<string | null>(null);
+  const [editP1, setEditP1] = useState("");
+  const [editP2, setEditP2] = useState("");
+  const [editTeamName, setEditTeamName] = useState("");
+  const [savingEditTeam, setSavingEditTeam] = useState(false);
+  const [editTeamError, setEditTeamError] = useState<string | null>(null);
+
+  const usedPlayerIds = new Set(teams.flatMap((t) => [t.player1_id, t.player2_id]));
+  const playedTeamIds = new Set(matches.filter((m) => m.matches).flatMap((m) => [m.team_a_id, m.team_b_id]));
+
+  function startEditTeam(t: CompetitionTeamRow) {
+    setEditingTeamId(t.id);
+    setEditP1(t.player1_id);
+    setEditP2(t.player2_id);
+    setEditTeamName(t.team_name ?? "");
+    setEditTeamError(null);
+  }
+
+  function cancelEditTeam() {
+    setEditingTeamId(null);
+    setEditTeamError(null);
+  }
+
+  async function saveEditTeam(teamId: string) {
+    if (!editP1 || !editP2 || editP1 === editP2) return;
+    setSavingEditTeam(true);
+    setEditTeamError(null);
+    const { error } = await supabase
+      .from("competition_teams")
+      .update({ player1_id: editP1, player2_id: editP2, team_name: editTeamName.trim() || null })
+      .eq("id", teamId);
+    setSavingEditTeam(false);
+    if (error) {
+      setEditTeamError(error.message);
+      return;
+    }
+    setEditingTeamId(null);
+    onChanged();
+  }
   // Which group's fixtures are shown at once. With several groups of up
   // to 8 teams each (a full "World Cup" style setup), stacking every
   // group's fixture list on one page made this card enormous — added
@@ -1367,6 +1428,114 @@ function GroupFixturesSection({
             })}
           </select>
         </>
+      )}
+      {isAdmin && (
+        <div style={{ marginBottom: 16 }}>
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => setShowEditTeams(!showEditTeams)}
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              cursor: "pointer",
+              paddingTop: 12,
+              borderTop: "1px solid var(--border)",
+            }}
+          >
+            <strong style={{ fontSize: "0.9rem" }}>Edit teams</strong>
+            <span style={{ color: "var(--navy-500)", fontWeight: 700, fontSize: "0.85rem" }}>
+              {showEditTeams ? "Hide ▲" : "Show ▼"}
+            </span>
+          </div>
+          {showEditTeams && (
+            <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+              <p className="stat-meta" style={{ marginTop: 0 }}>
+                Catch a wrong pairing before it's played. Once a team's played a group game its lineup locks —
+                edit the score instead if a game itself was entered wrong.
+              </p>
+              {teams.map((t) => {
+                const locked = playedTeamIds.has(t.id);
+                if (editingTeamId === t.id) {
+                  return (
+                    <div key={t.id} style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 10 }}>
+                      <label style={{ marginTop: 0 }}>Player 1</label>
+                      <PlayerSelect
+                        label=""
+                        players={players}
+                        value={editP1}
+                        onChange={setEditP1}
+                        disabledIds={[...usedPlayerIds]
+                          .filter((id) => id !== t.player1_id && id !== t.player2_id)
+                          .concat(editP2)}
+                      />
+                      <label>Player 2</label>
+                      <PlayerSelect
+                        label=""
+                        players={players}
+                        value={editP2}
+                        onChange={setEditP2}
+                        disabledIds={[...usedPlayerIds]
+                          .filter((id) => id !== t.player1_id && id !== t.player2_id)
+                          .concat(editP1)}
+                      />
+                      <label>Team name (optional)</label>
+                      <input
+                        type="text"
+                        value={editTeamName}
+                        onChange={(e) => setEditTeamName(e.target.value)}
+                        placeholder="Defaults to both names"
+                      />
+                      {editTeamError && <p className="error">{editTeamError}</p>}
+                      <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                        <button
+                          disabled={savingEditTeam || !editP1 || !editP2 || editP1 === editP2}
+                          onClick={() => saveEditTeam(t.id)}
+                          style={{ flex: "0 0 auto", width: "auto", marginTop: 0, padding: "8px 14px", fontSize: "0.85rem" }}
+                        >
+                          {savingEditTeam ? "Saving…" : "Save"}
+                        </button>
+                        <button
+                          disabled={savingEditTeam}
+                          onClick={cancelEditTeam}
+                          style={{
+                            flex: "0 0 auto",
+                            width: "auto",
+                            marginTop: 0,
+                            padding: "8px 14px",
+                            fontSize: "0.85rem",
+                            background: "transparent",
+                            color: "var(--navy-500)",
+                            border: "1px solid var(--border)",
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }
+                return (
+                  <div key={t.id} className="match-row">
+                    <div className="opponent">
+                      {t.team_name || `${nameById(players, t.player1_id)} & ${nameById(players, t.player2_id)}`}
+                    </div>
+                    {locked ? (
+                      <span className="stat-meta" style={{ flexShrink: 0 }}>
+                        Played — locked
+                      </span>
+                    ) : (
+                      <span className="link-action" role="button" tabIndex={0} onClick={() => startEditTeam(t)}>
+                        Edit
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       )}
       {groupsToShow.map((g) => {
         const groupMatches = matches.filter((m) => m.group_id === g.id);
