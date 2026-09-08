@@ -1068,10 +1068,16 @@ textarea {
   object-position: center 57%;
 }
 
+/* 6 columns instead of 4 (2026-09-08, Ben: "taking up a lot of real
+   estate") — each thumbnail is fluid-width (1fr), so more columns is what
+   actually shrinks them; a fixed px size wouldn't adapt across phone/
+   tablet/desktop card widths the way this grid is built to. Roughly a 40%
+   size reduction per thumbnail at typical card widths. Gap tightened to
+   match the smaller tiles. */
 .notice-photo-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 6px;
   margin-top: 12px;
 }
 
