@@ -654,14 +654,32 @@ function EventTicketModal({
             ) : (
               <>
                 {event.allow_plus_one && (
-                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "0.85rem", fontWeight: 500 }}>
+                  // Bumped up from a plain small checkbox label (2026-09-08,
+                  // Ben: "a little more obvious") — bigger checkbox, bolder
+                  // orange text, and a light tinted box around it so it reads
+                  // as a real option next to the RSVP button rather than
+                  // fine print easy to miss.
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      fontSize: "0.95rem",
+                      fontWeight: 700,
+                      color: "var(--orange-600)",
+                      background: "var(--orange-100)",
+                      border: "1px solid var(--orange-500)",
+                      borderRadius: 8,
+                      padding: "8px 12px",
+                    }}
+                  >
                     <input
                       type="checkbox"
                       checked={wantsPlusOne}
                       onChange={(e) => setWantsPlusOne(e.target.checked)}
-                      style={{ width: "auto" }}
+                      style={{ width: 18, height: 18, flexShrink: 0 }}
                     />
-                    Bring a +1 (guest)
+                    🙋 Bring a +1 (guest)
                   </label>
                 )}
                 <button disabled={rsvpLoading || rsvpSaving} onClick={handleRsvp}>
