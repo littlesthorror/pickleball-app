@@ -378,29 +378,39 @@ function EventTicketModal({
   interface RsvpRow {
     player_id: string;
     status: "going" | "waitlist";
+    plus_one: boolean;
     players: { display_name: string } | null;
   }
   const [rsvpRows, setRsvpRows] = useState<RsvpRow[] | null>(null);
   const [myStatus, setMyStatus] = useState<"going" | "waitlist" | null>(null);
+  const [myPlusOne, setMyPlusOne] = useState(false);
   const [rsvpLoading, setRsvpLoading] = useState(true);
   const [rsvpSaving, setRsvpSaving] = useState(false);
   const [rsvpError, setRsvpError] = useState<string | null>(null);
+  // Whether the member is bringing a +1 — only offered/used when
+  // event.allow_plus_one is on (2026-09-08, Ben's request). Local to this
+  // one RSVP-in-progress; resets automatically each time the ticket modal
+  // is opened, since it unmounts/remounts per event (see the parent's
+  // `{ticketEvent && <EventTicketModal ... />}`).
+  const [wantsPlusOne, setWantsPlusOne] = useState(false);
 
   async function fetchRsvps() {
     setRsvpLoading(true);
     const { data, error } = await supabase
       .from("event_rsvps")
-      .select("player_id, status, players(display_name)")
+      .select("player_id, status, plus_one, players(display_name)")
       .eq("event_id", event.id);
     if (!error && data) {
       const rows = data.map((r) => ({
         player_id: r.player_id as string,
         status: r.status as "going" | "waitlist",
+        plus_one: !!r.plus_one,
         players: (r.players as unknown as { display_name: string } | null) ?? null,
       }));
       setRsvpRows(rows);
       const mine = rows.find((r) => r.player_id === playerId);
       setMyStatus(mine?.status ?? null);
+      setMyPlusOne(mine?.plus_one ?? false);
     }
     setRsvpLoading(false);
   }
@@ -416,23 +426,34 @@ function EventTicketModal({
 
   const goingRows = rsvpRows?.filter((r) => r.status === "going") ?? [];
   const waitlistRows = rsvpRows?.filter((r) => r.status === "waitlist") ?? [];
-  const goingCount = goingRows.length;
+  // Headcount, not RSVP count — a +1 occupies 2 spots against capacity,
+  // matching promote_event_waitlist's own accounting (0071 migration) so
+  // the number shown here never disagrees with what actually gets
+  // promoted off the waitlist.
+  const occupiedSpots = goingRows.reduce((sum, r) => sum + (r.plus_one ? 2 : 1), 0);
   const goingNames = goingRows
-    .map((r) => r.players?.display_name ?? "Unknown")
+    .map((r) => `${r.players?.display_name ?? "Unknown"}${r.plus_one ? " +1" : ""}`)
     .sort((a, b) => a.localeCompare(b));
   const waitlistNames = waitlistRows
-    .map((r) => r.players?.display_name ?? "Unknown")
+    .map((r) => `${r.players?.display_name ?? "Unknown"}${r.plus_one ? " +1" : ""}`)
     .sort((a, b) => a.localeCompare(b));
 
   async function handleRsvp() {
     setRsvpSaving(true);
     setRsvpError(null);
-    const full = event.capacity != null && goingCount >= event.capacity;
-    const status: "going" | "waitlist" = full ? "waitlist" : "going";
-    const { error } = await supabase.from("event_rsvps").insert({ event_id: event.id, player_id: playerId, status });
+    const partySize = event.allow_plus_one && wantsPlusOne ? 2 : 1;
+    const wouldWaitlist = event.capacity != null && occupiedSpots + partySize > event.capacity;
+    const status: "going" | "waitlist" = wouldWaitlist ? "waitlist" : "going";
+    const { error } = await supabase.from("event_rsvps").insert({
+      event_id: event.id,
+      player_id: playerId,
+      status,
+      plus_one: event.allow_plus_one ? wantsPlusOne : false,
+    });
     if (error) {
       setRsvpError(error.message);
     } else {
+      setWantsPlusOne(false);
       await fetchRsvps();
     }
     setRsvpSaving(false);
@@ -455,8 +476,14 @@ function EventTicketModal({
   }
 
   const visual = posterVisual(event);
-  const spotsFull = event.capacity != null && goingCount >= event.capacity;
-  const spotsPct = event.capacity ? Math.min(100, Math.round((goingCount / event.capacity) * 100)) : 0;
+  // spotsFull: no room left for even one more solo RSVP. wouldWaitlist:
+  // whether the party size currently selected (including a pending +1)
+  // would need the waitlist — these differ when exactly 1 spot remains
+  // and the member has "Bring a +1" checked, since that party needs 2.
+  const spotsFull = event.capacity != null && occupiedSpots >= event.capacity;
+  const partySize = event.allow_plus_one && wantsPlusOne ? 2 : 1;
+  const wouldWaitlist = event.capacity != null && occupiedSpots + partySize > event.capacity;
+  const spotsPct = event.capacity ? Math.min(100, Math.round((occupiedSpots / event.capacity) * 100)) : 0;
 
   return (
     <div className="ticket-overlay" onClick={onClose}>
@@ -570,7 +597,7 @@ function EventTicketModal({
             <div style={{ marginTop: 18 }}>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.78rem", marginBottom: 6 }}>
                 <span className="stat-meta">Spots filled</span>
-                <span className="stat-meta">{rsvpLoading ? "…" : `${goingCount} / ${event.capacity}`}</span>
+                <span className="stat-meta">{rsvpLoading ? "…" : `${occupiedSpots} / ${event.capacity}`}</span>
               </div>
               <div className="ticket-spots-bar">
                 <div className={`ticket-spots-fill${spotsFull ? " full" : ""}`} style={{ width: `${spotsPct}%` }} />
@@ -610,6 +637,7 @@ function EventTicketModal({
               <>
                 <p style={{ margin: 0, fontWeight: 600, color: "var(--navy-700)" }}>
                   {myStatus === "going" ? "You're in ✓" : "You're on the waitlist"}
+                  {myPlusOne ? " (+1 guest)" : ""}
                 </p>
                 <button
                   disabled={rsvpSaving}
@@ -624,9 +652,22 @@ function EventTicketModal({
                 Fully booked
               </button>
             ) : (
-              <button disabled={rsvpLoading || rsvpSaving} onClick={handleRsvp}>
-                {rsvpSaving ? "…" : spotsFull ? "Join waitlist" : "I'm in"}
-              </button>
+              <>
+                {event.allow_plus_one && (
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "0.85rem", fontWeight: 500 }}>
+                    <input
+                      type="checkbox"
+                      checked={wantsPlusOne}
+                      onChange={(e) => setWantsPlusOne(e.target.checked)}
+                      style={{ width: "auto" }}
+                    />
+                    Bring a +1 (guest)
+                  </label>
+                )}
+                <button disabled={rsvpLoading || rsvpSaving} onClick={handleRsvp}>
+                  {rsvpSaving ? "…" : wouldWaitlist ? "Join waitlist" : "I'm in"}
+                </button>
+              </>
             )}
 
             {event.external_url && (
@@ -681,6 +722,9 @@ const EMPTY_DRAFT = {
   externalUrl: "",
   capacity: "",
   waitlistEnabled: "",
+  // Defaults off — most events don't need it; an admin opts in per event
+  // (2026-09-08, Ben's request: "an additional 'Bring a +1' button").
+  allowPlusOne: "",
   posterPlaceholder: "",
   // Defaults on, so existing behaviour (every event gets an "I'm in"
   // button) doesn't change unless an admin deliberately turns it off.
@@ -846,6 +890,7 @@ export default function Events({ isAdmin, playerId }: { isAdmin: boolean; player
       externalUrl: e.external_url ?? "",
       capacity: e.capacity != null ? String(e.capacity) : "",
       waitlistEnabled: e.waitlist_enabled ? "1" : "",
+      allowPlusOne: e.allow_plus_one ? "1" : "",
       posterPlaceholder: e.poster_placeholder ?? "",
       rsvpEnabled: e.rsvp_enabled ? "1" : "",
       weatherEnabled: e.weather_enabled ? "1" : "",
@@ -904,6 +949,7 @@ export default function Events({ isAdmin, playerId }: { isAdmin: boolean; player
       external_url: draft.externalUrl.trim() || null,
       capacity: draft.capacity.trim() ? Number(draft.capacity) : null,
       waitlist_enabled: draft.waitlistEnabled === "1",
+      allow_plus_one: draft.allowPlusOne === "1",
       poster_placeholder: (draft.posterPlaceholder || null) as EventPosterPlaceholder | null,
       rsvp_enabled: draft.rsvpEnabled === "1",
       weather_enabled: draft.weatherEnabled === "1",
@@ -1208,6 +1254,19 @@ export default function Events({ isAdmin, playerId }: { isAdmin: boolean; player
                   Allow a waitlist once full
                 </label>
               )}
+
+              <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
+                <input
+                  type="checkbox"
+                  checked={draft.allowPlusOne === "1"}
+                  onChange={(e) => setDraft((d) => ({ ...d, allowPlusOne: e.target.checked ? "1" : "" }))}
+                  style={{ width: "auto" }}
+                />
+                Allow a +1 (bring a friend)
+              </label>
+              <p className="stat-meta" style={{ marginTop: 2 }}>
+                Adds a "Bring a +1" option when members RSVP. A +1 counts as 2 spots against capacity above.
+              </p>
             </>
           )}
 

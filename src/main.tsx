@@ -2,8 +2,19 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { registerSW } from "virtual:pwa-register";
 import App from "./App";
+import PublicScoreboard from "./pages/PublicScoreboard";
 import { initErrorLogging } from "./lib/errorLogging";
 import "./index.css";
+
+// Public, no-login live scoreboard route (2026-09-08, Ben's request) —
+// checked before <App> ever mounts, so a spectator scanning a QR code at
+// the courts never touches the normal signed-in shell (no auth listener,
+// no session check, no nav). Deliberately a hash route ("#scoreboard/...")
+// rather than a real URL path — a hash never reaches the server, so this
+// works with zero server/CDN routing config, the same reason every other
+// deep link in this app (e.g. "#notices") is hash-based. See
+// src/pages/PublicScoreboard.tsx for the page itself.
+const scoreboardMatch = window.location.hash.match(/^#scoreboard\/(.+)$/);
 
 // Admin-visible error logging (2026-08-25) — see src/lib/errorLogging.ts.
 initErrorLogging();
@@ -44,6 +55,6 @@ registerSW({
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <App />
+    {scoreboardMatch ? <PublicScoreboard token={decodeURIComponent(scoreboardMatch[1])} /> : <App />}
   </React.StrictMode>
 );

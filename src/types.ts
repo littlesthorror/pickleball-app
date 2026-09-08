@@ -157,6 +157,10 @@ export interface EventRow {
   // Added 2026-09-07 (Ben's request) — file/photo attachments, same shape
   // and same "notices" storage bucket as NoticeAttachment/notices.attachments.
   attachments: NoticeAttachment[];
+  // Added 2026-09-08 (Ben's request) — admin per-event toggle letting
+  // attendees bring a +1 guest when RSVPing. See event_rsvps.plus_one for
+  // each individual attendee's own choice.
+  allow_plus_one: boolean;
 }
 
 // Admin-granted "legacy badge" (2026-08-28) — see 0049_add_legacy_badges.sql
@@ -307,6 +311,11 @@ export interface CompetitionRow {
   double_round_robin: boolean;
   created_by: string | null;
   created_at: string;
+  // Added 2026-09-08 (Ben's request) — null until an admin enables the
+  // public, no-login live scoreboard for this competition (see
+  // get_public_competition_scoreboard RPC). A fresh random token each time
+  // it's turned on/off, so an old shared/printed link stops working.
+  public_share_token: string | null;
 }
 
 export interface CompetitionTeamRow {

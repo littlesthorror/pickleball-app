@@ -505,6 +505,56 @@ function CompetitionDetail({
     setNameDraft(competition.name);
     setEditingName(false);
   }
+
+  // Public, no-login live scoreboard (2026-09-08, Ben's request) — see
+  // PublicScoreboard.tsx and the get_public_competition_scoreboard RPC
+  // (0072 migration). Sharing the link is just this competition's own
+  // public_share_token appended to a hash route; there's no separate
+  // "share" table or state to keep in sync.
+  const [savingShare, setSavingShare] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
+  const scoreboardUrl = competition.public_share_token
+    ? `${window.location.origin}${window.location.pathname}#scoreboard/${competition.public_share_token}`
+    : "";
+
+  async function enableScoreboard() {
+    setSavingShare(true);
+    const token = crypto.randomUUID();
+    const { error: shareError } = await supabase
+      .from("competitions")
+      .update({ public_share_token: token })
+      .eq("id", competition.id);
+    setSavingShare(false);
+    if (shareError) {
+      toast.error(`Couldn't enable the public scoreboard: ${shareError.message}`);
+      return;
+    }
+    onCompetitionChanged();
+  }
+
+  async function disableScoreboard() {
+    setSavingShare(true);
+    const { error: shareError } = await supabase
+      .from("competitions")
+      .update({ public_share_token: null })
+      .eq("id", competition.id);
+    setSavingShare(false);
+    if (shareError) {
+      toast.error(`Couldn't turn off the public scoreboard: ${shareError.message}`);
+      return;
+    }
+    onCompetitionChanged();
+  }
+
+  async function copyScoreboardLink() {
+    try {
+      await navigator.clipboard.writeText(scoreboardUrl);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    } catch {
+      toast.error("Couldn't copy — you can select and copy the link text instead.");
+    }
+  }
   // Tracks whether the first load for this competition has finished. Every
   // admin action on this page (add a team, enter a score, advance a stage…)
   // calls load() again via onChanged — previously that re-set `loading` to
@@ -723,6 +773,70 @@ function CompetitionDetail({
           </button>
         )}
       </div>
+
+      {isAdmin && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <strong>📡 Public live scoreboard</strong>
+          <p className="stat-meta" style={{ marginTop: 4, marginBottom: 0 }}>
+            A no-login link (and QR code) showing live standings and the bracket — share it or print the QR code
+            for spectators to follow along at the courts.
+          </p>
+          {competition.public_share_token ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", marginTop: 12 }}>
+              <img
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(scoreboardUrl)}`}
+                alt="QR code linking to the public scoreboard"
+                width={120}
+                height={120}
+                style={{ borderRadius: 8, border: "1px solid var(--border)", background: "#fff", padding: 4, flexShrink: 0 }}
+              />
+              <div style={{ minWidth: 0, flex: "1 1 220px" }}>
+                <input
+                  type="text"
+                  readOnly
+                  value={scoreboardUrl}
+                  onFocus={(e) => e.target.select()}
+                  style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid var(--border)", fontSize: "0.78rem" }}
+                />
+                <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    onClick={copyScoreboardLink}
+                    style={{ width: "auto", marginTop: 0, padding: "6px 12px", fontSize: "0.82rem" }}
+                  >
+                    {linkCopied ? "Copied!" : "Copy link"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={savingShare}
+                    onClick={disableScoreboard}
+                    style={{
+                      width: "auto",
+                      marginTop: 0,
+                      padding: "6px 12px",
+                      fontSize: "0.82rem",
+                      background: "transparent",
+                      color: "var(--danger)",
+                      border: "1px solid var(--border)",
+                    }}
+                  >
+                    {savingShare ? "…" : "Turn off"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              disabled={savingShare}
+              onClick={enableScoreboard}
+              style={{ width: "auto", marginTop: 10, padding: "8px 14px" }}
+            >
+              {savingShare ? "…" : "Enable public scoreboard"}
+            </button>
+          )}
+        </div>
+      )}
 
       {competition.status === "setup" && (
         <SetupStage
