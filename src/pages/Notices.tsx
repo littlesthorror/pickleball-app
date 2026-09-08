@@ -254,6 +254,16 @@ export default function Notices({ isAdmin, playerId }: { isAdmin: boolean; playe
   const [existingCoverPath, setExistingCoverPath] = useState<string | null>(null);
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [removeCover, setRemoveCover] = useState(false);
+  // Alternative banner: a YouTube video instead of a photo, mutually
+  // exclusive with the cover photo above (added 2026-09-08 at Ben's
+  // request, for posting event highlight clips as the headline). The admin
+  // pastes a full YouTube URL; coverVideoInput holds the raw pasted text
+  // (parsed to an ID via extractYouTubeIds() in handleSave, same helper
+  // used for body-embedded links) rather than storing the ID directly, so
+  // an invalid paste can be caught and explained before saving.
+  const [existingCoverVideoId, setExistingCoverVideoId] = useState<string | null>(null);
+  const [coverVideoInput, setCoverVideoInput] = useState("");
+  const [removeCoverVideo, setRemoveCoverVideo] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   // Some browsers (e.g. non-Safari on a HEIC upload) can't decode certain
@@ -420,6 +430,7 @@ export default function Notices({ isAdmin, playerId }: { isAdmin: boolean; playe
     if (notice) {
       setExistingAttachments(attachmentsFor(notice));
       setExistingCoverPath(notice.cover_path);
+      setExistingCoverVideoId(notice.cover_video_id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editingId, notices]);
@@ -432,6 +443,9 @@ export default function Notices({ isAdmin, playerId }: { isAdmin: boolean; playe
     setExistingCoverPath(null);
     setCoverFile(null);
     setRemoveCover(false);
+    setExistingCoverVideoId(null);
+    setCoverVideoInput("");
+    setRemoveCoverVideo(false);
     setSaveError(null);
   }
 
@@ -451,6 +465,9 @@ export default function Notices({ isAdmin, playerId }: { isAdmin: boolean; playe
     setExistingCoverPath(notice.cover_path);
     setCoverFile(null);
     setRemoveCover(false);
+    setExistingCoverVideoId(notice.cover_video_id);
+    setCoverVideoInput("");
+    setRemoveCoverVideo(false);
     setSaveError(null);
   }
 
@@ -462,6 +479,9 @@ export default function Notices({ isAdmin, playerId }: { isAdmin: boolean; playe
     setExistingCoverPath(null);
     setCoverFile(null);
     setRemoveCover(false);
+    setExistingCoverVideoId(null);
+    setCoverVideoInput("");
+    setRemoveCoverVideo(false);
     disarmFilePicker();
   }
 
@@ -482,8 +502,22 @@ export default function Notices({ isAdmin, playerId }: { isAdmin: boolean; playe
     if (file) {
       setCoverFile(file);
       setRemoveCover(false);
+      // Photo and video banner are mutually exclusive — picking a photo
+      // clears any pasted video link so the two previews don't both show
+      // at once (handleSave's save order also nulls cover_video_id
+      // whenever a new cover photo is uploaded, regardless of this).
+      setCoverVideoInput("");
     }
     e.target.value = "";
+  }
+
+  // Banner video link input — no need to clear coverFile/removeCover here:
+  // handleSave gives an uploaded/selected cover photo priority over a
+  // pasted video link, so typing a link only takes effect once no photo is
+  // pending. Clearing the photo-selection state here would risk silently
+  // discarding a photo the admin picked before deciding against a video.
+  function handleCoverVideoInputChange(e: ChangeEvent<HTMLInputElement>) {
+    setCoverVideoInput(e.target.value);
   }
 
   function toggleRemoveExisting(path: string) {
@@ -558,6 +592,23 @@ export default function Notices({ isAdmin, playerId }: { isAdmin: boolean; playe
 
   async function handleSave() {
     if (!draft.title.trim()) return;
+
+    // Parse the pasted video-banner link (if any) before committing to
+    // saving — same validation-before-setSaving pattern as the title check
+    // just above, so a bad paste doesn't leave the button stuck disabled.
+    // Reuses extractYouTubeIds() (the same helper that detects links
+    // pasted in a notice's body) rather than a bespoke parser.
+    const trimmedVideoInput = coverVideoInput.trim();
+    let newCoverVideoId: string | null = null;
+    if (trimmedVideoInput) {
+      const ids = extractYouTubeIds(trimmedVideoInput);
+      if (ids.length === 0) {
+        setSaveError("That doesn't look like a YouTube link — paste the full video URL (e.g. https://youtube.com/watch?v=...).");
+        return;
+      }
+      newCoverVideoId = ids[0];
+    }
+
     setSaving(true);
     setSaveError(null);
 
@@ -654,11 +705,16 @@ export default function Notices({ isAdmin, playerId }: { isAdmin: boolean; playe
       noticeId = inserted.id;
     }
 
-    // Headline/cover image — uploaded after the notice row exists so the
-    // storage path can be scoped under the notice's own id, same pattern
-    // as Events' poster image. A fresh, unique filename per upload (rather
-    // than always overwriting the same path) so browsers don't keep
-    // showing a cached original after a replacement.
+    // Headline banner — either an uploaded photo (cover_path) or a YouTube
+    // video (cover_video_id), never both. Uploaded/patched after the
+    // notice row exists so a photo's storage path can be scoped under the
+    // notice's own id, same pattern as Events' poster image. A fresh,
+    // unique filename per photo upload (rather than always overwriting the
+    // same path) so browsers don't keep showing a cached original after a
+    // replacement. Branch order gives a newly-selected photo priority over
+    // a pasted video link, and either one replacing the other clears the
+    // opposite column so the two stay mutually exclusive in the database
+    // even though the two UI fields don't police each other live.
     if (coverFile && noticeId) {
       let compressedCover: File;
       try {
@@ -678,8 +734,13 @@ export default function Notices({ isAdmin, playerId }: { isAdmin: boolean; playe
         load();
         return;
       }
-      await supabase.from("notices").update({ cover_path: path }).eq("id", noticeId);
+      await supabase.from("notices").update({ cover_path: path, cover_video_id: null }).eq("id", noticeId);
       if (existingCoverPath && existingCoverPath !== path) {
+        await supabase.storage.from("notices").remove([existingCoverPath]);
+      }
+    } else if (newCoverVideoId && noticeId) {
+      await supabase.from("notices").update({ cover_video_id: newCoverVideoId, cover_path: null }).eq("id", noticeId);
+      if (existingCoverPath) {
         await supabase.storage.from("notices").remove([existingCoverPath]);
       }
     } else if (removeCover && noticeId) {
@@ -687,6 +748,8 @@ export default function Notices({ isAdmin, playerId }: { isAdmin: boolean; playe
       if (existingCoverPath) {
         await supabase.storage.from("notices").remove([existingCoverPath]);
       }
+    } else if (removeCoverVideo && noticeId) {
+      await supabase.from("notices").update({ cover_video_id: null }).eq("id", noticeId);
     }
 
     resetForm();
@@ -985,7 +1048,7 @@ export default function Notices({ isAdmin, playerId }: { isAdmin: boolean; playe
           )}
 
           <label>Headline image (optional)</label>
-          {existingCoverPath && !removeCover && !coverFile && (
+          {existingCoverPath && !removeCover && !coverFile && !coverVideoInput.trim() && (
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
               <img
                 src={fileUrl(existingCoverPath)}
@@ -1006,6 +1069,32 @@ export default function Notices({ isAdmin, playerId }: { isAdmin: boolean; playe
           <p className="stat-meta" style={{ marginTop: 4 }}>
             Shown as a banner across the top of the card — separate from the attachments below. If you don't add
             one, the club badge is shown instead.
+          </p>
+
+          <label>Or a YouTube video as the banner (optional)</label>
+          {existingCoverVideoId && !removeCoverVideo && !coverVideoInput.trim() && !coverFile && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+              <img
+                src={`https://img.youtube.com/vi/${existingCoverVideoId}/hqdefault.jpg`}
+                alt=""
+                style={{ width: 96, height: 54, objectFit: "cover", borderRadius: 8, border: "1px solid var(--border)" }}
+              />
+              <span className="link-action" role="button" tabIndex={0} onClick={() => setRemoveCoverVideo(true)}>
+                Remove
+              </span>
+            </div>
+          )}
+          <input
+            type="text"
+            value={coverVideoInput}
+            onChange={handleCoverVideoInputChange}
+            placeholder="https://youtube.com/watch?v=..."
+            style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)" }}
+          />
+          <p className="stat-meta" style={{ marginTop: 4 }}>
+            Paste a full YouTube link to use a video as the banner instead of a photo, tap-to-play — handy for
+            event highlight clips. A video link and a headline photo can't both be set; whichever you add most
+            recently replaces the other.
           </p>
 
           <label>Photo attachment (optional)</label>
@@ -1121,11 +1210,44 @@ export default function Notices({ isAdmin, playerId }: { isAdmin: boolean; playe
           const youtubeIds = n.body ? extractYouTubeIds(n.body) : [];
           return (
             <div key={n.id} className={`card notice-card${n.pinned ? " notice-card-pinned" : ""}`}>
-              <img
-                className={`notice-cover${n.cover_path ? "" : " notice-cover-default"}`}
-                src={n.cover_path ? fileUrl(n.cover_path) : DEFAULT_COVER_URL}
-                alt=""
-              />
+              {n.cover_video_id ? (
+                <div
+                  role="button"
+                  tabIndex={0}
+                  aria-label="Play video"
+                  onClick={() => setVideoId(n.cover_video_id)}
+                  style={{ position: "relative", cursor: "pointer" }}
+                >
+                  <img className="notice-cover" src={`https://img.youtube.com/vi/${n.cover_video_id}/hqdefault.jpg`} alt="" />
+                  <span
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      background: "rgba(0,0,0,0.28)",
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: 0,
+                        height: 0,
+                        borderTop: "18px solid transparent",
+                        borderBottom: "18px solid transparent",
+                        borderLeft: "28px solid #fff",
+                        marginLeft: 4,
+                      }}
+                    />
+                  </span>
+                </div>
+              ) : (
+                <img
+                  className={`notice-cover${n.cover_path ? "" : " notice-cover-default"}`}
+                  src={n.cover_path ? fileUrl(n.cover_path) : DEFAULT_COVER_URL}
+                  alt=""
+                />
+              )}
               <div className={n.pinned ? "notice-card-body-pinned" : undefined} style={{ padding: "16px 18px" }}>
                 <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-start", gap: 8 }}>
                   <div style={{ minWidth: 0, flex: "1 1 200px" }}>

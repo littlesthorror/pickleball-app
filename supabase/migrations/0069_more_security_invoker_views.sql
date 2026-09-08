@@ -1,0 +1,24 @@
+-- Fixes two more Supabase security linter CRITICAL findings, same issue and
+-- same fix as 0055_player_status_security_invoker.sql: public.leaderboard
+-- and public.player_match_history were both SECURITY DEFINER views (the
+-- Postgres default), meaning they always ran with their creator's
+-- permissions rather than the querying user's — bypassing whatever RLS the
+-- underlying tables have, regardless of who's actually asking. Flipping to
+-- security_invoker = true makes them respect the querying user's own RLS
+-- instead, same as querying the underlying tables directly.
+--
+-- Verified this is a safe, no-behavior-change fix for both, same reasoning
+-- as 0055:
+--   - public.leaderboard selects from public.player_status (already
+--     security_invoker as of 0055) plus player_rating_as_of(), a plain SQL
+--     function with no SECURITY DEFINER of its own.
+--   - public.player_match_history joins public.match_participant_ratings,
+--     public.matches, and public.players — all three already have a
+--     "readable by any logged-in member" SELECT policy
+--     (auth.role() = 'authenticated'), so nothing currently visible
+--     through the view stops being visible.
+-- Same caveat as 0055: leaving these as SECURITY DEFINER would silently
+-- ignore any future tightening of the underlying tables' RLS, which is
+-- exactly the kind of gap that causes a real leak down the line. 2026-09-08.
+alter view public.leaderboard set (security_invoker = true);
+alter view public.player_match_history set (security_invoker = true);

@@ -249,6 +249,13 @@ export interface NoticeRow {
   // bucket, e.g. "notices/<id>/cover-<ts>-<rand>.jpg". Added 2026-08-28 for
   // the redesigned card layout.
   cover_path: string | null;
+  // Alternative to cover_path — a YouTube video ID shown as the banner
+  // instead of a photo, tap-to-play (opens the same video lightbox as a
+  // YouTube link in the body). Mutually exclusive with cover_path; set at
+  // most one of the two. Added 2026-09-08 at Ben's request, for posting
+  // event highlight clips as the headline of a notice rather than burying
+  // them in the body.
+  cover_video_id: string | null;
   // Only present when queried with the `players(display_name)` embed —
   // who posted this notice, shown in the card's meta line. Optional since
   // some queries (e.g. right after an insert) won't have joined it.

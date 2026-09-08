@@ -191,6 +191,19 @@ body {
   border: 1px solid var(--border);
 }
 
+/* Hover/tap fix (2026-09-08, Ben: "the whole button goes orange") — the
+   generic `button:hover:not(:disabled)` rule below is MORE specific than
+   `.show-more-btn` alone (two pseudo-classes beats one class), so without
+   this it silently won on hover/tap and filled the button orange with the
+   navy text still on top, illegible. `:not(:disabled)` here isn't for
+   correctness (this button is never disabled) — it's what gives this rule
+   the same specificity shape as the one it needs to beat. Light grey tint
+   instead of literally no-op, same subtle hover treatment already used on
+   the nav's similarly transparent/bordered buttons. */
+.show-more-btn:hover:not(:disabled) {
+  background: var(--bg);
+}
+
 /* ── Nav (segmented control) ───────────────────────────────────────── */
 /* Stays a single row across the top, same as the original design — but
    scrolls horizontally instead of wrapping onto extra rows or squashing
@@ -1106,24 +1119,36 @@ textarea {
   cursor: default;
 }
 
+/* Bumped to a full 44x44 tap target and given a solid-ish dark fill
+   (2026-09-08, Ben: "that's a problem, sometimes it's also not super
+   visible either") — it was previously ~34px tall (under Apple's 44px
+   minimum recommended tap target) and only a faint 12%-white tint, which
+   all but disappeared against a light or white area of whatever photo it
+   was sitting on top of. The solid navy fill + shadow now hold up against
+   any image behind them, light or dark. */
 .lightbox-close {
   position: fixed;
-  top: 16px;
-  right: 20px;
-  width: auto;
+  top: 12px;
+  right: 16px;
+  width: 44px;
+  height: 44px;
   margin: 0;
-  padding: 4px 12px;
-  background: rgba(255, 255, 255, 0.12);
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 26, 51, 0.7);
   color: #fff;
   border: none;
   border-radius: 999px;
   font-size: 1.6rem;
   line-height: 1;
   cursor: pointer;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
 }
 
 .lightbox-close:hover {
-  background: rgba(255, 255, 255, 0.22);
+  background: rgba(10, 26, 51, 0.85);
 }
 
 /* ── Rich text (FAQ answers, notice bodies) ────────────────────────── */
