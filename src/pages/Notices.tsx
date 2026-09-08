@@ -284,7 +284,13 @@ export default function Notices({ isAdmin, playerId }: { isAdmin: boolean; playe
     }
   }, [showForm]);
 
-  const [lightbox, setLightbox] = useState<{ src: string; alt: string } | null>(null);
+  // Holds the full set of a notice's photos (not just the one tapped) plus
+  // which one is showing, so the lightbox can step forward/back without
+  // closing — added 2026-09-08 at Ben's request ("left/right arrow so we
+  // can go back and forth between them"). Captured at open time rather
+  // than re-derived from `notices` on every render, since the photo list
+  // for a given card doesn't change while its lightbox is open.
+  const [lightbox, setLightbox] = useState<{ images: { src: string; alt: string }[]; index: number } | null>(null);
   const [videoId, setVideoId] = useState<string | null>(null);
   // The video overlay is rendered inline below (Lightbox.tsx locks scroll
   // itself for the image lightbox) — see useBodyScrollLock for why this
@@ -1361,12 +1367,17 @@ export default function Notices({ isAdmin, playerId }: { isAdmin: boolean; playe
 
                 {imageAtts.length > 0 && (
                   <div className="notice-photo-grid">
-                    {imageAtts.map((a) => (
+                    {imageAtts.map((a, i) => (
                       <button
                         key={a.path}
                         type="button"
                         className="notice-photo-thumb"
-                        onClick={() => setLightbox({ src: fileUrl(a.path), alt: a.name })}
+                        onClick={() =>
+                          setLightbox({
+                            images: imageAtts.map((img) => ({ src: fileUrl(img.path), alt: img.name })),
+                            index: i,
+                          })
+                        }
                       >
                         <img
                           src={fileUrl(a.path)}
@@ -1408,7 +1419,24 @@ export default function Notices({ isAdmin, playerId }: { isAdmin: boolean; playe
         />
       </div>
 
-      {lightbox && <Lightbox src={lightbox.src} alt={lightbox.alt} onClose={() => setLightbox(null)} />}
+      {lightbox && (
+        <Lightbox
+          src={lightbox.images[lightbox.index].src}
+          alt={lightbox.images[lightbox.index].alt}
+          onClose={() => setLightbox(null)}
+          onPrev={
+            lightbox.images.length > 1
+              ? () => setLightbox((l) => (l ? { ...l, index: (l.index - 1 + l.images.length) % l.images.length } : l))
+              : undefined
+          }
+          onNext={
+            lightbox.images.length > 1
+              ? () => setLightbox((l) => (l ? { ...l, index: (l.index + 1) % l.images.length } : l))
+              : undefined
+          }
+          counter={lightbox.images.length > 1 ? `${lightbox.index + 1} / ${lightbox.images.length}` : undefined}
+        />
+      )}
 
       {videoId && (
         <div className="lightbox-overlay" onClick={() => setVideoId(null)}>

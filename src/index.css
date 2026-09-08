@@ -1151,6 +1151,59 @@ textarea {
   background: rgba(10, 26, 51, 0.85);
 }
 
+/* Prev/next arrows for stepping through a notice's photos without closing
+   and reopening the lightbox (2026-09-08, Ben's request). Only rendered
+   when there's more than one photo — see Lightbox.tsx. Same fixed-circle
+   treatment as .lightbox-close so they hold up against any image behind
+   them; positioned at the vertical center on the left/right edges rather
+   than near the close button so the three controls don't collide. */
+.lightbox-nav {
+  position: fixed;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 44px;
+  height: 44px;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 26, 51, 0.7);
+  color: #fff;
+  border: none;
+  border-radius: 999px;
+  font-size: 1.8rem;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+}
+
+.lightbox-nav:hover {
+  background: rgba(10, 26, 51, 0.85);
+}
+
+.lightbox-nav-prev {
+  left: 12px;
+}
+
+.lightbox-nav-next {
+  right: 12px;
+}
+
+.lightbox-counter {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(10, 26, 51, 0.7);
+  color: #fff;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: default;
+}
+
 /* ── Rich text (FAQ answers, notice bodies) ────────────────────────── */
 /* Deliberately smaller than the question/title above it, and wraps long
    unbroken strings (like URLs) instead of letting them overflow the card. */
