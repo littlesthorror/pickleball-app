@@ -107,6 +107,16 @@ export interface PlayerMatchHistoryRow {
   // just computed for them instead of you), used to tell whether they were
   // still provisional (<=12 games) when you played with them.
   teammate_game_number: number | null;
+  // Added 2026-09-09 for Bracket Buster's games-played floor — the LOWER
+  // of both opponents' own chronological game counts as of this match
+  // (mirrors teammate_game_number, just for both opponents via LEAST).
+  opponent_min_game_number: number | null;
+  // Added 2026-09-09 for the "Old Guard" badge — the SUM of both
+  // opponents' own chronological game counts as of this match (mirrors
+  // opponent_combined_pre_rating's sum-of-two pattern, but for game
+  // counts instead of ratings; opponent_min_game_number above is just the
+  // lower of the two, which can't tell you their combined experience).
+  opponent_combined_game_number: number | null;
 }
 
 export type MatchStatus = "pending" | "confirmed" | "disputed";

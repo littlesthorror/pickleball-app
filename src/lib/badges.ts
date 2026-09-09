@@ -141,11 +141,14 @@ export function computeBadges(
     }
   }
 
-  // "Dream team" — 25+ wins alongside the same partner. Grouped by
-  // teammate name (a 2v2 team, not an individual credit split) — same
-  // approach as the head-to-head record on the dashboard. Only awarded
-  // for whichever partner you've won the most with, so it doesn't fire
-  // separately for every partner who happens to clear 25.
+  // "Dream Team" (tiered) — 25+ then 50+ wins alongside the same partner.
+  // Grouped by teammate name (a 2v2 team, not an individual credit split)
+  // — same approach as the head-to-head record on the dashboard. Only
+  // awarded for whichever partner you've won the most with, so it doesn't
+  // fire separately for every partner who happens to clear a threshold.
+  // "Ride or Die" (2026-09-09, Ben's request) added as the 50-win tier on
+  // top of the existing 25-win badge — same partner-by-wins computation,
+  // just a second, harder milestone layered on.
   const winsByPartner = new Map<string, number>();
   for (const h of history) {
     if (h.won) winsByPartner.set(h.teammate_name, (winsByPartner.get(h.teammate_name) ?? 0) + 1);
@@ -158,16 +161,21 @@ export function computeBadges(
       bestPartnerName = name;
     }
   }
-  const PARTNER_WIN_MILESTONE = 25;
-  if (bestPartnerWins >= PARTNER_WIN_MILESTONE) {
-    const partnerWins = history.filter((h) => h.won && h.teammate_name === bestPartnerName);
-    badges.push({
-      id: "partner-25-wins",
-      emoji: "🤝",
-      label: `${PARTNER_WIN_MILESTONE} wins with a partner`,
-      description: `Won ${bestPartnerWins} games alongside ${bestPartnerName}.`,
-      achievedAt: partnerWins[PARTNER_WIN_MILESTONE - 1]?.played_at ?? null,
-    });
+  const partnerWinMilestones = [
+    { count: 25, id: "partner-25-wins", emoji: "🤝", label: "25 wins with a partner" },
+    { count: 50, id: "ride-or-die", emoji: "🏍️", label: "Ride or Die" },
+  ];
+  for (const milestone of partnerWinMilestones) {
+    if (bestPartnerWins >= milestone.count) {
+      const partnerWins = history.filter((h) => h.won && h.teammate_name === bestPartnerName);
+      badges.push({
+        id: milestone.id,
+        emoji: milestone.emoji,
+        label: milestone.label,
+        description: `Won ${bestPartnerWins} games alongside ${bestPartnerName}.`,
+        achievedAt: partnerWins[milestone.count - 1]?.played_at ?? null,
+      });
+    }
   }
 
   // Longest winning streak, purely as a personal-best — shown even if it's
@@ -371,13 +379,28 @@ export function computeBadges(
   // the other three players' own pre-game ratings, not just yours — see
   // teammate_pre_rating / opponent_min_pre_rating on the
   // player_match_history view (added 2026-08-11 specifically for this).
+  //
+  // Games-played floor added 2026-09-09 (Ben's request: "both pairs have to
+  // have registered at least 25 games") — same reasoning as The Thief's own
+  // floor above: without it, an "upset" against two people also brand new
+  // to the club (wild, unsettled ratings) is trivially easy and not a real
+  // upset. Requires all four players — you, your partner, and both
+  // opponents — to have played 25+ games by the time of the match. Uses
+  // opponent_min_game_number (added specifically for this) alongside the
+  // existing game_number/teammate_game_number.
+  const BRACKET_BUSTER_MIN_GAMES = 25;
   const bracketBuster = history.find(
     (h) =>
       h.won &&
       h.teammate_pre_rating != null &&
       h.opponent_min_pre_rating != null &&
       h.pre_rating < h.opponent_min_pre_rating &&
-      h.teammate_pre_rating < h.opponent_min_pre_rating
+      h.teammate_pre_rating < h.opponent_min_pre_rating &&
+      h.game_number >= BRACKET_BUSTER_MIN_GAMES &&
+      h.teammate_game_number != null &&
+      h.teammate_game_number >= BRACKET_BUSTER_MIN_GAMES &&
+      h.opponent_min_game_number != null &&
+      h.opponent_min_game_number >= BRACKET_BUSTER_MIN_GAMES
   );
   if (bracketBuster) {
     badges.push({
@@ -613,11 +636,12 @@ export function computeBadges(
     });
   }
 
-  // "Well Travelled" — played alongside 20+ different partners. Rewards
+  // "Well Travelled" — played alongside 25+ different partners (raised from
+  // 20, 2026-09-09, Ben's request). Rewards
   // being a good clubhouse citizen (playing with lots of different
   // people), not being good at pickleball — counterpart to "Dream Team"
   // above, which is specifically about ONE partner.
-  const WELL_TRAVELLED_PARTNERS = 20;
+  const WELL_TRAVELLED_PARTNERS = 25;
   const distinctPartners = new Set(history.map((h) => h.teammate_name));
   if (distinctPartners.size >= WELL_TRAVELLED_PARTNERS) {
     // Achieved date = the game that introduced the Nth distinct partner.
@@ -672,17 +696,21 @@ export function computeBadges(
   // individually rated higher than both you and your partner (the same
   // upset condition "Bracket Buster" above checks for, just counted
   // across your whole history instead of firing once on the first
-  // occurrence). Bracket Buster itself is left completely untouched so
-  // nobody who's already earned it loses it — this just layers repeatable
-  // milestones on top for players who keep pulling off the same kind of
-  // upset.
+  // occurrence) — including Bracket Buster's 25-games-each-player floor
+  // (2026-09-09, Ben's request), so an early-days upset with volatile,
+  // unproven ratings doesn't count toward either badge.
   const giantSlayerWins = history.filter(
     (h) =>
       h.won &&
       h.teammate_pre_rating != null &&
       h.opponent_min_pre_rating != null &&
       h.pre_rating < h.opponent_min_pre_rating &&
-      h.teammate_pre_rating < h.opponent_min_pre_rating
+      h.teammate_pre_rating < h.opponent_min_pre_rating &&
+      h.game_number >= BRACKET_BUSTER_MIN_GAMES &&
+      h.teammate_game_number != null &&
+      h.teammate_game_number >= BRACKET_BUSTER_MIN_GAMES &&
+      h.opponent_min_game_number != null &&
+      h.opponent_min_game_number >= BRACKET_BUSTER_MIN_GAMES
   );
   const giantSlayerMilestones = [
     { count: 3, emoji: "💥💥", label: "Giant Slayer" },
@@ -785,10 +813,11 @@ export function computeBadges(
     });
   }
 
-  // "Weekend Warrior" — 20+ games played on a Saturday or Sunday, combined.
+  // "Weekend Warrior" — 15+ games played on a Saturday or Sunday, combined
+  // (lowered from 20, 2026-09-09, Ben's request).
   // Pure participation, like Marathon/Well Travelled above — rewards
   // showing up on weekends specifically, nothing to do with results.
-  const WEEKEND_GAMES = 20;
+  const WEEKEND_GAMES = 15;
   const weekendGames = history.filter((h) => {
     const day = new Date(h.played_at).getDay();
     return day === 0 || day === 6;
@@ -1340,6 +1369,667 @@ export function computeBadges(
     });
   }
 
+  // ── 7 more badges added 2026-09-09 (second batch) at Ben's request ─────
+  // Same non-retroactive pattern as the 2026-09-07 batch above (see
+  // historySinceNewBadges/NEW_BADGES_INTRODUCED_AT comment) — a fresh
+  // cutoff for this specific batch, so nothing already in a player's
+  // history before this moment (an old draw, an old hat-trick day, etc.)
+  // instantly hands out one of these on deploy.
+  const SECOND_BATCH_INTRODUCED_AT = "2026-09-09T09:36:26Z";
+  const historySinceSecondBatch = history.filter(
+    (h) => new Date(h.played_at).getTime() >= new Date(SECOND_BATCH_INTRODUCED_AT).getTime()
+  );
+
+  // "Early Bird" — 15+ games played before midday (local time), across
+  // your whole history — not a single-session thing like Marathon, just
+  // being a morning player in general.
+  const EARLY_BIRD_GAMES = 15;
+  const earlyBirdGames = historySinceSecondBatch.filter((h) => new Date(h.played_at).getHours() < 12);
+  if (earlyBirdGames.length >= EARLY_BIRD_GAMES) {
+    badges.push({
+      id: "early-bird",
+      emoji: "🐦",
+      label: "Early Bird",
+      description: `Played ${earlyBirdGames.length} games before midday and counting — up with the sun.`,
+      achievedAt: earlyBirdGames[EARLY_BIRD_GAMES - 1]?.played_at ?? null,
+    });
+  }
+
+  // "Fair and Square" — your first drawn game. Nothing currently
+  // celebrates a draw specifically (see the 2026-09-09 draw-support work
+  // above) — draws are correctly NOT treated as losses everywhere else,
+  // but there was no badge marking the moment one actually happens.
+  const firstDraw = historySinceSecondBatch.find((h) => h.draw);
+  if (firstDraw) {
+    badges.push({
+      id: "fair-and-square",
+      emoji: "🟰",
+      label: "Fair and Square",
+      description: `Drew ${firstDraw.own_score}–${firstDraw.opponent_score} against ${firstDraw.opponent_names} — honours even.`,
+      achievedAt: firstDraw.played_at,
+    });
+  }
+
+  // "Peacemaker" — 10+ drawn games. Volume counterpart to "Fair and
+  // Square" above (which just fires on the first one).
+  const PEACEMAKER_DRAWS = 10;
+  const draws = historySinceSecondBatch.filter((h) => h.draw);
+  if (draws.length >= PEACEMAKER_DRAWS) {
+    badges.push({
+      id: "peacemaker",
+      emoji: "🕊️",
+      label: "Peacemaker",
+      description: `Drawn ${draws.length} games and counting — nobody wins, nobody loses.`,
+      achievedAt: draws[PEACEMAKER_DRAWS - 1]?.played_at ?? null,
+    });
+  }
+
+  // "Hat Trick" (tiered) — days where you won 3+ games. Counts the NUMBER
+  // of such days (not games), tiered the same way as Giant Slayer/Photo
+  // Finish above. Distinct from "Perfect Session" (which requires an
+  // entirely unbeaten day) — a hat-trick day can include losses too, it
+  // just needs 3+ wins somewhere in it.
+  const HAT_TRICK_WINS_PER_DAY = 3;
+  const winsByDayHatTrick = new Map<string, { count: number; lastAt: string }>();
+  for (const h of historySinceSecondBatch) {
+    if (!h.won) continue;
+    const dayKey = new Date(h.played_at).toDateString();
+    const entry = winsByDayHatTrick.get(dayKey) ?? { count: 0, lastAt: h.played_at };
+    entry.count += 1;
+    entry.lastAt = h.played_at;
+    winsByDayHatTrick.set(dayKey, entry);
+  }
+  const hatTrickDays = Array.from(winsByDayHatTrick.values())
+    .filter((d) => d.count >= HAT_TRICK_WINS_PER_DAY)
+    .sort((a, b) => new Date(a.lastAt).getTime() - new Date(b.lastAt).getTime());
+  const hatTrickMilestones = [
+    { count: 3, emoji: "🎩", label: "Hat Trick" },
+    { count: 10, emoji: "🎩🎩", label: "Serial Hat-Tricker" },
+  ];
+  for (const milestone of hatTrickMilestones) {
+    if (hatTrickDays.length >= milestone.count) {
+      badges.push({
+        id: `hat-trick-${milestone.count}`,
+        emoji: milestone.emoji,
+        label: milestone.label,
+        description: `Won 3+ games in a single day, ${hatTrickDays.length} time${hatTrickDays.length === 1 ? "" : "s"} and counting.`,
+        achievedAt: hatTrickDays[milestone.count - 1]?.lastAt ?? null,
+      });
+    }
+  }
+
+  // "Old Guard" — beat a pair whose COMBINED own game counts (both
+  // opponents added together) were 200+ at the time. Uses
+  // opponent_combined_game_number (added specifically for this — mirrors
+  // opponent_combined_pre_rating's sum-of-two pattern, but for game counts
+  // instead of ratings).
+  const OLD_GUARD_COMBINED_GAMES = 200;
+  const oldGuardWin = historySinceSecondBatch.find(
+    (h) => h.won && h.opponent_combined_game_number != null && h.opponent_combined_game_number >= OLD_GUARD_COMBINED_GAMES
+  );
+  if (oldGuardWin) {
+    badges.push({
+      id: "old-guard",
+      emoji: "🏛️",
+      label: "Old Guard",
+      description: `Beat ${oldGuardWin.opponent_names}, a pair with ${oldGuardWin.opponent_combined_game_number} games between them — seasoned opposition.`,
+      achievedAt: oldGuardWin.played_at,
+    });
+  }
+
+  // "Grudge Match" — faced the same opposing pair 15+ times, regardless of
+  // outcome. Different axis from "Old Foes" above (which only counts WINS
+  // against a pair) — this is pure frequency, win, lose, or draw.
+  const GRUDGE_MATCH_THRESHOLD = 15;
+  const gamesByOpponentGrudge = new Map<string, PlayerMatchHistoryRow[]>();
+  for (const h of historySinceSecondBatch) {
+    const list = gamesByOpponentGrudge.get(h.opponent_names) ?? [];
+    list.push(h);
+    gamesByOpponentGrudge.set(h.opponent_names, list);
+  }
+  let grudgeOpponent = "";
+  let grudgeGames: PlayerMatchHistoryRow[] = [];
+  for (const [name, games] of gamesByOpponentGrudge) {
+    if (games.length > grudgeGames.length) {
+      grudgeGames = games;
+      grudgeOpponent = name;
+    }
+  }
+  if (grudgeGames.length >= GRUDGE_MATCH_THRESHOLD) {
+    badges.push({
+      id: "grudge-match",
+      emoji: "🗡️",
+      label: "Grudge Match",
+      description: `Faced ${grudgeOpponent} ${grudgeGames.length} times now — you two just keep ending up on opposite sides.`,
+      achievedAt: grudgeGames[GRUDGE_MATCH_THRESHOLD - 1]?.played_at ?? null,
+    });
+  }
+
+  // "The Specialist" — 90%+ win rate with a partner you've played 15+
+  // games alongside. Different from "Dream Team" above (25 wins with your
+  // best partner, by raw count) — this rewards CONSISTENCY with a regular
+  // partner, not volume, and only looks at partners you've played enough
+  // with for the win rate to actually mean something.
+  const SPECIALIST_MIN_GAMES = 15;
+  const SPECIALIST_MIN_RATE = 0.9;
+  const gamesByPartnerSpecialist = new Map<string, PlayerMatchHistoryRow[]>();
+  for (const h of historySinceSecondBatch) {
+    const list = gamesByPartnerSpecialist.get(h.teammate_name) ?? [];
+    list.push(h);
+    gamesByPartnerSpecialist.set(h.teammate_name, list);
+  }
+  let specialistPartner = "";
+  let specialistGames: PlayerMatchHistoryRow[] = [];
+  let specialistRate = 0;
+  for (const [name, games] of gamesByPartnerSpecialist) {
+    if (games.length < SPECIALIST_MIN_GAMES) continue;
+    const wins = games.filter((h) => h.won).length;
+    const rate = wins / games.length;
+    if (rate >= SPECIALIST_MIN_RATE && rate > specialistRate) {
+      specialistRate = rate;
+      specialistPartner = name;
+      specialistGames = games;
+    }
+  }
+  if (specialistGames.length >= SPECIALIST_MIN_GAMES) {
+    const wins = specialistGames.filter((h) => h.won).length;
+    badges.push({
+      id: "the-specialist",
+      emoji: "🔬",
+      label: "The Specialist",
+      description: `Won ${wins} of ${specialistGames.length} games (${Math.round(specialistRate * 100)}%) alongside ${specialistPartner} — a partnership that just works.`,
+      achievedAt: specialistGames[specialistGames.length - 1].played_at,
+    });
+  }
+
+  // ── 5 more badges added 2026-09-09 (third batch) at Ben's request —
+  // quirky score-pattern badges, same non-retroactive pattern as the two
+  // batches above (see NEW_BADGES_INTRODUCED_AT/SECOND_BATCH_INTRODUCED_AT
+  // comments). Fresh cutoff again, so an old 13-0 win etc. doesn't
+  // instantly hand one of these out on deploy.
+  const THIRD_BATCH_INTRODUCED_AT = "2026-09-09T09:45:43Z";
+  const historySinceThirdBatch = history.filter(
+    (h) => new Date(h.played_at).getTime() >= new Date(THIRD_BATCH_INTRODUCED_AT).getTime()
+  );
+
+  // "Unlucky for Some" — win a game 13–0. A specific-score badge alongside
+  // the broader "Clean Sweep" above (any shutout win), same relationship
+  // as Buzzer Beater (11-10) sits alongside Photo Finish (any 1-point
+  // win) — both can fire off the same game.
+  const unluckyForSome = historySinceThirdBatch.find((h) => h.won && h.own_score === 13 && h.opponent_score === 0);
+  if (unluckyForSome) {
+    badges.push({
+      id: "unlucky-for-some",
+      emoji: "🐈‍⬛",
+      label: "Unlucky for Some",
+      description: `Won 13–0 against ${unluckyForSome.opponent_names} — unlucky for some, lucky for you.`,
+      achievedAt: unluckyForSome.played_at,
+    });
+  }
+
+  // "Golden Point" — win a game 11–9. A nervy two-point squeaker at the
+  // standard target score — distinct from "Buzzer Beater" above, which is
+  // specifically an 11–10 (one-point) finish.
+  const goldenPoint = historySinceThirdBatch.find((h) => h.won && h.own_score === 11 && h.opponent_score === 9);
+  if (goldenPoint) {
+    badges.push({
+      id: "golden-point",
+      emoji: "🪙",
+      label: "Golden Point",
+      description: `Won 11–9 against ${goldenPoint.opponent_names} — every point counted.`,
+      achievedAt: goldenPoint.played_at,
+    });
+  }
+
+  // "Nil by Mouth" — win 11–0, a clean shutout at the standard target
+  // score specifically. Narrower than "Clean Sweep" above (any winning
+  // score with the opponent held to 0) — both can fire off the same game,
+  // same relationship as Unlucky for Some above sits alongside Clean
+  // Sweep. Distinct from "First time pickled", which is about being shut
+  // out yourself.
+  const nilByMouth = historySinceThirdBatch.find((h) => h.won && h.own_score === 11 && h.opponent_score === 0);
+  if (nilByMouth) {
+    badges.push({
+      id: "nil-by-mouth",
+      emoji: "🤐",
+      label: "Nil by Mouth",
+      description: `Won 11–0 against ${nilByMouth.opponent_names} — not a word said in reply.`,
+      achievedAt: nilByMouth.played_at,
+    });
+  }
+
+  // "Double Digits" — win by exactly 10 points, whatever the actual
+  // score. Sits between "Deuce Duel" above (margin of 2 or less off a
+  // 12+ finish) and "Standout win" (15+ margin) — an oddly specific,
+  // satisfying gap in between.
+  const doubleDigits = historySinceThirdBatch.find((h) => h.won && h.own_score - h.opponent_score === 10);
+  if (doubleDigits) {
+    badges.push({
+      id: "double-digits",
+      emoji: "🔢",
+      label: "Double Digits",
+      description: `Won ${doubleDigits.own_score}–${doubleDigits.opponent_score} against ${doubleDigits.opponent_names} — exactly a 10-point margin.`,
+      achievedAt: doubleDigits.played_at,
+    });
+  }
+
+  // "Mirror Match" — won two separate games by the exact same margin on
+  // the same calendar day. Any margin counts (a 3-point win twice, an
+  // 8-point win twice, etc.) — the coincidence is the point, not the
+  // specific number. Distinct from "Déjà Vu" above, which requires the
+  // exact same SCORELINE against the same opponent, tracked across your
+  // whole history — this is same margin, same day, any opponent.
+  const marginsByDayMirror = new Map<string, Map<number, string>>();
+  let mirrorMatchAt: string | null = null;
+  let mirrorMatchMargin = 0;
+  for (const h of historySinceThirdBatch) {
+    if (!h.won || mirrorMatchAt) continue;
+    const dayKey = new Date(h.played_at).toDateString();
+    const margin = h.own_score - h.opponent_score;
+    const seenMargins = marginsByDayMirror.get(dayKey) ?? new Map<number, string>();
+    if (seenMargins.has(margin)) {
+      mirrorMatchAt = h.played_at;
+      mirrorMatchMargin = margin;
+    } else {
+      seenMargins.set(margin, h.played_at);
+      marginsByDayMirror.set(dayKey, seenMargins);
+    }
+  }
+  if (mirrorMatchAt) {
+    badges.push({
+      id: "mirror-match",
+      emoji: "👯",
+      label: "Mirror Match",
+      description: `Won two games by exactly ${mirrorMatchMargin} points in the same session — an odd little coincidence.`,
+      achievedAt: mirrorMatchAt,
+    });
+  }
+
+  // ── 19 more badges added 2026-09-09 (fourth batch) at Ben's request, to
+  // round the total out to 100. Same non-retroactive pattern as the three
+  // batches above — fresh cutoff again. A few of these (The Apprentice,
+  // Rating Milestones, On the Up) need full `history`/`ratingPoints` for
+  // context, same "not a loophole" reasoning as Mentor/Rollercoaster
+  // above — only the AWARDING game has to be fresh.
+  const FOURTH_BATCH_INTRODUCED_AT = "2026-09-09T09:54:00Z";
+  const historySinceFourthBatch = history.filter(
+    (h) => new Date(h.played_at).getTime() >= new Date(FOURTH_BATCH_INTRODUCED_AT).getTime()
+  );
+
+  // "One Dozen" — win a game 12–0. Changed 2026-09-09 (Ben's request) from
+  // an earlier margin-based "Baker's Dozen" (win by exactly 13) to this
+  // exact-score version instead.
+  const oneDozen = historySinceFourthBatch.find((h) => h.won && h.own_score === 12 && h.opponent_score === 0);
+  if (oneDozen) {
+    badges.push({
+      id: "one-dozen",
+      emoji: "🍩",
+      label: "One Dozen",
+      description: `Won 12–0 against ${oneDozen.opponent_names} — a dozen points, not one to spare.`,
+      achievedAt: oneDozen.played_at,
+    });
+  }
+
+  // "Epic Battle" — a game (win or lose) with 30+ combined points scored
+  // between both sides — a genuinely long, back-and-forth session game.
+  const EPIC_BATTLE_COMBINED = 30;
+  const epicBattle = historySinceFourthBatch.find((h) => h.own_score + h.opponent_score >= EPIC_BATTLE_COMBINED);
+  if (epicBattle) {
+    badges.push({
+      id: "epic-battle",
+      emoji: "🎾",
+      label: "Epic Battle",
+      description: `A ${epicBattle.own_score}–${epicBattle.opponent_score} game against ${epicBattle.opponent_names} — ${epicBattle.own_score + epicBattle.opponent_score} points fought over.`,
+      achievedAt: epicBattle.played_at,
+    });
+  }
+
+  // "Bagelled" — lost 0–11 specifically. Narrower sibling of "First time
+  // pickled" above (which is any losing score with you on 0) — same
+  // relationship as Nil by Mouth sits alongside Clean Sweep.
+  const bagelled = historySinceFourthBatch.find((h) => !h.won && !h.draw && h.own_score === 0 && h.opponent_score === 11);
+  if (bagelled) {
+    badges.push({
+      id: "bagelled",
+      emoji: "🥯",
+      label: "Bagelled",
+      description: `Lost 0–11 against ${bagelled.opponent_names} — everyone gets bagelled eventually.`,
+      achievedAt: bagelled.played_at,
+    });
+  }
+
+  // "Under Lights" — 25+ games played after 8pm, across your whole
+  // history (raised from 15, 2026-09-09, Ben's request). Evening
+  // counterpart to "Early Bird" above.
+  const UNDER_LIGHTS_GAMES = 25;
+  const underLightsGames = historySinceFourthBatch.filter((h) => new Date(h.played_at).getHours() >= 20);
+  if (underLightsGames.length >= UNDER_LIGHTS_GAMES) {
+    badges.push({
+      id: "under-lights",
+      emoji: "🌙",
+      label: "Under Lights",
+      description: `Played ${underLightsGames.length} games after 8pm and counting — a true night owl.`,
+      achievedAt: underLightsGames[UNDER_LIGHTS_GAMES - 1]?.played_at ?? null,
+    });
+  }
+
+  // "Podium Regular" — 3+ months finishing in the club's Top 3. A second,
+  // harder tier layered on top of "Top 3 finish" above (which fires once,
+  // on the first Top 3), same relationship as Ride or Die sits on top of
+  // the 25-win partner badge. Uses the same forward-only top3Finishes
+  // computed above — no extra cutoff needed.
+  const PODIUM_REGULAR_THRESHOLD = 3;
+  if (top3Finishes.length >= PODIUM_REGULAR_THRESHOLD) {
+    const latest = top3Finishes[0];
+    badges.push({
+      id: "podium-regular",
+      emoji: "🏵️",
+      label: "Podium Regular",
+      description: `Finished a month in the club's Top 3 ${top3Finishes.length} times now — a regular on the podium.`,
+      achievedAt: new Date(Number(latest.yearMonth.slice(0, 4)), Number(latest.yearMonth.slice(5, 7)), 0).toISOString(),
+    });
+  }
+
+  // "Leader" — 6+ months finishing in the club's Top 10. Same relationship
+  // to "Top 10 finish" above as Podium Regular has to Top 3 finish — a
+  // second, harder tier on the broader (easier) leaderboard bracket.
+  const LEADER_THRESHOLD = 6;
+  if (top10Finishes.length >= LEADER_THRESHOLD) {
+    const latest = top10Finishes[0];
+    badges.push({
+      id: "leader",
+      emoji: "🎖️",
+      label: "Leader",
+      description: `Finished a month in the club's Top 10 ${top10Finishes.length} times now — a fixture near the top.`,
+      achievedAt: new Date(Number(latest.yearMonth.slice(0, 4)), Number(latest.yearMonth.slice(5, 7)), 0).toISOString(),
+    });
+  }
+
+  // "World Tour" — faced 30+ different opposing pairs (raised from 25,
+  // 2026-09-09, Ben's request). Counterpart to "Well Travelled" above
+  // (25+ different partners) — no longer the same threshold, just the
+  // opponent side instead of the teammate side.
+  const WORLD_TOUR_OPPONENTS = 30;
+  const distinctOpponentsWorldTour = new Set(historySinceFourthBatch.map((h) => h.opponent_names));
+  if (distinctOpponentsWorldTour.size >= WORLD_TOUR_OPPONENTS) {
+    const seenOpponentsWorldTour = new Set<string>();
+    let worldTourAt: string | null = null;
+    for (const h of historySinceFourthBatch) {
+      seenOpponentsWorldTour.add(h.opponent_names);
+      if (seenOpponentsWorldTour.size >= WORLD_TOUR_OPPONENTS) {
+        worldTourAt = h.played_at;
+        break;
+      }
+    }
+    badges.push({
+      id: "world-tour",
+      emoji: "🌐",
+      label: "World Tour",
+      description: `Faced ${distinctOpponentsWorldTour.size} different opposing pairs and counting.`,
+      achievedAt: worldTourAt,
+    });
+  }
+
+  // "The Apprentice" — played alongside 6+ different established partners
+  // (12+ games themselves) while YOU were still provisional (12 or fewer
+  // games). Exact inverse of "Mentor" above. Threshold lowered from 10 to
+  // 6, 2026-09-09, Ben's request.
+  const APPRENTICE_THRESHOLD = 6;
+  const APPRENTICE_PROVISIONAL_GAMES = 12;
+  const veteranPartnersSeenApprentice = new Set<string>();
+  let apprenticeAt: string | null = null;
+  for (const h of historySinceFourthBatch) {
+    if (
+      h.game_number <= APPRENTICE_PROVISIONAL_GAMES &&
+      h.teammate_game_number != null &&
+      h.teammate_game_number > APPRENTICE_PROVISIONAL_GAMES
+    ) {
+      veteranPartnersSeenApprentice.add(h.teammate_name);
+      if (veteranPartnersSeenApprentice.size === APPRENTICE_THRESHOLD && !apprenticeAt) apprenticeAt = h.played_at;
+    }
+  }
+  if (apprenticeAt) {
+    badges.push({
+      id: "the-apprentice",
+      emoji: "🧑‍🎓",
+      label: "The Apprentice",
+      description: `Played alongside ${veteranPartnersSeenApprentice.size} different established partners while you were still finding your feet.`,
+      achievedAt: apprenticeAt,
+    });
+  }
+
+  // "Rating Milestones" (tiered) — reach a 1600/1700/1800/1900/2000+
+  // rating for the first time. Nothing currently marks an absolute rating
+  // LEVEL (Rating Rocket is a single-game jump, Rollercoaster is a
+  // monthly swing, Steady Eddie is stability) — this fills that gap.
+  const ratingMilestoneThresholds = [1600, 1700, 1800, 1900, 2000];
+  for (const threshold of ratingMilestoneThresholds) {
+    const crossed = historySinceFourthBatch.find((h) => h.post_rating >= threshold);
+    if (crossed) {
+      badges.push({
+        id: `rating-${threshold}`,
+        emoji: "📈",
+        label: `${threshold} Rating`,
+        description: `Reached a ${threshold}+ rating.`,
+        achievedAt: crossed.played_at,
+      });
+    }
+  }
+
+  // "Three-peat" — beat the same opposing pair 3 times in a row, with no
+  // loss or draw against them in between. Different from "Old Foes"
+  // (total win count) and "Grudge Match" (total meeting count) above —
+  // this is specifically an unbroken streak against one pair.
+  const THREE_PEAT_STREAK = 3;
+  const streaksByOpponentThreePeat = new Map<string, number>();
+  let threePeatAt: string | null = null;
+  let threePeatOpponent = "";
+  for (const h of historySinceFourthBatch) {
+    if (threePeatAt) break;
+    const key = h.opponent_names;
+    if (h.won) {
+      const streak = (streaksByOpponentThreePeat.get(key) ?? 0) + 1;
+      streaksByOpponentThreePeat.set(key, streak);
+      if (streak >= THREE_PEAT_STREAK) {
+        threePeatAt = h.played_at;
+        threePeatOpponent = key;
+      }
+    } else {
+      streaksByOpponentThreePeat.set(key, 0);
+    }
+  }
+  if (threePeatAt) {
+    badges.push({
+      id: "three-peat",
+      emoji: "🔂",
+      label: "Three-peat",
+      description: `Beat ${threePeatOpponent} three times in a row, no losses in between.`,
+      achievedAt: threePeatAt,
+    });
+  }
+
+  // "Nightcap" — won the LAST game of a session of 3+ games. Bookend
+  // counterpart to "Fresh Legs" above (which is about the FIRST game of a
+  // session).
+  const NIGHTCAP_MIN_SESSION = 3;
+  const sessionsByDayNightcap = new Map<string, PlayerMatchHistoryRow[]>();
+  for (const h of historySinceFourthBatch) {
+    const dayKey = new Date(h.played_at).toDateString();
+    const list = sessionsByDayNightcap.get(dayKey) ?? [];
+    list.push(h);
+    sessionsByDayNightcap.set(dayKey, list);
+  }
+  let nightcapAt: string | null = null;
+  for (const games of sessionsByDayNightcap.values()) {
+    if (games.length >= NIGHTCAP_MIN_SESSION && games[games.length - 1].won) {
+      nightcapAt = games[games.length - 1].played_at;
+      break;
+    }
+  }
+  if (nightcapAt) {
+    badges.push({
+      id: "nightcap",
+      emoji: "🌜",
+      label: "Nightcap",
+      description: `Ended a ${NIGHTCAP_MIN_SESSION}+ game session with a win — went out on a high.`,
+      achievedAt: nightcapAt,
+    });
+  }
+
+  // "Untouchable" — a perfect (100% win) record against one opposing pair
+  // across 5+ meetings. Stricter than "Old Foes" above (just counts wins,
+  // no requirement they're undefeated against that pair).
+  const UNTOUCHABLE_MIN_GAMES = 5;
+  const gamesByOpponentUntouchable = new Map<string, PlayerMatchHistoryRow[]>();
+  for (const h of historySinceFourthBatch) {
+    const list = gamesByOpponentUntouchable.get(h.opponent_names) ?? [];
+    list.push(h);
+    gamesByOpponentUntouchable.set(h.opponent_names, list);
+  }
+  let untouchableOpponent = "";
+  let untouchableGames: PlayerMatchHistoryRow[] = [];
+  for (const [name, games] of gamesByOpponentUntouchable) {
+    if (games.length >= UNTOUCHABLE_MIN_GAMES && games.length > untouchableGames.length && games.every((h) => h.won)) {
+      untouchableGames = games;
+      untouchableOpponent = name;
+    }
+  }
+  if (untouchableGames.length >= UNTOUCHABLE_MIN_GAMES) {
+    badges.push({
+      id: "untouchable",
+      emoji: "👑",
+      label: "Untouchable",
+      description: `A perfect ${untouchableGames.length}–0 record against ${untouchableOpponent} — untouchable.`,
+      achievedAt: untouchableGames[untouchableGames.length - 1].played_at,
+    });
+  }
+
+  // "Golden Hour" — 5+ wins between 5pm and 7pm. A third time-of-day slot
+  // alongside "Early Bird" (before midday) and "Under Lights" (after 8pm)
+  // above.
+  const GOLDEN_HOUR_WINS = 5;
+  const goldenHourWins = historySinceFourthBatch.filter((h) => {
+    if (!h.won) return false;
+    const hour = new Date(h.played_at).getHours();
+    return hour >= 17 && hour < 19;
+  });
+  if (goldenHourWins.length >= GOLDEN_HOUR_WINS) {
+    badges.push({
+      id: "golden-hour",
+      emoji: "🌇",
+      label: "Golden Hour",
+      description: `Won ${goldenHourWins.length} games between 5 and 7pm and counting — prime time form.`,
+      achievedAt: goldenHourWins[GOLDEN_HOUR_WINS - 1]?.played_at ?? null,
+    });
+  }
+
+  // "Century Club" — 200+ points scored within a single calendar month,
+  // only counting games from your 25th lifetime game onward (2026-09-09,
+  // Ben's request) — a newer player's first few sessions shouldn't count
+  // toward this. Distinct from "Point Hoarder" above, which is a
+  // 1000-point LIFETIME total with no such floor.
+  const CENTURY_CLUB_POINTS = 200;
+  const CENTURY_CLUB_MIN_GAMES = 25;
+  const pointsByMonthCentury = new Map<string, { total: number }>();
+  let centuryClubAt: string | null = null;
+  for (const h of historySinceFourthBatch) {
+    if (centuryClubAt) break;
+    if (h.game_number < CENTURY_CLUB_MIN_GAMES) continue;
+    const d = new Date(h.played_at);
+    const key = `${d.getFullYear()}-${d.getMonth()}`;
+    const entry = pointsByMonthCentury.get(key) ?? { total: 0 };
+    entry.total += h.own_score;
+    pointsByMonthCentury.set(key, entry);
+    if (entry.total >= CENTURY_CLUB_POINTS) centuryClubAt = h.played_at;
+  }
+  if (centuryClubAt) {
+    badges.push({
+      id: "century-club",
+      emoji: "💯",
+      label: "Century Club",
+      description: `Scored ${CENTURY_CLUB_POINTS}+ points in a single calendar month.`,
+      achievedAt: centuryClubAt,
+    });
+  }
+
+  // "Taste of Everything" — won, lost, AND drew a game all within the
+  // same calendar DAY (changed from "same month" to "same day", 2026-09-09,
+  // Ben's request — a much tighter, session-scoped coincidence). A fun one
+  // made possible by draw support (2026-09-09) — sampled every possible
+  // result in one sitting.
+  const dayResultsTaste = new Map<string, { win: boolean; loss: boolean; draw: boolean }>();
+  let tasteOfEverythingAt: string | null = null;
+  for (const h of historySinceFourthBatch) {
+    if (tasteOfEverythingAt) break;
+    const key = new Date(h.played_at).toDateString();
+    const entry = dayResultsTaste.get(key) ?? { win: false, loss: false, draw: false };
+    if (h.draw) entry.draw = true;
+    else if (h.won) entry.win = true;
+    else entry.loss = true;
+    dayResultsTaste.set(key, entry);
+    if (entry.win && entry.loss && entry.draw) tasteOfEverythingAt = h.played_at;
+  }
+  if (tasteOfEverythingAt) {
+    badges.push({
+      id: "taste-of-everything",
+      emoji: "🍽️",
+      label: "Taste of Everything",
+      description: `Won, lost, AND drew a game — all in the same session.`,
+      achievedAt: tasteOfEverythingAt,
+    });
+  }
+
+  // "On the Up" — gained 100+ rating points, net, within a single calendar
+  // month, only counting games from your 25th lifetime game onward
+  // (2026-09-09, Ben's request) — early-career swings are just how a new,
+  // uncertain rating behaves (same reasoning as Rating Rocket's own game-13
+  // floor above), not a genuine climb. Distinct from "Rollercoaster"
+  // above, which measures the full RANGE (up and down) rather than net
+  // direction. Builds its own points array (rather than reusing
+  // Rollercoaster's full-history one) seeded from the rating you entered
+  // your 25th game at, so the "start of month" baseline never includes
+  // pre-floor volatility. Only awards for a qualifying month that closes
+  // inside this batch's cutoff window (see FOURTH_BATCH_INTRODUCED_AT
+  // comment above).
+  const ON_THE_UP_GAIN = 100;
+  const ON_THE_UP_MIN_GAMES = 25;
+  const onTheUpEligibleHistory = history.filter((h) => h.game_number >= ON_THE_UP_MIN_GAMES);
+  let onTheUpAt: string | null = null;
+  let onTheUpGain = 0;
+  if (onTheUpEligibleHistory.length > 0) {
+    const onTheUpPoints = [
+      { date: onTheUpEligibleHistory[0].played_at, rating: onTheUpEligibleHistory[0].pre_rating },
+      ...onTheUpEligibleHistory.map((h) => ({ date: h.played_at, rating: h.post_rating })),
+    ];
+    const monthNetChangeOnTheUp = new Map<string, { start: number; end: number; lastAt: string }>();
+    for (let i = 1; i < onTheUpPoints.length; i++) {
+      const key = monthKey(onTheUpPoints[i].date);
+      if (!monthNetChangeOnTheUp.has(key)) {
+        monthNetChangeOnTheUp.set(key, { start: onTheUpPoints[i - 1].rating, end: onTheUpPoints[i].rating, lastAt: onTheUpPoints[i].date });
+      }
+      const g = monthNetChangeOnTheUp.get(key)!;
+      g.end = onTheUpPoints[i].rating;
+      g.lastAt = onTheUpPoints[i].date;
+    }
+    for (const g of monthNetChangeOnTheUp.values()) {
+      const gain = g.end - g.start;
+      if (gain >= ON_THE_UP_GAIN && new Date(g.lastAt).getTime() >= new Date(FOURTH_BATCH_INTRODUCED_AT).getTime()) {
+        onTheUpAt = g.lastAt;
+        onTheUpGain = gain;
+        break;
+      }
+    }
+  }
+  if (onTheUpAt) {
+    badges.push({
+      id: "on-the-up",
+      emoji: "⬆️",
+      label: "On the Up",
+      description: `Gained ${Math.round(onTheUpGain)} rating points, net, in a single calendar month — a genuine climb.`,
+      achievedAt: onTheUpAt,
+    });
+  }
+
   return badges;
 }
 
@@ -1415,9 +2105,9 @@ export function computeCompletionistBadge(finalBadges: Badge[]): Badge | null {
 export type FrameTier = "gold" | "silver" | "bronze";
 
 export const FRAME_TIERS: { tier: FrameTier; threshold: number; label: string }[] = [
-  { tier: "gold", threshold: 30, label: "Gold" },
-  { tier: "silver", threshold: 20, label: "Silver" },
-  { tier: "bronze", threshold: 10, label: "Bronze" },
+  { tier: "gold", threshold: 40, label: "Gold" },
+  { tier: "silver", threshold: 30, label: "Silver" },
+  { tier: "bronze", threshold: 15, label: "Bronze" },
 ];
 
 export function getFrameTier(totalBadgeCount: number): FrameTier | null {
