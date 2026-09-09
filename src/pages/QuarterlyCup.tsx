@@ -33,6 +33,12 @@ export default function QuarterlyCup({ isAdmin, currentUserId }: { isAdmin: bool
   const [newName, setNewName] = useState("The Quarterly Cup");
   const [newScoring, setNewScoring] = useState<ScoringSystem>("social");
   const [newDoubleRoundRobin, setNewDoubleRoundRobin] = useState(true);
+  // Allow draws (2026-09-09, Ben's request) — defaults off, same as
+  // Competitions' own allow_draws. (Briefly defaulted on, since the Cup is
+  // the "played regularly each week" format Ben described as one where
+  // draws should definitely be allowed — but he asked to default it off
+  // for now too; flip it on per-Cup when needed.)
+  const [newAllowDraws, setNewAllowDraws] = useState(false);
   const [newMirrorSeason, setNewMirrorSeason] = useState(true);
   const [newEndDate, setNewEndDate] = useState("");
   const [creating, setCreating] = useState(false);
@@ -82,6 +88,7 @@ export default function QuarterlyCup({ isAdmin, currentUserId }: { isAdmin: bool
         name: newName.trim(),
         scoring_system: newScoring,
         double_round_robin: newDoubleRoundRobin,
+        allow_draws: newAllowDraws,
         mirror_season_end: newMirrorSeason,
         end_date: newMirrorSeason ? null : newEndDate || null,
         created_by: currentUserId,
@@ -96,6 +103,7 @@ export default function QuarterlyCup({ isAdmin, currentUserId }: { isAdmin: bool
     setNewName("The Quarterly Cup");
     setNewScoring("standard");
     setNewDoubleRoundRobin(true);
+    setNewAllowDraws(false);
     setNewMirrorSeason(true);
     setNewEndDate("");
     await loadCups();
@@ -180,6 +188,18 @@ export default function QuarterlyCup({ isAdmin, currentUserId }: { isAdmin: bool
                 />
                 <label htmlFor="qc-double-rr" style={{ margin: 0, fontWeight: 400 }}>
                   Every team plays every other team twice
+                </label>
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12 }}>
+                <input
+                  id="qc-allow-draws"
+                  type="checkbox"
+                  checked={newAllowDraws}
+                  onChange={(e) => setNewAllowDraws(e.target.checked)}
+                />
+                <label htmlFor="qc-allow-draws" style={{ margin: 0, fontWeight: 400 }}>
+                  Allow drawn games
                 </label>
               </div>
 
@@ -537,7 +557,7 @@ function CupDetail({
 
       {(cup.status === "active" || cup.status === "completed") && (
         <>
-          <StandingsSection teams={teams} matches={matches} teamLabel={teamLabel} scoringSystem={cup.scoring_system} winnerTeamId={cup.winner_team_id} />
+          <StandingsSection teams={teams} matches={matches} teamLabel={teamLabel} scoringSystem={cup.scoring_system} winnerTeamId={cup.winner_team_id} allowDraws={cup.allow_draws} />
           <FixturesSection
             cup={cup}
             matches={matches}
@@ -774,12 +794,14 @@ function StandingsSection({
   teamLabel,
   scoringSystem,
   winnerTeamId,
+  allowDraws,
 }: {
   teams: QuarterlyCupTeamRow[];
   matches: (QuarterlyCupMatchRow & { matches: { team_a_score: number; team_b_score: number } | null })[];
   teamLabel: (id: string) => string;
   scoringSystem: ScoringSystem;
   winnerTeamId: string | null;
+  allowDraws: boolean;
 }) {
   const standings = computeGroupStandings(
     teams.map((t) => t.id),
@@ -805,6 +827,7 @@ function StandingsSection({
               <th>Team</th>
               <th>P</th>
               <th>W</th>
+              {allowDraws && <th>D</th>}
               <th>L</th>
               <th>PF</th>
               <th>PA</th>
@@ -824,6 +847,7 @@ function StandingsSection({
                 </td>
                 <td>{row.played}</td>
                 <td>{row.won}</td>
+                {allowDraws && <td>{row.drawn}</td>}
                 <td>{row.lost}</td>
                 <td>{row.pointsFor}</td>
                 <td>{row.pointsAgainst}</td>
@@ -907,10 +931,10 @@ function FixturesSection({
       )}
       {unplayed.length === 0 && played.length === 0 && <p className="stat-meta">No fixtures to show.</p>}
       {unplayed.map((m) => (
-        <FixtureRow key={m.id} match={m} teamLabel={teamLabel} isAdmin={isAdmin} currentUserId={currentUserId} onChanged={onChanged} locked={cup.status === "completed"} />
+        <FixtureRow key={m.id} match={m} teamLabel={teamLabel} isAdmin={isAdmin} currentUserId={currentUserId} onChanged={onChanged} locked={cup.status === "completed"} allowDraws={cup.allow_draws} />
       ))}
       {played.map((m) => (
-        <FixtureRow key={m.id} match={m} teamLabel={teamLabel} isAdmin={isAdmin} currentUserId={currentUserId} onChanged={onChanged} locked={cup.status === "completed"} />
+        <FixtureRow key={m.id} match={m} teamLabel={teamLabel} isAdmin={isAdmin} currentUserId={currentUserId} onChanged={onChanged} locked={cup.status === "completed"} allowDraws={cup.allow_draws} />
       ))}
     </div>
   );
@@ -923,6 +947,7 @@ function FixtureRow({
   currentUserId,
   onChanged,
   locked,
+  allowDraws = false,
 }: {
   match: QuarterlyCupMatchRow & { matches: { team_a_score: number; team_b_score: number } | null };
   teamLabel: (id: string) => string;
@@ -930,6 +955,7 @@ function FixtureRow({
   currentUserId: string;
   onChanged: () => void;
   locked: boolean;
+  allowDraws?: boolean;
 }) {
   const confirm = useConfirm();
   const played = !!match.matches;
@@ -949,8 +975,14 @@ function FixtureRow({
   async function saveEdit() {
     const teamAScore = Number(scoreA);
     const teamBScore = Number(scoreB);
-    if (scoreA === "" || scoreB === "" || teamAScore < 0 || teamBScore < 0 || teamAScore === teamBScore) {
-      setError("Enter both scores (they can't be equal).");
+    if (
+      scoreA === "" ||
+      scoreB === "" ||
+      teamAScore < 0 ||
+      teamBScore < 0 ||
+      (teamAScore === teamBScore && !allowDraws)
+    ) {
+      setError(allowDraws ? "Enter both scores." : "Enter both scores (they can't be equal).");
       return;
     }
     if (!match.match_id) {
@@ -968,15 +1000,21 @@ function FixtureRow({
       setError(`Score saved, but recalculation may still be finishing: ${editError.message}`);
       return;
     }
-    const winnerTeamId = teamAScore > teamBScore ? match.team_a_id : match.team_b_id;
+    const winnerTeamId = teamAScore === teamBScore ? null : teamAScore > teamBScore ? match.team_a_id : match.team_b_id;
     await supabase.from("quarterly_cup_matches").update({ winner_team_id: winnerTeamId }).eq("id", match.id);
     setEditing(false);
     onChanged();
   }
 
   async function submit() {
-    if (scoreA === "" || scoreB === "" || Number(scoreA) < 0 || Number(scoreB) < 0 || Number(scoreA) === Number(scoreB)) {
-      setError("Enter both scores (they can't be equal).");
+    if (
+      scoreA === "" ||
+      scoreB === "" ||
+      Number(scoreA) < 0 ||
+      Number(scoreB) < 0 ||
+      (Number(scoreA) === Number(scoreB) && !allowDraws)
+    ) {
+      setError(allowDraws ? "Enter both scores." : "Enter both scores (they can't be equal).");
       return;
     }
     setSubmitting(true);
@@ -1024,7 +1062,12 @@ function FixtureRow({
       .limit(1)
       .maybeSingle();
 
-    const winnerTeamId = Number(scoreA) > Number(scoreB) ? match.team_a_id : match.team_b_id;
+    const winnerTeamId =
+      Number(scoreA) === Number(scoreB)
+        ? null
+        : Number(scoreA) > Number(scoreB)
+        ? match.team_a_id
+        : match.team_b_id;
 
     const { error: linkError } = await supabase
       .from("quarterly_cup_matches")

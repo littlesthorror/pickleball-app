@@ -24,6 +24,7 @@ function row(overrides: Partial<PlayerMatchHistoryRow>): PlayerMatchHistoryRow {
     own_score: 11,
     opponent_score: 5,
     won: true,
+    draw: false,
     teammate_name: "Partner",
     opponent_names: "Opp A & Opp B",
     game_number: 1,
@@ -116,5 +117,26 @@ describe("computeBadges", () => {
     const b = badges.find((x) => x.id === "point-hoarder");
     expect(b).toBeTruthy();
     expect(b!.description).toMatch(/1000/);
+  });
+
+  // Draw handling (2026-09-09) — the club plays fixed 9-minute games, so a
+  // tied score is a legitimate result, not a data error. A draw must not
+  // be silently treated as a loss by badges that key off `!h.won`.
+  it("does not treat a draw as a loss for jekyll-hyde (win + draw with same partner, same day)", () => {
+    const history = [
+      row({ won: true, own_score: 11, opponent_score: 5, teammate_name: "Partner", played_at: "2026-09-08T10:00:00Z" }),
+      row({ won: false, draw: true, own_score: 8, opponent_score: 8, teammate_name: "Partner", played_at: "2026-09-08T11:00:00Z" }),
+    ];
+    const badges = computeBadges(history, 2, "2026-01-01T00:00:00Z");
+    expect(badges.find((x) => x.id === "jekyll-hyde")).toBeUndefined();
+  });
+
+  it("does not treat a draw as a loss for rematch (draw then win isn't a rematch)", () => {
+    const history = [
+      row({ won: false, draw: true, own_score: 8, opponent_score: 8, opponent_names: "Opp A & Opp B", played_at: "2026-09-08T10:00:00Z" }),
+      row({ won: true, own_score: 11, opponent_score: 5, opponent_names: "Opp A & Opp B", played_at: "2026-09-08T11:00:00Z" }),
+    ];
+    const badges = computeBadges(history, 2, "2026-01-01T00:00:00Z");
+    expect(badges.find((x) => x.id === "rematch")).toBeUndefined();
   });
 });

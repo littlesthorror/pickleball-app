@@ -83,7 +83,12 @@ export interface PlayerMatchHistoryRow {
   rating_delta: number;
   own_score: number;
   opponent_score: number;
+  // won is strictly own_score > opponent_score (false on a draw too — check
+  // `draw` first). Added 2026-09-09: the club plays fixed 9-minute games,
+  // so an equal score is a legitimate result, not a data error — see
+  // player_match_history's draw column (0074 migration).
   won: boolean;
+  draw: boolean;
   teammate_name: string;
   opponent_names: string;
   game_number: number;
@@ -316,6 +321,12 @@ export interface CompetitionRow {
   // get_public_competition_scoreboard RPC). A fresh random token each time
   // it's turned on/off, so an old shared/printed link stops working.
   public_share_token: string | null;
+  // Added 2026-09-09 — off by default ("Typically, Competitions will also
+  // require a win/lose situation. I think 99 times out of 100 a draw won't
+  // be required," Ben's words). When on, group-stage fixtures may end
+  // level; knockout matches always require a decisive score regardless of
+  // this setting, since a tied bracket match can't advance anyone.
+  allow_draws: boolean;
 }
 
 export interface CompetitionTeamRow {
@@ -406,6 +417,10 @@ export interface QuarterlyCupRow {
   // end_date.
   mirror_season_end: boolean;
   winner_team_id: string | null;
+  // Added 2026-09-09 — off by default, same as Competitions' own
+  // allow_draws. No knockout stage exists here, so when on it's
+  // unconditional (no group/knockout split to worry about).
+  allow_draws: boolean;
   created_by: string | null;
   created_at: string;
 }

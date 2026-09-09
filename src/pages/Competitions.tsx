@@ -56,6 +56,13 @@ export default function Competitions({ isAdmin, currentUserId }: { isAdmin: bool
   const [newAdvance, setNewAdvance] = useState("2");
   const [newScoring, setNewScoring] = useState<ScoringSystem>("standard");
   const [newDoubleRoundRobin, setNewDoubleRoundRobin] = useState(false);
+  // Allow draws in the group stage (2026-09-09, Ben's request) — off by
+  // default: "Typically, Competitions will also require a win/lose
+  // situation. I think 99 times out of 100 a draw won't be required."
+  // Knockout matches always require a decisive score regardless of this
+  // setting — see FixtureRow's knockout caller, which never passes
+  // allowDraws — since a tied bracket match can't advance anyone.
+  const [newAllowDraws, setNewAllowDraws] = useState(false);
   const [creating, setCreating] = useState(false);
   // Collapsed by default once at least one competition exists (2026-08-28,
   // Ben's request — the form was always taking up space at the top of the
@@ -116,6 +123,7 @@ export default function Competitions({ isAdmin, currentUserId }: { isAdmin: bool
         advance_per_group: Number(newAdvance) || 2,
         scoring_system: newScoring,
         double_round_robin: newDoubleRoundRobin,
+        allow_draws: newAllowDraws,
         created_by: currentUserId,
       })
       .select("id")
@@ -130,6 +138,7 @@ export default function Competitions({ isAdmin, currentUserId }: { isAdmin: bool
     setNewAdvance("2");
     setNewScoring("standard");
     setNewDoubleRoundRobin(false);
+    setNewAllowDraws(false);
     await loadCompetitions();
     setSelectedId(data.id);
   }
@@ -313,6 +322,21 @@ export default function Competitions({ isAdmin, currentUserId }: { isAdmin: bool
                   <p className="stat-meta" style={{ marginTop: 4 }}>
                     When you move to the knockout stage, only these top finishers from each group will show up as
                     selectable teams — no more scrolling past teams that didn't qualify.
+                  </p>
+
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 16, cursor: "pointer" }}>
+                    <input
+                      type="checkbox"
+                      checked={newAllowDraws}
+                      onChange={(e) => setNewAllowDraws(e.target.checked)}
+                      style={{ width: "auto" }}
+                    />
+                    Allow draws in the group stage
+                  </label>
+                  <p className="stat-meta" style={{ marginTop: 4 }}>
+                    Off by default — most competitions still need a decisive winner. Turn this on for a competition
+                    where a tied group-stage score is a legitimate result (e.g. fixed-time games). Knockout matches
+                    always need a winner regardless, so this only affects group-stage scoring.
                   </p>
                 </>
               )}
@@ -858,6 +882,7 @@ function CompetitionDetail({
           teamLabel={teamLabel}
           advancePerGroup={competition.advance_per_group}
           scoringSystem={competition.scoring_system}
+          allowDraws={competition.allow_draws}
         />
       )}
 
@@ -1352,6 +1377,7 @@ function GroupStandingsSection({
   teamLabel,
   advancePerGroup,
   scoringSystem,
+  allowDraws,
 }: {
   groups: CompetitionGroupRow[];
   groupTeams: CompetitionGroupTeamRow[];
@@ -1359,6 +1385,7 @@ function GroupStandingsSection({
   teamLabel: (id: string) => string;
   advancePerGroup: number;
   scoringSystem: ScoringSystem;
+  allowDraws: boolean;
 }) {
   return (
     <div className="card">
@@ -1389,6 +1416,7 @@ function GroupStandingsSection({
                     <th style={{ padding: "4px 6px" }}>Team</th>
                     <th style={{ padding: "4px 6px", textAlign: "center" }}>P</th>
                     <th style={{ padding: "4px 6px", textAlign: "center" }}>W</th>
+                    {allowDraws && <th style={{ padding: "4px 6px", textAlign: "center" }}>D</th>}
                     <th style={{ padding: "4px 6px", textAlign: "center" }}>L</th>
                     <th style={{ padding: "4px 6px", textAlign: "center" }}>Diff</th>
                     <th style={{ padding: "4px 6px", textAlign: "center" }}>Pts</th>
@@ -1407,6 +1435,7 @@ function GroupStandingsSection({
                       <td style={{ padding: "4px 6px" }}>{teamLabel(row.teamId)}</td>
                       <td style={{ padding: "4px 6px", textAlign: "center" }}>{row.played}</td>
                       <td style={{ padding: "4px 6px", textAlign: "center" }}>{row.won}</td>
+                      {allowDraws && <td style={{ padding: "4px 6px", textAlign: "center" }}>{row.drawn}</td>}
                       <td style={{ padding: "4px 6px", textAlign: "center" }}>{row.lost}</td>
                       <td style={{ padding: "4px 6px", textAlign: "center" }}>
                         {row.diff > 0 ? `+${row.diff}` : row.diff}
@@ -1687,6 +1716,7 @@ function GroupFixturesSection({
                   currentUserId={currentUserId}
                   onChanged={onChanged}
                   locked={competition.status === "completed"}
+                  allowDraws={competition.allow_draws}
                 />
               ))}
             </div>
@@ -1718,6 +1748,7 @@ function GroupFixturesSection({
                     onChanged={onChanged}
                     locked={competition.status === "completed"}
                     courtLabel={m.court != null ? `Court ${m.court}` : undefined}
+                    allowDraws={competition.allow_draws}
                   />
                 ))}
               </div>
@@ -1788,6 +1819,7 @@ function FixtureRow({
   onChanged,
   locked,
   courtLabel,
+  allowDraws = false,
 }: {
   match: CompetitionMatchRow & { matches: { team_a_score: number; team_b_score: number } | null };
   teamLabel: (id: string) => string;
@@ -1799,6 +1831,12 @@ function FixtureRow({
   // scheduling configured (see GroupFixturesSection/scheduleFixturesByCourt).
   // Undefined for knockout matches and unscheduled groups, same as before.
   courtLabel?: string;
+  // Whether a tied score is a valid result here (2026-09-09) — true only
+  // for group-stage fixtures of a competition with allow_draws on. A
+  // knockout match always needs a decisive winner to advance, so callers
+  // never pass true for those regardless of the competition setting.
+  // Defaults false so every other caller keeps requiring a winner.
+  allowDraws?: boolean;
 }) {
   const confirm = useConfirm();
   const played = !!match.matches;
@@ -1843,8 +1881,14 @@ function FixtureRow({
   async function saveEdit() {
     const teamAScore = Number(scoreA);
     const teamBScore = Number(scoreB);
-    if (scoreA === "" || scoreB === "" || teamAScore < 0 || teamBScore < 0 || teamAScore === teamBScore) {
-      setError("Enter both scores (they can't be equal).");
+    if (
+      scoreA === "" ||
+      scoreB === "" ||
+      teamAScore < 0 ||
+      teamBScore < 0 ||
+      (teamAScore === teamBScore && !allowDraws)
+    ) {
+      setError(allowDraws ? "Enter both scores." : "Enter both scores (they can't be equal).");
       return;
     }
     if (!match.match_id) {
@@ -1884,8 +1928,12 @@ function FixtureRow({
     }
 
     // The score change may have flipped the winner — keep the bracket/
-    // standings' winner_team_id in sync with the corrected score.
-    const winnerTeamId = teamAScore > teamBScore ? match.team_a_id : match.team_b_id;
+    // standings' winner_team_id in sync with the corrected score. Null on
+    // a draw (only possible for a group-stage fixture with allowDraws on —
+    // knockout matches can never reach this with equal scores, see the
+    // validation above).
+    const winnerTeamId =
+      teamAScore === teamBScore ? null : teamAScore > teamBScore ? match.team_a_id : match.team_b_id;
     const { error: linkError } = await supabase
       .from("competition_matches")
       .update({ winner_team_id: winnerTeamId })
@@ -1901,8 +1949,14 @@ function FixtureRow({
   }
 
   async function submit() {
-    if (scoreA === "" || scoreB === "" || Number(scoreA) < 0 || Number(scoreB) < 0 || Number(scoreA) === Number(scoreB)) {
-      setError("Enter both scores (they can't be equal).");
+    if (
+      scoreA === "" ||
+      scoreB === "" ||
+      Number(scoreA) < 0 ||
+      Number(scoreB) < 0 ||
+      (Number(scoreA) === Number(scoreB) && !allowDraws)
+    ) {
+      setError(allowDraws ? "Enter both scores." : "Enter both scores (they can't be equal).");
       return;
     }
     setSubmitting(true);
@@ -1953,7 +2007,13 @@ function FixtureRow({
       .limit(1)
       .maybeSingle();
 
-    const winnerTeamId = Number(scoreA) > Number(scoreB) ? match.team_a_id : match.team_b_id;
+    // Null on a draw — see saveEdit's comment above.
+    const winnerTeamId =
+      Number(scoreA) === Number(scoreB)
+        ? null
+        : Number(scoreA) > Number(scoreB)
+        ? match.team_a_id
+        : match.team_b_id;
 
     const { error: linkError } = await supabase
       .from("competition_matches")

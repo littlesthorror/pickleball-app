@@ -892,7 +892,24 @@ export function computeBadges(
   // adding this badge would immediately reach back and award it for a win
   // from before it existed, which is exactly what "not retroactive" means
   // to avoid.
-  const thiefWins = historySinceNewBadges.filter((h) => h.won && h.opponent_combined_pre_rating != null);
+  //
+  // Gated to players with 25+ games played (2026-09-09, Ben's request —
+  // "loads of people got the new 'The Thief' award last night. Clearly
+  // it's too easy to achieve"). Without a games-played floor, "the highest
+  // combined rating you've ever faced" is trivially easy for anyone still
+  // early in their history — their 2nd or 3rd game is automatically their
+  // "best" simply for lack of competition from their own past, regardless
+  // of how strong the opponents actually were. game_number is the
+  // player's own sequential count as of that match (see
+  // player_match_history), so this checks they'd already played at least
+  // 25 games BY THE TIME of the qualifying win, not just that they've
+  // played 25 games since. Since badges are computed live rather than
+  // stored as a permanent ledger, this also retroactively removes the
+  // badge from anyone who only qualified under the old, easier rule.
+  const THIEF_MIN_GAMES = 25;
+  const thiefWins = historySinceNewBadges.filter(
+    (h) => h.won && h.opponent_combined_pre_rating != null && h.game_number >= THIEF_MIN_GAMES
+  );
   if (thiefWins.length > 0) {
     const biggest = thiefWins.reduce((best, h) =>
       (h.opponent_combined_pre_rating as number) > (best.opponent_combined_pre_rating as number) ? h : best
@@ -1004,6 +1021,10 @@ export function computeBadges(
   const lossesByOpponentNemesis = new Map<string, number>();
   let nemesisSlayerWin: PlayerMatchHistoryRow | null = null;
   for (const h of history) {
+    // A draw (2026-09-09) is neither a loss that builds the grudge nor a
+    // win that cashes it in — skip it entirely rather than letting it
+    // count toward the loss tally via the `!h.won` check below.
+    if (h.draw) continue;
     if (!h.won) {
       lossesByOpponentNemesis.set(h.opponent_names, (lossesByOpponentNemesis.get(h.opponent_names) ?? 0) + 1);
       continue;
@@ -1030,10 +1051,13 @@ export function computeBadges(
   // next time you face them. "Last result vs this pair" is tracked across
   // your whole history so it correctly knows what the PREVIOUS meeting
   // was, but the win itself must be fresh.
-  const lastResultByOpponentRematch = new Map<string, boolean>();
+  // Tri-state (2026-09-09) — was a plain boolean keyed on `won`, which
+  // meant a draw looked identical to a loss ("prevWasLoss" would fire off
+  // a draw too). A draw shouldn't set up a "rematch" — you didn't lose.
+  const lastResultByOpponentRematch = new Map<string, "win" | "loss" | "draw">();
   let rematchWin: PlayerMatchHistoryRow | null = null;
   for (const h of history) {
-    const prevWasLoss = lastResultByOpponentRematch.get(h.opponent_names) === false;
+    const prevWasLoss = lastResultByOpponentRematch.get(h.opponent_names) === "loss";
     if (
       h.won &&
       prevWasLoss &&
@@ -1042,7 +1066,7 @@ export function computeBadges(
     ) {
       rematchWin = h;
     }
-    lastResultByOpponentRematch.set(h.opponent_names, h.won);
+    lastResultByOpponentRematch.set(h.opponent_names, h.draw ? "draw" : h.won ? "win" : "loss");
   }
   if (rematchWin) {
     badges.push({
@@ -1157,6 +1181,9 @@ export function computeBadges(
   let jekyllHydeAt: string | null = null;
   let jekyllHydePartner = "";
   for (const h of historySinceNewBadges) {
+    // A draw (2026-09-09) is neither a win nor a loss for this badge —
+    // without this it would wrongly count as "lost" via the `else` below.
+    if (h.draw) continue;
     const dayKey = `${new Date(h.played_at).toDateString()}|${h.teammate_name}`;
     const entry = dayResultsByPartner.get(dayKey) ?? { won: false, lost: false, lastAt: h.played_at };
     if (h.won) entry.won = true;

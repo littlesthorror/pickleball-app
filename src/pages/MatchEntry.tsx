@@ -232,6 +232,12 @@ function SingleMatchEntry({
   const selectedIds = [teamAP1, teamAP2, teamBP1, teamBP2].filter(Boolean);
   const allFourPicked = selectedIds.length === 4;
   const noDuplicates = new Set(selectedIds).size === selectedIds.length;
+  // Ties ARE allowed here (2026-09-09) — the club plays fixed 9-minute
+  // games, not first-to-11/win-by-2, so a genuine equal-score draw is a
+  // real, legitimate result, not a data-entry mistake. (A "scores can't be
+  // equal" check briefly lived here based on a wrong assumption about the
+  // club's format — reverted the same day per Ben.) Draw handling — the
+  // "won" flag, badges, streaks — lives in player_match_history/badges.ts.
   const scoresValid =
     teamAScore !== "" &&
     teamBScore !== "" &&
@@ -556,6 +562,7 @@ function QuickMatchEntry({
     const isEmpty = selectedIds.length === 0 && slot.teamAScore === "" && slot.teamBScore === "";
     const allFourPicked = selectedIds.length === 4;
     const noDuplicates = new Set(selectedIds).size === selectedIds.length;
+    // Ties allowed — see the single-game form above.
     const scoresValid =
       slot.teamAScore !== "" &&
       slot.teamBScore !== "" &&

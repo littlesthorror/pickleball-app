@@ -720,15 +720,16 @@ export default function Dashboard({
   // same person are kept separate rather than trying to split credit per
   // individual). Sorted by games played together, most-faced first.
   const headToHead = useMemo(() => {
-    const byOpponent = new Map<string, { wins: number; losses: number }>();
+    const byOpponent = new Map<string, { wins: number; losses: number; draws: number }>();
     for (const h of history) {
-      const entry = byOpponent.get(h.opponent_names) ?? { wins: 0, losses: 0 };
-      if (h.won) entry.wins += 1;
+      const entry = byOpponent.get(h.opponent_names) ?? { wins: 0, losses: 0, draws: 0 };
+      if (h.draw) entry.draws += 1;
+      else if (h.won) entry.wins += 1;
       else entry.losses += 1;
       byOpponent.set(h.opponent_names, entry);
     }
     return [...byOpponent.entries()]
-      .map(([opponent, record]) => ({ opponent, ...record, total: record.wins + record.losses }))
+      .map(([opponent, record]) => ({ opponent, ...record, total: record.wins + record.losses + record.draws }))
       .sort((a, b) => b.total - a.total);
   }, [history]);
 
@@ -819,20 +820,23 @@ export default function Dashboard({
     if (isOwnProfile || !viewerId) return null;
     let wins = 0;
     let losses = 0;
+    let draws = 0;
     for (const m of viewerMatches) {
       const viewerOnA = m.team_a_player_1_id === viewerId || m.team_a_player_2_id === viewerId;
       const viewerOnB = m.team_b_player_1_id === viewerId || m.team_b_player_2_id === viewerId;
       const viewedOnA = m.team_a_player_1_id === playerId || m.team_a_player_2_id === playerId;
       const viewedOnB = m.team_b_player_1_id === playerId || m.team_b_player_2_id === playerId;
       if (viewerOnA && viewedOnB) {
-        if (m.team_a_score > m.team_b_score) wins++;
+        if (m.team_a_score === m.team_b_score) draws++;
+        else if (m.team_a_score > m.team_b_score) wins++;
         else losses++;
       } else if (viewerOnB && viewedOnA) {
-        if (m.team_b_score > m.team_a_score) wins++;
+        if (m.team_a_score === m.team_b_score) draws++;
+        else if (m.team_b_score > m.team_a_score) wins++;
         else losses++;
       }
     }
-    return wins + losses > 0 ? { wins, losses } : null;
+    return wins + losses + draws > 0 ? { wins, losses, draws } : null;
   }, [viewerMatches, viewerId, playerId, isOwnProfile]);
 
   if (loading) return <PageLoading label="Loading your dashboard…" />;
@@ -1201,7 +1205,7 @@ export default function Dashboard({
           <div className="match-row" key={m.match_id}>
             <div>
               <div className="opponent">
-                {m.won ? "Won" : "Lost"} with {m.teammate_name} vs {m.opponent_names}
+                {m.draw ? "Drew" : m.won ? "Won" : "Lost"} with {m.teammate_name} vs {m.opponent_names}
               </div>
               <div className="meta">{formatDate(m.played_at)}</div>
             </div>
@@ -1236,6 +1240,7 @@ export default function Dashboard({
               <div className="opponent">{row.opponent}</div>
               <div className="score">
                 {row.wins}–{row.losses}
+                {row.draws > 0 ? `–${row.draws}` : ""}
               </div>
             </div>
           ))}
@@ -1257,6 +1262,7 @@ export default function Dashboard({
               <div className="opponent">You vs {player.display_name}</div>
               <div className="score">
                 {headToHeadVsViewed.wins}–{headToHeadVsViewed.losses}
+                {headToHeadVsViewed.draws > 0 ? `–${headToHeadVsViewed.draws}` : ""}
               </div>
             </div>
           ) : (

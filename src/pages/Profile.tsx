@@ -234,7 +234,7 @@ export default function Profile({
         h.opponent_names,
         h.own_score,
         h.opponent_score,
-        h.won ? "Win" : "Loss",
+        h.draw ? "Draw" : h.won ? "Win" : "Loss",
         Math.round(h.pre_rating),
         Math.round(h.post_rating),
         Math.round(h.rating_delta),

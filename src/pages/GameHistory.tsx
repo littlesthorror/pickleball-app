@@ -194,6 +194,10 @@ export default function GameHistory() {
       toast.error("Scores must be whole numbers, zero or higher.");
       return;
     }
+    // Ties allowed (2026-09-09) — the club plays fixed 9-minute games, so a
+    // genuine equal-score draw is legitimate here too. (A "scores can't be
+    // equal" block briefly lived here based on a wrong assumption about
+    // the club's format — reverted the same day per Ben.)
 
     const teamA = teamLabel(m.team_a_player_1, m.team_a_player_2);
     const teamB = teamLabel(m.team_b_player_1, m.team_b_player_2);

@@ -4,22 +4,28 @@
 // this is purely "who tops the group" for the day.
 //
 // Two scoring systems, chosen per-competition (see CompetitionRow.scoring_system):
-//   "standard" — 2 for a win, 0 for a loss. Pickleball games always have a
-//     winner, so there's no draw case to handle.
+//   "standard" — 2 for a win, 0 for a loss.
 //   "social" — 2 for a win, and the losing team still picks up 1 point if
 //     they scored more than 6 in the game (i.e. it was a competitive game,
 //     not a blowout). Added 2026-08-26 at Ben's request.
+// Draws — added 2026-09-09, only possible for competitions with
+// allow_draws set (see CompetitionRow) since a fixed-time group-stage game
+// can end level — score 1 point each, same halfway-between-win-and-loss
+// convention as a football table (2/1/0 rather than the more common 3/1/0,
+// to match this app's existing 2-for-a-win scale).
 // Ties broken by points difference, then total points scored, same order
 // most club/regional group stages use.
 
 import type { ScoringSystem } from "../types";
 
 const SOCIAL_CONSOLATION_THRESHOLD = 6;
+const DRAW_POINTS = 1;
 
 export interface GroupStandingRow {
   teamId: string;
   played: number;
   won: number;
+  drawn: number;
   lost: number;
   pointsFor: number;
   pointsAgainst: number;
@@ -41,7 +47,7 @@ export function computeGroupStandings(
 ): GroupStandingRow[] {
   const rows = new Map<string, GroupStandingRow>();
   for (const id of teamIds) {
-    rows.set(id, { teamId: id, played: 0, won: 0, lost: 0, pointsFor: 0, pointsAgainst: 0, diff: 0, pts: 0 });
+    rows.set(id, { teamId: id, played: 0, won: 0, drawn: 0, lost: 0, pointsFor: 0, pointsAgainst: 0, diff: 0, pts: 0 });
   }
 
   for (const m of playedMatches) {
@@ -56,7 +62,12 @@ export function computeGroupStandings(
     b.pointsFor += m.teamBScore;
     b.pointsAgainst += m.teamAScore;
 
-    if (m.teamAScore > m.teamBScore) {
+    if (m.teamAScore === m.teamBScore) {
+      a.drawn++;
+      b.drawn++;
+      a.pts += DRAW_POINTS;
+      b.pts += DRAW_POINTS;
+    } else if (m.teamAScore > m.teamBScore) {
       a.won++;
       a.pts += 2;
       b.lost++;
