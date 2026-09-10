@@ -145,8 +145,20 @@ Deno.serve(async (req) => {
     const actualA = totalScore > 0 ? match.team_a_score / totalScore : 0.5;
     const actualB = 1 - actualA;
 
-    const newTeamA = updateRating(teamA, teamB, actualA);
-    const newTeamB = updateRating(teamB, teamA, actualB);
+    // Confidence-damping fix (2026-09-10, Ben's request): a team's own
+    // rating swing is damped when the OPPOSING team contains a still-
+    // provisional player, using the weaker (fewer games played) of the two
+    // opponents — same "weakest link" convention as the Bracket Buster
+    // badge's opponent_min_game_number. 12 games = full confidence, matching
+    // MENTOR_PROVISIONAL_GAMES elsewhere in the codebase. This only damps
+    // each team's OWN delta — the opposing (provisional) team's own
+    // updateRating() call always uses confidence 1, so new players still
+    // converge to their true rating at normal speed.
+    const confidenceForTeamA = Math.min(1, Math.max(0, Math.min(rB1.games_played, rB2.games_played)) / 12);
+    const confidenceForTeamB = Math.min(1, Math.max(0, Math.min(rA1.games_played, rA2.games_played)) / 12);
+
+    const newTeamA = updateRating(teamA, teamB, actualA, confidenceForTeamA);
+    const newTeamB = updateRating(teamB, teamA, actualB, confidenceForTeamB);
 
     // Apply the whole team-level delta identically to both teammates —
     // confirmed to match the old system's behavior (see comment above).

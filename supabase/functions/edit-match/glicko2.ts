@@ -49,7 +49,18 @@ function E(mu: number, muOpponent: number, phiOpponent: number) {
 export function updateRating(
   player: Glicko2Player,
   opponent: Glicko2Player,
-  score: number
+  score: number,
+  // Confidence-damping fix (2026-09-10, Ben's request). Normally 1 (no
+  // change). When the OPPOSING team contains a still-provisional player,
+  // callers pass a value < 1 here — computed as
+  // min(1, min(opponent1.games_played, opponent2.games_played) / 12) — to
+  // shrink how far THIS player's own rating moves as a result of a result
+  // against an opponent whose nominal rating isn't yet reliable. RD and
+  // volatility are left untouched, and the opponent's own updateRating()
+  // call is made with opponentConfidence = 1 (their convergence speed is
+  // unaffected) — see replay.ts for exactly how each team's confidence is
+  // computed and applied.
+  opponentConfidence: number = 1
 ): Glicko2Player {
   const { mu, phi, sigma } = toGlicko2Scale(player);
   const { mu: muOpp, phi: phiOpp } = toGlicko2Scale(opponent);
@@ -97,7 +108,11 @@ export function updateRating(
   const newSigma = Math.exp(A / 2);
   const phiStar = Math.sqrt(phi * phi + newSigma * newSigma);
   const newPhi = 1 / Math.sqrt(1 / (phiStar * phiStar) + 1 / v);
-  const newMu = mu + newPhi * newPhi * gPhiOpp * (score - e);
+  const fullMu = mu + newPhi * newPhi * gPhiOpp * (score - e);
+  // Damp only the rating-change itself, not RD/volatility — a provisional
+  // opponent still shouldn't leave you MORE uncertain than a normal game
+  // would, it should just move your number less.
+  const newMu = mu + opponentConfidence * (fullMu - mu);
 
   return fromGlicko2Scale(newMu, newPhi, newSigma);
 }
