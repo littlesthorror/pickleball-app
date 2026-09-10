@@ -386,7 +386,7 @@ export default function FAQ({ isAdmin }: { isAdmin: boolean }) {
                 <span className="stat-meta">{openId === item.id ? "−" : "+"}</span>
               </div>
               {openId === item.id && (
-                <div style={{ marginTop: 8 }}>
+                <div style={{ marginTop: 4 }}>
                   <div className="rich-text" style={{ margin: 0 }}>{renderRichBody(item.answer)}</div>
 
                   {youtubeIds.length > 0 && (
