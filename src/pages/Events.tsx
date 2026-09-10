@@ -610,7 +610,12 @@ function EventTicketModal({
               {goingNames.length > 0 && (
                 <p className="stat-meta" style={{ marginBottom: waitlistNames.length > 0 ? 4 : 0 }}>
                   <strong style={{ color: "var(--navy-700)" }}>
-                    Going ({goingNames.length}):
+                    {/* Headcount, not RSVP count (2026-09-10, Ben's request)
+                        — a +1 guest now counts toward this number, same
+                        occupiedSpots accounting already used for the
+                        capacity bar above, so the two numbers never
+                        disagree. */}
+                    Going ({occupiedSpots}):
                   </strong>{" "}
                   {goingNames.join(", ")}
                 </p>
