@@ -1698,6 +1698,21 @@ export function computeBadges(
     });
   }
 
+  // "Quarterpounder" — lost 7–13 specifically. A silly specific-score
+  // sibling to "Bagelled" above, added 2026-09-11 at Ben's request
+  // (in-joke description, kept verbatim rather than the usual
+  // opponent-names phrasing).
+  const quarterpounder = historySinceFourthBatch.find((h) => !h.won && !h.draw && h.own_score === 7 && h.opponent_score === 13);
+  if (quarterpounder) {
+    badges.push({
+      id: "quarterpounder",
+      emoji: "🍔",
+      label: "Quarterpounder",
+      description: "Sorry, Kate's not going to McDonalds tonight.",
+      achievedAt: quarterpounder.played_at,
+    });
+  }
+
   // "Under Lights" — 25+ games played after 8pm, across your whole
   // history (raised from 15, 2026-09-09, Ben's request). Evening
   // counterpart to "Early Bird" above.
