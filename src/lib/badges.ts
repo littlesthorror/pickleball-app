@@ -107,7 +107,11 @@ export function computeBadges(
   // History arrives ordered by game_number ascending (see Dashboard.tsx's
   // query), so the Nth entry is the game that crossed the Nth-game
   // milestone — used below for games-played, games-won, and streak dates.
-  const gameMilestones = [10, 25, 50, 100, 200, 250, 500];
+  // 10 -> 12 (2026-09-11, Ben's request) — 12 games is the club's actual
+  // "established" threshold (MENTOR_PROVISIONAL_GAMES, the confidence-ramp
+  // in the rating engine, etc.), so this milestone now lines up with that
+  // rather than a round-number coincidence.
+  const gameMilestones = [12, 25, 50, 100, 200, 250, 500];
   for (const milestone of gameMilestones) {
     if (gamesPlayed >= milestone) {
       badges.push({

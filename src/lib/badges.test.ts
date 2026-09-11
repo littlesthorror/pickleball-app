@@ -55,12 +55,12 @@ describe("computeBadges", () => {
     expect(badges.find((x) => x.id === "first-win")).toBeUndefined();
   });
 
-  it("awards games-10 at exactly 10 games, not games-25", () => {
-    const history = Array.from({ length: 10 }, (_, i) =>
+  it("awards games-12 at exactly 12 games, not games-25", () => {
+    const history = Array.from({ length: 12 }, (_, i) =>
       row({ game_number: i + 1, played_at: `2026-01-${String(i + 1).padStart(2, "0")}T00:00:00Z` })
     );
-    const badges = computeBadges(history, 10, "2026-01-01T00:00:00Z");
-    expect(badges.find((x) => x.id === "games-10")).toBeTruthy();
+    const badges = computeBadges(history, 12, "2026-01-01T00:00:00Z");
+    expect(badges.find((x) => x.id === "games-12")).toBeTruthy();
     expect(badges.find((x) => x.id === "games-25")).toBeUndefined();
   });
 
