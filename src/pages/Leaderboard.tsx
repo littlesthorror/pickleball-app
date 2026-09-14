@@ -411,7 +411,7 @@ export default function Leaderboard({
 
   useEffect(() => {
     setVisibleEstablished(PAGE_SIZE);
-    setVisibleProvisionalPlayed(PROVISIONAL_PAGE_SIZE);
+    setVisibleProvisionalPlayed(PROVISIONAL_PLAYED_INITIAL);
     setVisibleProvisionalUnplayed(PROVISIONAL_UNPLAYED_INITIAL);
   }, [search, sort]);
 
