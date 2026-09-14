@@ -68,6 +68,43 @@ interface PastCompetition {
   placements: { placement: number; teamLabel: string }[];
 }
 
+// "Biggest upset" and "Most active pairing" below (2026-09-14, Ben's
+// request) — these two were originally Leaderboard-only monthly highlights.
+// Ben felt they belonged here too even though the rest of this page is
+// all-time, since they're the kind of "what's been happening" stat this
+// page is for. Same this-month data/logic as Leaderboard.tsx's versions,
+// duplicated rather than shared since the two pages fetch independently
+// and there's no shared data layer to hang a common hook off yet.
+interface MonthlyHistoryRow {
+  match_id: string;
+  won: boolean;
+  pre_rating: number;
+  own_score: number;
+  opponent_score: number;
+  teammate_name: string;
+  opponent_names: string;
+}
+
+interface MonthlyMatchTeams {
+  team_a_player_1_id: string;
+  team_a_player_2_id: string;
+  team_b_player_1_id: string;
+  team_b_player_2_id: string;
+}
+
+interface BiggestUpset {
+  winnerNames: string;
+  loserNames: string;
+  winnerAvgRating: number;
+  loserAvgRating: number;
+  score: string;
+}
+
+interface TopPairing {
+  names: string;
+  count: number;
+}
+
 // Deliberately descriptive only — no rankings, no "who's winning," nothing
 // that turns into a second leaderboard. Just "here's what the club has
 // been up to," computed client-side since a club's match volume is small
@@ -84,6 +121,8 @@ export default function ClubStats() {
   const [error, setError] = useState<string | null>(null);
   const [rangeMonths, setRangeMonths] = useState<RangeMonths>(6);
   const [pastCompetitions, setPastCompetitions] = useState<PastCompetition[]>([]);
+  const [monthlyHistory, setMonthlyHistory] = useState<MonthlyHistoryRow[]>([]);
+  const [monthlyMatches, setMonthlyMatches] = useState<MonthlyMatchTeams[]>([]);
 
   // Everything else "Most badges collected" needs, club-wide (2026-09-07,
   // Ben's request) — mirrors exactly what Dashboard.tsx fetches for one
@@ -213,6 +252,31 @@ export default function ClubStats() {
           })
       )
     ).then((results) => setSeasonTop10All(results.flat()));
+  }, []);
+
+  // This month's Biggest upset / Most active pairing inputs (2026-09-14,
+  // Ben's request to surface these two on Club Stats as well as
+  // Leaderboard) — same query shape as Leaderboard.tsx's monthly fetch,
+  // fetched independently so a failure here doesn't block the rest of the
+  // page.
+  useEffect(() => {
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    supabase
+      .from("player_match_history")
+      .select("match_id, won, pre_rating, own_score, opponent_score, teammate_name, opponent_names")
+      .gte("played_at", monthStart)
+      .then(({ data, error }) => {
+        if (!error) setMonthlyHistory((data ?? []) as MonthlyHistoryRow[]);
+      });
+    supabase
+      .from("matches")
+      .select("team_a_player_1_id, team_a_player_2_id, team_b_player_1_id, team_b_player_2_id")
+      .eq("status", "confirmed")
+      .gte("played_at", monthStart)
+      .then(({ data, error }) => {
+        if (!error) setMonthlyMatches((data ?? []) as MonthlyMatchTeams[]);
+      });
   }, []);
 
   // Past competitions (2026-08-26) — completed competitions from the last
@@ -560,6 +624,75 @@ export default function ClubStats() {
     return { datasets, maxX };
   }, [history, matches, clubGameNumberByMatchId, topPlayers, rangeMonths]);
 
+  const monthLabel = useMemo(
+    () => new Date().toLocaleDateString(undefined, { month: "long", year: "numeric" }),
+    []
+  );
+
+  // Biggest upset — this month's confirmed match with the largest average
+  // pre-match rating gap where the lower-rated pair still won. Identical
+  // logic to Leaderboard.tsx's version (see there for more detail); both
+  // winners' rows carry each other's names via `teammate_name`, so the
+  // pair can be named without a second lookup.
+  const biggestUpset = useMemo<BiggestUpset | null>(() => {
+    const byMatch = new Map<string, MonthlyHistoryRow[]>();
+    for (const h of monthlyHistory) {
+      const list = byMatch.get(h.match_id) ?? [];
+      list.push(h);
+      byMatch.set(h.match_id, list);
+    }
+
+    let best: BiggestUpset | null = null;
+    for (const matchRows of byMatch.values()) {
+      const winners = matchRows.filter((r) => r.won);
+      const losers = matchRows.filter((r) => !r.won);
+      if (winners.length === 0 || losers.length === 0) continue;
+
+      const winnerAvgRating = winners.reduce((s, r) => s + r.pre_rating, 0) / winners.length;
+      const loserAvgRating = losers.reduce((s, r) => s + r.pre_rating, 0) / losers.length;
+      if (loserAvgRating <= winnerAvgRating) continue;
+
+      if (!best || loserAvgRating - winnerAvgRating > best.loserAvgRating - best.winnerAvgRating) {
+        const [w0, w1] = winners;
+        best = {
+          winnerNames: w1 ? `${w0.teammate_name} & ${w1.teammate_name}` : w0.teammate_name,
+          loserNames: w0.opponent_names,
+          winnerAvgRating,
+          loserAvgRating,
+          score: `${w0.own_score}-${w0.opponent_score}`,
+        };
+      }
+    }
+    return best;
+  }, [monthlyHistory]);
+
+  // Most active pairing — this month, counted from raw match rows (by
+  // player id, not name) so two players who happen to share a display name
+  // can't merge. Same logic as Leaderboard.tsx's version.
+  const topPairing = useMemo<TopPairing | null>(() => {
+    const nameById = new Map(players.map((p) => [p.id, p.display_name]));
+    const pairCounts = new Map<string, number>();
+    const addPair = (a: string, b: string) => {
+      const key = [a, b].sort().join("|");
+      pairCounts.set(key, (pairCounts.get(key) ?? 0) + 1);
+    };
+    for (const m of monthlyMatches) {
+      addPair(m.team_a_player_1_id, m.team_a_player_2_id);
+      addPair(m.team_b_player_1_id, m.team_b_player_2_id);
+    }
+
+    let top: TopPairing | null = null;
+    for (const [key, count] of pairCounts) {
+      if (!top || count > top.count) {
+        const [a, b] = key.split("|");
+        const nameA = nameById.get(a) ?? "?";
+        const nameB = nameById.get(b) ?? "?";
+        top = { names: `${nameA} & ${nameB}`, count };
+      }
+    }
+    return top;
+  }, [monthlyMatches, players]);
+
   if (loading) return <PageLoading label="Loading club stats…" />;
   if (error) return <p className="error">{error}</p>;
 
@@ -649,6 +782,45 @@ export default function ClubStats() {
           </div>
         ) : (
           <p className="stat-meta">Not enough recent match history yet to plot this.</p>
+        )}
+      </div>
+
+      <div className="card">
+        <h2>Biggest upset</h2>
+        <p className="stat-meta" style={{ marginBottom: 12 }}>
+          {monthLabel}.
+        </p>
+        {biggestUpset ? (
+          <div className="match-row">
+            <div>
+              <div className="opponent">{biggestUpset.winnerNames}</div>
+              <div className="meta">
+                beat {biggestUpset.loserNames} · outrated by{" "}
+                {Math.round(biggestUpset.loserAvgRating - biggestUpset.winnerAvgRating)} pts
+              </div>
+            </div>
+            <div className="score">{biggestUpset.score}</div>
+          </div>
+        ) : (
+          <p className="stat-meta">No upsets yet this month — favourites are holding serve.</p>
+        )}
+      </div>
+
+      <div className="card">
+        <h2>Most active pairing</h2>
+        <p className="stat-meta" style={{ marginBottom: 12 }}>
+          {monthLabel}.
+        </p>
+        {topPairing ? (
+          <div className="match-row">
+            <div>
+              <div className="opponent">{topPairing.names}</div>
+              <div className="meta">teammates, not opponents</div>
+            </div>
+            <div className="score">{topPairing.count}</div>
+          </div>
+        ) : (
+          <p className="stat-meta">No games played together yet this month.</p>
         )}
       </div>
 
