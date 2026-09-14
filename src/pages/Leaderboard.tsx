@@ -9,6 +9,24 @@ import PageLoading from "../components/PageLoading";
 
 type SortMode = "rating" | "improved";
 
+type QuarterlyCupWithData = {
+  cup: QuarterlyCupRow;
+  teams: QuarterlyCupTeamRow[];
+  matches: (QuarterlyCupMatchRow & { matches: { team_a_score: number; team_b_score: number } | null })[];
+};
+
+// Orders multiple concurrent Quarterly Cups (2026-09-14, Ben's request —
+// the club now runs a Men's and a Women's cup side by side) so Men's
+// always sits above Women's/Ladies', regardless of which was created or
+// updated more recently. Anything that doesn't mention a gender at all
+// (e.g. a single mixed cup, same as before this feature) sorts after
+// both, so the common single-cup case is unaffected.
+function quarterlyCupSortRank(name: string): number {
+  if (/wom(a|e)n|ladies/i.test(name)) return 1;
+  if (/\bmen'?s?\b/i.test(name)) return 0;
+  return 2;
+}
+
 // Keeps the list from growing unbounded as more members join (nearly 200
 // at last count) — search narrows things down instantly, and each section
 // only renders a page at a time with "show more" beneath it. Reduced from
@@ -17,13 +35,17 @@ type SortMode = "rating" | "improved";
 // which share this constant.
 const PAGE_SIZE = 10;
 // Smaller page size for the two "Still establishing" lists (2026-09-01,
-// Ben's request) — top 10 initially, revealing 10 more at a time.
+// Ben's request) — revealing 10 more at a time once expanded.
 const PROVISIONAL_PAGE_SIZE = 10;
 // The "unplayed" list specifically starts smaller — just 5 — since it's
 // typically longer and less interesting than "played" (everyone in it is
 // sitting untouched at 1500, so there's less to scan for). Still reveals
 // 10 more at a time past that (2026-09-02, Ben's request).
 const PROVISIONAL_UNPLAYED_INITIAL = 5;
+// "Played" also starts at just 5 now (2026-09-14, Ben's request) — used to
+// start at the full PROVISIONAL_PAGE_SIZE (10). Reveals 10 more at a time
+// past that, same as unplayed above.
+const PROVISIONAL_PLAYED_INITIAL = 5;
 
 // A win-percentage "winner" with only 1-2 games played this month isn't a
 // meaningful comparison against someone who's played a dozen — this is
@@ -188,7 +210,7 @@ export default function Leaderboard({
   const [sort, setSort] = useState<SortMode>("rating");
   const [search, setSearch] = useState("");
   const [visibleEstablished, setVisibleEstablished] = useState(PAGE_SIZE);
-  const [visibleProvisionalPlayed, setVisibleProvisionalPlayed] = useState(PROVISIONAL_PAGE_SIZE);
+  const [visibleProvisionalPlayed, setVisibleProvisionalPlayed] = useState(PROVISIONAL_PLAYED_INITIAL);
   const [visibleProvisionalUnplayed, setVisibleProvisionalUnplayed] = useState(PROVISIONAL_UNPLAYED_INITIAL);
   const [monthlyHistory, setMonthlyHistory] = useState<MonthlyHistoryRow[]>([]);
   const [monthlyMatches, setMonthlyMatches] = useState<MonthlyMatchTeams[]>([]);
@@ -209,16 +231,16 @@ export default function Leaderboard({
   const [seasonStandings, setSeasonStandings] = useState<SeasonStandingRow[]>([]);
   const [seasonLoading, setSeasonLoading] = useState(false);
 
-  // The Quarterly Cup (2026-09-02) — the most recently created active or
-  // completed Cup, shown as a public table here even though the fixture
-  // list itself lives on its own tab. Results are fully public (Ben
-  // confirmed this explicitly), so there's no RLS restriction to work
-  // around here, unlike the Season standings function above.
-  const [quarterlyCup, setQuarterlyCup] = useState<QuarterlyCupRow | null>(null);
-  const [quarterlyCupTeams, setQuarterlyCupTeams] = useState<QuarterlyCupTeamRow[]>([]);
-  const [quarterlyCupMatches, setQuarterlyCupMatches] = useState<
-    (QuarterlyCupMatchRow & { matches: { team_a_score: number; team_b_score: number } | null })[]
-  >([]);
+  // The Quarterly Cup(s) (2026-09-02, extended to multiple cups
+  // 2026-09-14) — every active or completed Cup, shown as public tables
+  // here even though the fixture lists themselves live on their own tab.
+  // Results are fully public (Ben confirmed this explicitly), so there's
+  // no RLS restriction to work around here, unlike the Season standings
+  // function above. Originally just the single most-recent cup; the club
+  // now runs a Men's and a Women's cup concurrently, so this fetches all
+  // of them — see quarterlyCupSortRank above for the Men's-before-Women's
+  // ordering.
+  const [quarterlyCups, setQuarterlyCups] = useState<QuarterlyCupWithData[]>([]);
   const [visibleSeasonRows, setVisibleSeasonRows] = useState(PAGE_SIZE);
 
   useEffect(() => {
@@ -289,30 +311,37 @@ export default function Leaderboard({
         if (!error) setMonthlyMatches((data ?? []) as MonthlyMatchTeams[]);
       });
 
-    // The Quarterly Cup — most recent active/completed one, if any. RLS on
-    // quarterly_cups etc. is "readable by any logged-in member" (results
-    // are fully public), so this is a plain select, no security-definer
-    // function needed like the Season standings above.
+    // Every active/completed Quarterly Cup, not just the most recent one
+    // (2026-09-14) — the club now runs a Men's and a Women's cup at the
+    // same time. RLS on quarterly_cups etc. is "readable by any logged-in
+    // member" (results are fully public), so this is a plain select, no
+    // security-definer function needed like the Season standings above.
     supabase
       .from("quarterly_cups")
       .select("*")
       .in("status", ["active", "completed"])
       .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle()
-      .then(({ data: cup }) => {
-        setQuarterlyCup((cup as QuarterlyCupRow) ?? null);
-        if (!cup) return;
-        supabase
-          .from("quarterly_cup_teams")
-          .select("*")
-          .eq("cup_id", cup.id)
-          .then(({ data }) => setQuarterlyCupTeams((data ?? []) as QuarterlyCupTeamRow[]));
-        supabase
-          .from("quarterly_cup_matches")
-          .select("*, matches(team_a_score, team_b_score)")
-          .eq("cup_id", cup.id)
-          .then(({ data }) => setQuarterlyCupMatches((data ?? []) as typeof quarterlyCupMatches));
+      .then(async ({ data: cups }) => {
+        const list = (cups ?? []) as QuarterlyCupRow[];
+        if (list.length === 0) {
+          setQuarterlyCups([]);
+          return;
+        }
+        const withData = await Promise.all(
+          list.map(async (cup) => {
+            const [{ data: teams }, { data: matches }] = await Promise.all([
+              supabase.from("quarterly_cup_teams").select("*").eq("cup_id", cup.id),
+              supabase.from("quarterly_cup_matches").select("*, matches(team_a_score, team_b_score)").eq("cup_id", cup.id),
+            ]);
+            return {
+              cup,
+              teams: (teams ?? []) as QuarterlyCupTeamRow[],
+              matches: (matches ?? []) as QuarterlyCupWithData["matches"],
+            };
+          })
+        );
+        withData.sort((a, b) => quarterlyCupSortRank(a.cup.name) - quarterlyCupSortRank(b.cup.name));
+        setQuarterlyCups(withData);
       });
   }, []);
 
@@ -649,6 +678,187 @@ export default function Leaderboard({
         )}
       </div>
 
+      {/* Order (2026-09-14, Ben's request): Club leaderboard, then the
+          Quarterly Cup(s), then the current season leaderboard, then
+          everything else below. Was previously Club leaderboard followed
+          straight by the monthly stat cards, with Season/Cup further down
+          the page. */}
+      {quarterlyCups.map(({ cup, teams, matches }) => (
+        <div className="card" key={cup.id}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+            <h2 style={{ marginBottom: 0 }}>🏅 {cup.name}</h2>
+            {onViewQuarterlyCup && (
+              <span className="link-action" onClick={onViewQuarterlyCup}>
+                Fixtures →
+              </span>
+            )}
+          </div>
+          <p className="stat-meta" style={{ marginBottom: 12 }}>
+            {cup.status === "completed"
+              ? "Final table."
+              : (() => {
+                  const info = cup.mirror_season_end
+                    ? seasonEndInfo
+                    : cup.end_date
+                    ? (() => {
+                        const lastDay = new Date(cup.end_date + "T00:00:00");
+                        const daysLeft = Math.max(0, Math.ceil((lastDay.getTime() - Date.now()) / (24 * 60 * 60 * 1000)));
+                        return { lastDay, daysLeft };
+                      })()
+                    : null;
+                  if (!info) return "In progress.";
+                  return `Completes ${info.lastDay.toLocaleDateString(undefined, {
+                    weekday: "short",
+                    month: "short",
+                    day: "numeric",
+                  })}${info.daysLeft > 0 ? ` · ${info.daysLeft} day${info.daysLeft === 1 ? "" : "s"} left` : ""}.`;
+                })()}
+          </p>
+          {cup.winner_team_id && (
+            <p className="stat-meta" style={{ marginTop: 0, marginBottom: 12 }}>
+              🏆 Champions:{" "}
+              <strong style={{ color: "var(--heading)" }}>
+                {(() => {
+                  const t = teams.find((t) => t.id === cup.winner_team_id);
+                  if (!t) return "?";
+                  const nameById = new Map(rows.map((r) => [r.id, r.display_name]));
+                  return t.team_name || `${nameById.get(t.player1_id) ?? "?"} & ${nameById.get(t.player2_id) ?? "?"}`;
+                })()}
+              </strong>
+            </p>
+          )}
+          {teams.length > 0 &&
+            (() => {
+              const nameById = new Map(rows.map((r) => [r.id, r.display_name]));
+              const teamLabel = (teamId: string) => {
+                const t = teams.find((t) => t.id === teamId);
+                if (!t) return "?";
+                return t.team_name || `${nameById.get(t.player1_id) ?? "?"} & ${nameById.get(t.player2_id) ?? "?"}`;
+              };
+              const standings = computeGroupStandings(
+                teams.map((t) => t.id),
+                matches
+                  .filter((m) => m.matches)
+                  .map((m) => ({
+                    teamAId: m.team_a_id,
+                    teamBId: m.team_b_id,
+                    teamAScore: m.matches!.team_a_score,
+                    teamBScore: m.matches!.team_b_score,
+                  })),
+                cup.scoring_system
+              );
+              return standings.map((row, i) => (
+                <div className="leaderboard-row" key={row.teamId}>
+                  <span className={`rank ${i < 3 ? "top3" : ""}`}>{i + 1}</span>
+                  <span className="name">{teamLabel(row.teamId)}</span>
+                  <span className="stat-meta" style={{ marginTop: 0, width: 48, textAlign: "right", fontSize: "0.78rem" }}>
+                    {row.played}p {row.won}w
+                  </span>
+                  <span
+                    className="stat-meta"
+                    style={{ marginTop: 0, width: 76, textAlign: "right", whiteSpace: "nowrap", fontSize: "0.78rem" }}
+                    title="Points for–against"
+                  >
+                    {row.pointsFor}–{row.pointsAgainst} ({row.diff >= 0 ? "+" : ""}
+                    {row.diff})
+                  </span>
+                  <span className="rating">{row.pts}</span>
+                </div>
+              ));
+            })()}
+        </div>
+      ))}
+
+      {trackedSeasons.length === 0 ? (
+        <div className="card">
+          <h2 style={{ marginBottom: 0 }}>Season leaderboard</h2>
+          <p className="stat-meta" style={{ marginBottom: 0 }}>
+            Seasons kick off with Autumn on 1 September — check back then to see standings.
+          </p>
+        </div>
+      ) : (
+        <div className="card">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+            <span
+              className="link-action"
+              role="button"
+              tabIndex={0}
+              aria-label="Previous season"
+              onClick={() => viewedSeasonIndex > 0 && setViewedSeasonIndex((i) => i - 1)}
+              style={{
+                fontSize: "1.2rem",
+                padding: "0 8px",
+                opacity: viewedSeasonIndex === 0 ? 0.3 : 1,
+                cursor: viewedSeasonIndex === 0 ? "default" : "pointer",
+              }}
+            >
+              ‹
+            </span>
+            <h2 style={{ marginBottom: 0 }}>{trackedSeasons[viewedSeasonIndex].label}</h2>
+            <span
+              className="link-action"
+              role="button"
+              tabIndex={0}
+              aria-label="Next season"
+              onClick={() =>
+                viewedSeasonIndex < trackedSeasons.length - 1 && setViewedSeasonIndex((i) => i + 1)
+              }
+              style={{
+                fontSize: "1.2rem",
+                padding: "0 8px",
+                opacity: viewedSeasonIndex === trackedSeasons.length - 1 ? 0.3 : 1,
+                cursor: viewedSeasonIndex === trackedSeasons.length - 1 ? "default" : "pointer",
+              }}
+            >
+              ›
+            </span>
+          </div>
+          <p className="stat-meta" style={{ marginBottom: 12 }}>
+            {trackedSeasons[viewedSeasonIndex].key === currentSeason.key
+              ? `In progress — ratings carry straight over, nothing resets. Ends ${seasonEndInfo.lastDay.toLocaleDateString(
+                  undefined,
+                  { weekday: "short", month: "short", day: "numeric" }
+                )}${seasonEndInfo.daysLeft > 0 ? ` · ${seasonEndInfo.daysLeft} day${seasonEndInfo.daysLeft === 1 ? "" : "s"} left` : ""}.`
+              : "Final standings for this season."}
+          </p>
+          {seasonLoading ? (
+            <p className="stat-meta">Loading…</p>
+          ) : seasonStandings.length === 0 ? (
+            <p className="stat-meta">Nobody's established (12+ games) yet this season.</p>
+          ) : (
+            <>
+              {seasonStandings.slice(0, visibleSeasonRows).map((row) => {
+                const player = rowsById.get(row.playerId);
+                if (!player) return null;
+                return (
+                  <div
+                    className="leaderboard-row"
+                    key={row.playerId}
+                    style={{ cursor: "pointer" }}
+                    onClick={() => onSelectPlayer(player.id, player.display_name)}
+                  >
+                    <span className={`rank ${row.rank <= 3 ? "top3" : ""}`}>{row.rank}</span>
+                    <Avatar name={player.display_name} url={player.avatar_url} size={28} />
+                    <span className="name">{player.display_name}</span>
+                    <span style={{ width: 56, textAlign: "right" }}>
+                      <DeltaBadge value={row.ratingGain} />
+                    </span>
+                    <span className="rating">{Math.round(row.rating)}</span>
+                  </div>
+                );
+              })}
+              <ShowMoreLess
+                hasMore={seasonStandings.length > visibleSeasonRows}
+                expanded={visibleSeasonRows > PAGE_SIZE}
+                moreCount={seasonStandings.length - visibleSeasonRows}
+                onShowMore={() => setVisibleSeasonRows((c) => c + PAGE_SIZE)}
+                onShowLess={() => setVisibleSeasonRows(PAGE_SIZE)}
+              />
+            </>
+          )}
+        </div>
+      )}
+
       <MonthlyStatCard
         title="Most games played"
         monthLabel={monthLabel}
@@ -760,182 +970,6 @@ export default function Leaderboard({
               </div>
             </div>
           ))}
-        </div>
-      )}
-
-      {trackedSeasons.length === 0 ? (
-        <div className="card">
-          <h2 style={{ marginBottom: 0 }}>Season leaderboard</h2>
-          <p className="stat-meta" style={{ marginBottom: 0 }}>
-            Seasons kick off with Autumn on 1 September — check back then to see standings.
-          </p>
-        </div>
-      ) : (
-        <div className="card">
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-            <span
-              className="link-action"
-              role="button"
-              tabIndex={0}
-              aria-label="Previous season"
-              onClick={() => viewedSeasonIndex > 0 && setViewedSeasonIndex((i) => i - 1)}
-              style={{
-                fontSize: "1.2rem",
-                padding: "0 8px",
-                opacity: viewedSeasonIndex === 0 ? 0.3 : 1,
-                cursor: viewedSeasonIndex === 0 ? "default" : "pointer",
-              }}
-            >
-              ‹
-            </span>
-            <h2 style={{ marginBottom: 0 }}>{trackedSeasons[viewedSeasonIndex].label}</h2>
-            <span
-              className="link-action"
-              role="button"
-              tabIndex={0}
-              aria-label="Next season"
-              onClick={() =>
-                viewedSeasonIndex < trackedSeasons.length - 1 && setViewedSeasonIndex((i) => i + 1)
-              }
-              style={{
-                fontSize: "1.2rem",
-                padding: "0 8px",
-                opacity: viewedSeasonIndex === trackedSeasons.length - 1 ? 0.3 : 1,
-                cursor: viewedSeasonIndex === trackedSeasons.length - 1 ? "default" : "pointer",
-              }}
-            >
-              ›
-            </span>
-          </div>
-          <p className="stat-meta" style={{ marginBottom: 12 }}>
-            {trackedSeasons[viewedSeasonIndex].key === currentSeason.key
-              ? `In progress — ratings carry straight over, nothing resets. Ends ${seasonEndInfo.lastDay.toLocaleDateString(
-                  undefined,
-                  { weekday: "short", month: "short", day: "numeric" }
-                )}${seasonEndInfo.daysLeft > 0 ? ` · ${seasonEndInfo.daysLeft} day${seasonEndInfo.daysLeft === 1 ? "" : "s"} left` : ""}.`
-              : "Final standings for this season."}
-          </p>
-          {seasonLoading ? (
-            <p className="stat-meta">Loading…</p>
-          ) : seasonStandings.length === 0 ? (
-            <p className="stat-meta">Nobody's established (12+ games) yet this season.</p>
-          ) : (
-            <>
-              {seasonStandings.slice(0, visibleSeasonRows).map((row) => {
-                const player = rowsById.get(row.playerId);
-                if (!player) return null;
-                return (
-                  <div
-                    className="leaderboard-row"
-                    key={row.playerId}
-                    style={{ cursor: "pointer" }}
-                    onClick={() => onSelectPlayer(player.id, player.display_name)}
-                  >
-                    <span className={`rank ${row.rank <= 3 ? "top3" : ""}`}>{row.rank}</span>
-                    <Avatar name={player.display_name} url={player.avatar_url} size={28} />
-                    <span className="name">{player.display_name}</span>
-                    <span style={{ width: 56, textAlign: "right" }}>
-                      <DeltaBadge value={row.ratingGain} />
-                    </span>
-                    <span className="rating">{Math.round(row.rating)}</span>
-                  </div>
-                );
-              })}
-              <ShowMoreLess
-                hasMore={seasonStandings.length > visibleSeasonRows}
-                expanded={visibleSeasonRows > PAGE_SIZE}
-                moreCount={seasonStandings.length - visibleSeasonRows}
-                onShowMore={() => setVisibleSeasonRows((c) => c + PAGE_SIZE)}
-                onShowLess={() => setVisibleSeasonRows(PAGE_SIZE)}
-              />
-            </>
-          )}
-        </div>
-      )}
-
-      {quarterlyCup && (
-        <div className="card">
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-            <h2 style={{ marginBottom: 0 }}>🏅 {quarterlyCup.name}</h2>
-            {onViewQuarterlyCup && (
-              <span className="link-action" onClick={onViewQuarterlyCup}>
-                Fixtures →
-              </span>
-            )}
-          </div>
-          <p className="stat-meta" style={{ marginBottom: 12 }}>
-            {quarterlyCup.status === "completed"
-              ? "Final table."
-              : (() => {
-                  const info = quarterlyCup.mirror_season_end
-                    ? seasonEndInfo
-                    : quarterlyCup.end_date
-                    ? (() => {
-                        const lastDay = new Date(quarterlyCup.end_date + "T00:00:00");
-                        const daysLeft = Math.max(0, Math.ceil((lastDay.getTime() - Date.now()) / (24 * 60 * 60 * 1000)));
-                        return { lastDay, daysLeft };
-                      })()
-                    : null;
-                  if (!info) return "In progress.";
-                  return `Completes ${info.lastDay.toLocaleDateString(undefined, {
-                    weekday: "short",
-                    month: "short",
-                    day: "numeric",
-                  })}${info.daysLeft > 0 ? ` · ${info.daysLeft} day${info.daysLeft === 1 ? "" : "s"} left` : ""}.`;
-                })()}
-          </p>
-          {quarterlyCup.winner_team_id && (
-            <p className="stat-meta" style={{ marginTop: 0, marginBottom: 12 }}>
-              🏆 Champions:{" "}
-              <strong style={{ color: "var(--heading)" }}>
-                {(() => {
-                  const t = quarterlyCupTeams.find((t) => t.id === quarterlyCup.winner_team_id);
-                  if (!t) return "?";
-                  const nameById = new Map(rows.map((r) => [r.id, r.display_name]));
-                  return t.team_name || `${nameById.get(t.player1_id) ?? "?"} & ${nameById.get(t.player2_id) ?? "?"}`;
-                })()}
-              </strong>
-            </p>
-          )}
-          {quarterlyCupTeams.length > 0 &&
-            (() => {
-              const nameById = new Map(rows.map((r) => [r.id, r.display_name]));
-              const teamLabel = (teamId: string) => {
-                const t = quarterlyCupTeams.find((t) => t.id === teamId);
-                if (!t) return "?";
-                return t.team_name || `${nameById.get(t.player1_id) ?? "?"} & ${nameById.get(t.player2_id) ?? "?"}`;
-              };
-              const standings = computeGroupStandings(
-                quarterlyCupTeams.map((t) => t.id),
-                quarterlyCupMatches
-                  .filter((m) => m.matches)
-                  .map((m) => ({
-                    teamAId: m.team_a_id,
-                    teamBId: m.team_b_id,
-                    teamAScore: m.matches!.team_a_score,
-                    teamBScore: m.matches!.team_b_score,
-                  })),
-                quarterlyCup.scoring_system
-              );
-              return standings.map((row, i) => (
-                <div className="leaderboard-row" key={row.teamId}>
-                  <span className={`rank ${i < 3 ? "top3" : ""}`}>{i + 1}</span>
-                  <span className="name">{teamLabel(row.teamId)}</span>
-                  <span className="stat-meta" style={{ marginTop: 0, width: 48, textAlign: "right", fontSize: "0.78rem" }}>
-                    {row.played}p {row.won}w
-                  </span>
-                  <span
-                    className="stat-meta"
-                    style={{ marginTop: 0, width: 76, textAlign: "right", whiteSpace: "nowrap", fontSize: "0.78rem" }}
-                    title="Points for–against"
-                  >
-                    {row.pointsFor}–{row.pointsAgainst} ({row.diff >= 0 ? "+" : ""}
-                    {row.diff})
-                  </span>
-                  <span className="rating">{row.pts}</span>
-                </div>
-              ));
-            })()}
         </div>
       )}
 
