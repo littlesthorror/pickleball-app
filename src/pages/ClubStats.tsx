@@ -786,45 +786,6 @@ export default function ClubStats() {
       </div>
 
       <div className="card">
-        <h2>Biggest upset</h2>
-        <p className="stat-meta" style={{ marginBottom: 12 }}>
-          {monthLabel}.
-        </p>
-        {biggestUpset ? (
-          <div className="match-row">
-            <div>
-              <div className="opponent">{biggestUpset.winnerNames}</div>
-              <div className="meta">
-                beat {biggestUpset.loserNames} · outrated by{" "}
-                {Math.round(biggestUpset.loserAvgRating - biggestUpset.winnerAvgRating)} pts
-              </div>
-            </div>
-            <div className="score">{biggestUpset.score}</div>
-          </div>
-        ) : (
-          <p className="stat-meta">No upsets yet this month — favourites are holding serve.</p>
-        )}
-      </div>
-
-      <div className="card">
-        <h2>Most active pairing</h2>
-        <p className="stat-meta" style={{ marginBottom: 12 }}>
-          {monthLabel}.
-        </p>
-        {topPairing ? (
-          <div className="match-row">
-            <div>
-              <div className="opponent">{topPairing.names}</div>
-              <div className="meta">teammates, not opponents</div>
-            </div>
-            <div className="score">{topPairing.count}</div>
-          </div>
-        ) : (
-          <p className="stat-meta">No games played together yet this month.</p>
-        )}
-      </div>
-
-      <div className="card">
         <h2>Most matches played</h2>
         <p className="stat-meta" style={{ marginBottom: 12 }}>
           All-time, across all confirmed matches.
@@ -914,6 +875,45 @@ export default function ClubStats() {
           ))
         ) : (
           <p className="stat-meta">No matches played yet.</p>
+        )}
+      </div>
+
+      <div className="card">
+        <h2>Biggest upset</h2>
+        <p className="stat-meta" style={{ marginBottom: 12 }}>
+          {monthLabel}.
+        </p>
+        {biggestUpset ? (
+          <div className="match-row">
+            <div>
+              <div className="opponent">{biggestUpset.winnerNames}</div>
+              <div className="meta">
+                beat {biggestUpset.loserNames} · outrated by{" "}
+                {Math.round(biggestUpset.loserAvgRating - biggestUpset.winnerAvgRating)} pts
+              </div>
+            </div>
+            <div className="score">{biggestUpset.score}</div>
+          </div>
+        ) : (
+          <p className="stat-meta">No upsets yet this month — favourites are holding serve.</p>
+        )}
+      </div>
+
+      <div className="card">
+        <h2>Most active pairing</h2>
+        <p className="stat-meta" style={{ marginBottom: 12 }}>
+          {monthLabel}.
+        </p>
+        {topPairing ? (
+          <div className="match-row">
+            <div>
+              <div className="opponent">{topPairing.names}</div>
+              <div className="meta">teammates, not opponents</div>
+            </div>
+            <div className="score">{topPairing.count}</div>
+          </div>
+        ) : (
+          <p className="stat-meta">No games played together yet this month.</p>
         )}
       </div>
 

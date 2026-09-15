@@ -375,6 +375,13 @@ export default function Dashboard({
       .select("*")
       .gte("event_date", todayStr)
       .order("event_date", { ascending: true })
+      // Tiebreak by time-of-day when two events land on the same date
+      // (2026-09-15, fixing a real case: Tickleball at 14:00 vs. Chinese
+      // Dinner Social at 19:45, both on the 19th) — without this, rows
+      // sharing a date came back in an arbitrary order, so the "next"
+      // event could be the later one of the two. Mirrors Events.tsx's own
+      // load(), including its "all-day (no time) sorts first" convention.
+      .order("event_time", { ascending: true, nullsFirst: true })
       .limit(1)
       .then(({ data }) => setNextEvent(((data ?? [])[0] as EventRow) ?? null));
   }, [isOwnProfile]);

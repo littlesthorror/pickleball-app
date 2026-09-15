@@ -1311,7 +1311,7 @@ export default function Events({ isAdmin, playerId }: { isAdmin: boolean; player
           <textarea
             value={draft.description}
             onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))}
-            rows={3}
+            rows={6}
             style={{
               width: "100%",
               padding: "10px 12px",

@@ -77,26 +77,6 @@ interface MonthlyHistoryRow {
   opponent_names: string;
 }
 
-interface MonthlyMatchTeams {
-  team_a_player_1_id: string;
-  team_a_player_2_id: string;
-  team_b_player_1_id: string;
-  team_b_player_2_id: string;
-}
-
-interface BiggestUpset {
-  winnerNames: string;
-  loserNames: string;
-  winnerAvgRating: number;
-  loserAvgRating: number;
-  score: string;
-}
-
-interface TopPairing {
-  names: string;
-  count: number;
-}
-
 interface ClubPlayerAward {
   playerId: string;
   games: number;
@@ -213,7 +193,6 @@ export default function Leaderboard({
   const [visibleProvisionalPlayed, setVisibleProvisionalPlayed] = useState(PROVISIONAL_PLAYED_INITIAL);
   const [visibleProvisionalUnplayed, setVisibleProvisionalUnplayed] = useState(PROVISIONAL_UNPLAYED_INITIAL);
   const [monthlyHistory, setMonthlyHistory] = useState<MonthlyHistoryRow[]>([]);
-  const [monthlyMatches, setMonthlyMatches] = useState<MonthlyMatchTeams[]>([]);
   const [pastClubPlayers, setPastClubPlayers] = useState<PastClubPlayer[]>([]);
 
   // Seasons — trackedSeasons is empty until 1 September 2026 (Autumn),
@@ -301,14 +280,6 @@ export default function Leaderboard({
       .gte("played_at", monthStart)
       .then(({ data, error }) => {
         if (!error) setMonthlyHistory((data ?? []) as MonthlyHistoryRow[]);
-      });
-    supabase
-      .from("matches")
-      .select("team_a_player_1_id, team_a_player_2_id, team_b_player_1_id, team_b_player_2_id")
-      .eq("status", "confirmed")
-      .gte("played_at", monthStart)
-      .then(({ data, error }) => {
-        if (!error) setMonthlyMatches((data ?? []) as MonthlyMatchTeams[]);
       });
 
     // Every active/completed Quarterly Cup, not just the most recent one
@@ -498,68 +469,6 @@ export default function Leaderboard({
     return { mostGamesTop5, mostWinsTop5, highestWinPctTop5, biggestMoversTop5, clubPlayer };
   }, [monthlyHistory, rowsById]);
 
-  // Biggest upset: the confirmed match this month with the largest
-  // average pre-match rating gap where the lower-rated pair still won.
-  // Both winners' rows carry each other's names in `teammate_name`, so
-  // the pair can be named without a second lookup — and it stays correct
-  // even if one of them isn't currently visible on the leaderboard.
-  const biggestUpset = useMemo<BiggestUpset | null>(() => {
-    const byMatch = new Map<string, MonthlyHistoryRow[]>();
-    for (const h of monthlyHistory) {
-      const list = byMatch.get(h.match_id) ?? [];
-      list.push(h);
-      byMatch.set(h.match_id, list);
-    }
-
-    let best: BiggestUpset | null = null;
-    for (const matchRows of byMatch.values()) {
-      const winners = matchRows.filter((r) => r.won);
-      const losers = matchRows.filter((r) => !r.won);
-      if (winners.length === 0 || losers.length === 0) continue;
-
-      const winnerAvgRating = winners.reduce((s, r) => s + r.pre_rating, 0) / winners.length;
-      const loserAvgRating = losers.reduce((s, r) => s + r.pre_rating, 0) / losers.length;
-      if (loserAvgRating <= winnerAvgRating) continue;
-
-      if (!best || loserAvgRating - winnerAvgRating > best.loserAvgRating - best.winnerAvgRating) {
-        const [w0, w1] = winners;
-        best = {
-          winnerNames: w1 ? `${w0.teammate_name} & ${w1.teammate_name}` : w0.teammate_name,
-          loserNames: w0.opponent_names,
-          winnerAvgRating,
-          loserAvgRating,
-          score: `${w0.own_score}-${w0.opponent_score}`,
-        };
-      }
-    }
-    return best;
-  }, [monthlyHistory]);
-
-  // Most active pairing: counted from raw match rows (by player id, not
-  // name) so two players who happen to share a display name can't merge.
-  const topPairing = useMemo<TopPairing | null>(() => {
-    const pairCounts = new Map<string, number>();
-    const addPair = (a: string, b: string) => {
-      const key = [a, b].sort().join("|");
-      pairCounts.set(key, (pairCounts.get(key) ?? 0) + 1);
-    };
-    for (const m of monthlyMatches) {
-      addPair(m.team_a_player_1_id, m.team_a_player_2_id);
-      addPair(m.team_b_player_1_id, m.team_b_player_2_id);
-    }
-
-    let top: TopPairing | null = null;
-    for (const [key, count] of pairCounts) {
-      if (!top || count > top.count) {
-        const [a, b] = key.split("|");
-        const nameA = rowsById.get(a)?.display_name ?? "?";
-        const nameB = rowsById.get(b)?.display_name ?? "?";
-        top = { names: `${nameA} & ${nameB}`, count };
-      }
-    }
-    return top;
-  }, [monthlyMatches, rowsById]);
-
   const clubPlayerRow = clubPlayer ? rowsById.get(clubPlayer.playerId) : undefined;
 
   if (loading) return <PageLoading label="Loading leaderboard…" />;
@@ -678,97 +587,11 @@ export default function Leaderboard({
         )}
       </div>
 
-      {/* Order (2026-09-14, Ben's request): Club leaderboard, then the
-          Quarterly Cup(s), then the current season leaderboard, then
-          everything else below. Was previously Club leaderboard followed
-          straight by the monthly stat cards, with Season/Cup further down
-          the page. */}
-      {quarterlyCups.map(({ cup, teams, matches }) => (
-        <div className="card" key={cup.id}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-            <h2 style={{ marginBottom: 0 }}>🏅 {cup.name}</h2>
-            {onViewQuarterlyCup && (
-              <span className="link-action" onClick={onViewQuarterlyCup}>
-                Fixtures →
-              </span>
-            )}
-          </div>
-          <p className="stat-meta" style={{ marginBottom: 12 }}>
-            {cup.status === "completed"
-              ? "Final table."
-              : (() => {
-                  const info = cup.mirror_season_end
-                    ? seasonEndInfo
-                    : cup.end_date
-                    ? (() => {
-                        const lastDay = new Date(cup.end_date + "T00:00:00");
-                        const daysLeft = Math.max(0, Math.ceil((lastDay.getTime() - Date.now()) / (24 * 60 * 60 * 1000)));
-                        return { lastDay, daysLeft };
-                      })()
-                    : null;
-                  if (!info) return "In progress.";
-                  return `Completes ${info.lastDay.toLocaleDateString(undefined, {
-                    weekday: "short",
-                    month: "short",
-                    day: "numeric",
-                  })}${info.daysLeft > 0 ? ` · ${info.daysLeft} day${info.daysLeft === 1 ? "" : "s"} left` : ""}.`;
-                })()}
-          </p>
-          {cup.winner_team_id && (
-            <p className="stat-meta" style={{ marginTop: 0, marginBottom: 12 }}>
-              🏆 Champions:{" "}
-              <strong style={{ color: "var(--heading)" }}>
-                {(() => {
-                  const t = teams.find((t) => t.id === cup.winner_team_id);
-                  if (!t) return "?";
-                  const nameById = new Map(rows.map((r) => [r.id, r.display_name]));
-                  return t.team_name || `${nameById.get(t.player1_id) ?? "?"} & ${nameById.get(t.player2_id) ?? "?"}`;
-                })()}
-              </strong>
-            </p>
-          )}
-          {teams.length > 0 &&
-            (() => {
-              const nameById = new Map(rows.map((r) => [r.id, r.display_name]));
-              const teamLabel = (teamId: string) => {
-                const t = teams.find((t) => t.id === teamId);
-                if (!t) return "?";
-                return t.team_name || `${nameById.get(t.player1_id) ?? "?"} & ${nameById.get(t.player2_id) ?? "?"}`;
-              };
-              const standings = computeGroupStandings(
-                teams.map((t) => t.id),
-                matches
-                  .filter((m) => m.matches)
-                  .map((m) => ({
-                    teamAId: m.team_a_id,
-                    teamBId: m.team_b_id,
-                    teamAScore: m.matches!.team_a_score,
-                    teamBScore: m.matches!.team_b_score,
-                  })),
-                cup.scoring_system
-              );
-              return standings.map((row, i) => (
-                <div className="leaderboard-row" key={row.teamId}>
-                  <span className={`rank ${i < 3 ? "top3" : ""}`}>{i + 1}</span>
-                  <span className="name">{teamLabel(row.teamId)}</span>
-                  <span className="stat-meta" style={{ marginTop: 0, width: 48, textAlign: "right", fontSize: "0.78rem" }}>
-                    {row.played}p {row.won}w
-                  </span>
-                  <span
-                    className="stat-meta"
-                    style={{ marginTop: 0, width: 76, textAlign: "right", whiteSpace: "nowrap", fontSize: "0.78rem" }}
-                    title="Points for–against"
-                  >
-                    {row.pointsFor}–{row.pointsAgainst} ({row.diff >= 0 ? "+" : ""}
-                    {row.diff})
-                  </span>
-                  <span className="rating">{row.pts}</span>
-                </div>
-              ));
-            })()}
-        </div>
-      ))}
-
+      {/* Order (2026-09-15, Ben's request): Club leaderboard, then the
+          current season leaderboard, then the Quarterly Cup(s), then
+          everything else below. Was previously Club, Cups, Season
+          (2026-09-14) — swapped so the season table sits right under Club
+          leaderboard, with the Cup(s) below it. */}
       {trackedSeasons.length === 0 ? (
         <div className="card">
           <h2 style={{ marginBottom: 0 }}>Season leaderboard</h2>
@@ -859,6 +682,92 @@ export default function Leaderboard({
         </div>
       )}
 
+      {quarterlyCups.map(({ cup, teams, matches }) => (
+        <div className="card" key={cup.id}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+            <h2 style={{ marginBottom: 0 }}>🏅 {cup.name}</h2>
+            {onViewQuarterlyCup && (
+              <span className="link-action" onClick={onViewQuarterlyCup}>
+                Fixtures →
+              </span>
+            )}
+          </div>
+          <p className="stat-meta" style={{ marginBottom: 12 }}>
+            {cup.status === "completed"
+              ? "Final table."
+              : (() => {
+                  const info = cup.mirror_season_end
+                    ? seasonEndInfo
+                    : cup.end_date
+                    ? (() => {
+                        const lastDay = new Date(cup.end_date + "T00:00:00");
+                        const daysLeft = Math.max(0, Math.ceil((lastDay.getTime() - Date.now()) / (24 * 60 * 60 * 1000)));
+                        return { lastDay, daysLeft };
+                      })()
+                    : null;
+                  if (!info) return "In progress.";
+                  return `Completes ${info.lastDay.toLocaleDateString(undefined, {
+                    weekday: "short",
+                    month: "short",
+                    day: "numeric",
+                  })}${info.daysLeft > 0 ? ` · ${info.daysLeft} day${info.daysLeft === 1 ? "" : "s"} left` : ""}.`;
+                })()}
+          </p>
+          {cup.winner_team_id && (
+            <p className="stat-meta" style={{ marginTop: 0, marginBottom: 12 }}>
+              🏆 Champions:{" "}
+              <strong style={{ color: "var(--heading)" }}>
+                {(() => {
+                  const t = teams.find((t) => t.id === cup.winner_team_id);
+                  if (!t) return "?";
+                  const nameById = new Map(rows.map((r) => [r.id, r.display_name]));
+                  return t.team_name || `${nameById.get(t.player1_id) ?? "?"} & ${nameById.get(t.player2_id) ?? "?"}`;
+                })()}
+              </strong>
+            </p>
+          )}
+          {teams.length > 0 &&
+            (() => {
+              const nameById = new Map(rows.map((r) => [r.id, r.display_name]));
+              const teamLabel = (teamId: string) => {
+                const t = teams.find((t) => t.id === teamId);
+                if (!t) return "?";
+                return t.team_name || `${nameById.get(t.player1_id) ?? "?"} & ${nameById.get(t.player2_id) ?? "?"}`;
+              };
+              const standings = computeGroupStandings(
+                teams.map((t) => t.id),
+                matches
+                  .filter((m) => m.matches)
+                  .map((m) => ({
+                    teamAId: m.team_a_id,
+                    teamBId: m.team_b_id,
+                    teamAScore: m.matches!.team_a_score,
+                    teamBScore: m.matches!.team_b_score,
+                  })),
+                cup.scoring_system
+              );
+              return standings.map((row, i) => (
+                <div className="leaderboard-row" key={row.teamId}>
+                  <span className={`rank ${i < 3 ? "top3" : ""}`}>{i + 1}</span>
+                  <span className="name">{teamLabel(row.teamId)}</span>
+                  <span className="stat-meta" style={{ marginTop: 0, width: 48, textAlign: "right", fontSize: "0.78rem" }}>
+                    {row.played}p {row.won}w
+                  </span>
+                  <span
+                    className="stat-meta"
+                    style={{ marginTop: 0, width: 76, textAlign: "right", whiteSpace: "nowrap", fontSize: "0.78rem" }}
+                    title="Points for–against"
+                  >
+                    {row.pointsFor}–{row.pointsAgainst} ({row.diff >= 0 ? "+" : ""}
+                    {row.diff})
+                  </span>
+                  <span className="rating">{row.pts}</span>
+                </div>
+              ));
+            })()}
+        </div>
+      ))}
+
       <MonthlyStatCard
         title="Most games played"
         monthLabel={monthLabel}
@@ -898,45 +807,6 @@ export default function Leaderboard({
         onSelectPlayer={onSelectPlayer}
         emptyMessage="Nobody's gained rating yet this month."
       />
-
-      <div className="card">
-        <h2 style={{ marginBottom: 0 }}>Biggest upset</h2>
-        <p className="stat-meta" style={{ marginBottom: 12 }}>
-          {monthLabel}
-        </p>
-        {biggestUpset ? (
-          <div className="match-row">
-            <div>
-              <div className="opponent">{biggestUpset.winnerNames}</div>
-              <div className="meta">
-                beat {biggestUpset.loserNames} · outrated by{" "}
-                {Math.round(biggestUpset.loserAvgRating - biggestUpset.winnerAvgRating)} pts
-              </div>
-            </div>
-            <div className="score">{biggestUpset.score}</div>
-          </div>
-        ) : (
-          <p className="stat-meta">No upsets yet this month — favourites are holding serve.</p>
-        )}
-      </div>
-
-      <div className="card">
-        <h2 style={{ marginBottom: 0 }}>Most active pairing</h2>
-        <p className="stat-meta" style={{ marginBottom: 12 }}>
-          {monthLabel}
-        </p>
-        {topPairing ? (
-          <div className="match-row">
-            <div>
-              <div className="opponent">{topPairing.names}</div>
-              <div className="meta">teammates, not opponents</div>
-            </div>
-            <div className="score">{topPairing.count}</div>
-          </div>
-        ) : (
-          <p className="stat-meta">No matches played together yet this month.</p>
-        )}
-      </div>
 
       {pastClubPlayers.length > 0 && (
         <div className="card">
