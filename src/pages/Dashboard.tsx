@@ -863,7 +863,9 @@ export default function Dashboard({
     <div>
       <div className="card">
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <Avatar name={player.display_name} url={player.avatar_url} size={55} frameTier={frameTier} />
+          {/* 55 -> 60 (2026-09-15, Ben's request to experiment with ~9%
+              bigger) — was already bumped 15% once before (2026-08-xx). */}
+          <Avatar name={player.display_name} url={player.avatar_url} size={60} frameTier={frameTier} />
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             <span className="player-name-tag">
               {player.display_name}
