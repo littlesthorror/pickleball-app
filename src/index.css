@@ -31,6 +31,13 @@
   --text-muted: #667085;
   --success: #1a8f5e;
   --danger: #d1293d;
+  /* Muted siblings of the two above (2026-09-15) — same hue, desaturated
+     and lightened, for a secondary stat that should still read as
+     positive/negative at a glance without competing with a primary delta
+     shown right next to it (Dashboard's "today" line under "since last
+     game"). Fixed across themes like --success/--danger themselves. */
+  --success-muted: #5f9c80;
+  --danger-muted: #c17482;
   --radius-lg: 18px;
   --radius-md: 12px;
   --radius-sm: 8px;
@@ -499,6 +506,18 @@ label {
 
 .delta-negative {
   color: var(--danger);
+  font-weight: 700;
+}
+
+/* Muted variants (2026-09-15) — for a secondary delta shown alongside a
+   primary one, e.g. Dashboard's "today" line under "since last game". */
+.delta-positive-muted {
+  color: var(--success-muted);
+  font-weight: 700;
+}
+
+.delta-negative-muted {
+  color: var(--danger-muted);
   font-weight: 700;
 }
 

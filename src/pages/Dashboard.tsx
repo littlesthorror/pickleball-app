@@ -903,25 +903,38 @@ export default function Dashboard({
             You've hidden your rating number from your own dashboard — change this any time in My Account.
           </p>
         ) : (
-          <div className="stat-hero">
+          // "Today" sits directly under "since last game" in the same
+          // column (2026-09-15, Ben's request for a neater layout than two
+          // separate full-width lines) — a touch smaller so the two read
+          // as headline/detail rather than two equal-weight stats.
+          <div className="stat-hero" style={{ alignItems: "center" }}>
             <span className="value">{displayedRating ?? Math.round(player.rating)}</span>
-            {lastDelta !== null && (
-              <span className={lastDelta > 0 ? "delta-positive" : lastDelta < 0 ? "delta-negative" : "delta-neutral"}>
-                {lastDelta > 0 ? "▲" : lastDelta < 0 ? "▼" : "–"} {Math.abs(Math.round(lastDelta))} since last game
-              </span>
+            {(lastDelta !== null || todayDelta !== null) && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                {lastDelta !== null && (
+                  <span className={lastDelta > 0 ? "delta-positive" : lastDelta < 0 ? "delta-negative" : "delta-neutral"}>
+                    {lastDelta > 0 ? "▲" : lastDelta < 0 ? "▼" : "–"} {Math.abs(Math.round(lastDelta))} since last game
+                  </span>
+                )}
+                {todayDelta !== null && (
+                  <span
+                    className={
+                      todayDelta.total > 0
+                        ? "delta-positive-muted"
+                        : todayDelta.total < 0
+                        ? "delta-negative-muted"
+                        : "delta-neutral"
+                    }
+                    style={{ fontSize: "0.78rem" }}
+                  >
+                    {todayDelta.total > 0 ? "▲" : todayDelta.total < 0 ? "▼" : "–"}{" "}
+                    {Math.abs(Math.round(todayDelta.total))} today ({todayDelta.games} game
+                    {todayDelta.games === 1 ? "" : "s"})
+                  </span>
+                )}
+              </div>
             )}
           </div>
-        )}
-        {!(isOwnProfile && player.hide_own_rating) && todayDelta !== null && (
-          <p
-            className={
-              todayDelta.total > 0 ? "delta-positive" : todayDelta.total < 0 ? "delta-negative" : "delta-neutral"
-            }
-            style={{ fontSize: "0.85rem", margin: "0 0 4px" }}
-          >
-            {todayDelta.total > 0 ? "▲" : todayDelta.total < 0 ? "▼" : "–"} {Math.abs(Math.round(todayDelta.total))}{" "}
-            today ({todayDelta.games} game{todayDelta.games === 1 ? "" : "s"})
-          </p>
         )}
         <p className="stat-meta">
           {player.games_played} game{player.games_played === 1 ? "" : "s"} played
