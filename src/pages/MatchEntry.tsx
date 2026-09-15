@@ -4,6 +4,7 @@ import { averageTeam, predictedWinProbability } from "../lib/predict";
 import { predictedRatingImpact } from "../lib/impact";
 import type { PlayerStatus } from "../types";
 import PageLoading from "../components/PageLoading";
+import { useConfirm } from "../components/ConfirmDialog";
 
 export function PlayerSelect({
   label,
@@ -35,6 +36,47 @@ export function PlayerSelect({
   );
 }
 
+// Duplicate-entry guard (2026-09-15, added after a real incident — the same
+// Quarterly Cup games got entered once via the Cup's own fixture screen and
+// again via regular Match/Quick Entry, since neither screen knew about the
+// other, double-counting several games for 8 players' ratings and
+// games-played until it was caught and fixed by hand). Looks for a
+// CONFIRMED match in the last few hours with the same 4 players and the
+// same two scores — good enough to catch "this exact game was already
+// logged" without needing to reconcile which screen it came from. A false
+// positive (the same 4 players genuinely replaying to an identical score)
+// just means an extra confirmation tap, not a blocked submission.
+const DUPLICATE_CHECK_WINDOW_HOURS = 3;
+
+async function findRecentDuplicate(match: {
+  teamAP1: string;
+  teamAP2: string;
+  teamBP1: string;
+  teamBP2: string;
+  teamAScore: string;
+  teamBScore: string;
+}): Promise<boolean> {
+  const cutoff = new Date(Date.now() - DUPLICATE_CHECK_WINDOW_HOURS * 60 * 60 * 1000).toISOString();
+  const { data } = await supabase
+    .from("matches")
+    .select("team_a_player_1_id, team_a_player_2_id, team_b_player_1_id, team_b_player_2_id, team_a_score, team_b_score")
+    .eq("status", "confirmed")
+    .gte("played_at", cutoff);
+
+  if (!data || data.length === 0) return false;
+
+  const idSet = new Set([match.teamAP1, match.teamAP2, match.teamBP1, match.teamBP2]);
+  const scoreKey = [Number(match.teamAScore), Number(match.teamBScore)].sort((a, b) => a - b).join("-");
+
+  return data.some((m) => {
+    const mIds = new Set([m.team_a_player_1_id, m.team_a_player_2_id, m.team_b_player_1_id, m.team_b_player_2_id]);
+    if (mIds.size !== idSet.size) return false;
+    for (const id of idSet) if (!mIds.has(id)) return false;
+    const mScoreKey = [m.team_a_score, m.team_b_score].sort((a, b) => a - b).join("-");
+    return mScoreKey === scoreKey;
+  });
+}
+
 // Shared by both entry modes (and by Competitions.tsx, for group-stage /
 // knockout results) — inserts one match row and confirms it via the
 // confirm-match edge function, with the same "recheck the actual status
@@ -48,7 +90,21 @@ export async function submitOneMatch(match: {
   teamAScore: string;
   teamBScore: string;
   currentUserId: string;
-}): Promise<{ ok: boolean; error?: string }> {
+  // Set after the caller has already warned the admin about a detected
+  // duplicate and they chose to submit anyway.
+  skipDuplicateCheck?: boolean;
+}): Promise<{ ok: boolean; error?: string; duplicate?: boolean }> {
+  if (!match.skipDuplicateCheck) {
+    const isDuplicate = await findRecentDuplicate(match);
+    if (isDuplicate) {
+      return {
+        ok: false,
+        duplicate: true,
+        error: "A confirmed match with these same 4 players and this same score was already recorded in the last few hours.",
+      };
+    }
+  }
+
   const { data: inserted, error } = await supabase
     .from("matches")
     .insert({
@@ -209,6 +265,7 @@ function SingleMatchEntry({
   players: PlayerStatus[];
   onPlayersChanged: () => void;
 }) {
+  const confirm = useConfirm();
   const [teamAP1, setTeamAP1] = useState("");
   const [teamAP2, setTeamAP2] = useState("");
   const [teamBP1, setTeamBP1] = useState("");
@@ -296,7 +353,7 @@ function SingleMatchEntry({
       return;
     }
 
-    const result = await submitOneMatch({
+    let result = await submitOneMatch({
       teamAP1,
       teamAP2,
       teamBP1,
@@ -305,6 +362,27 @@ function SingleMatchEntry({
       teamBScore,
       currentUserId,
     });
+
+    if (!result.ok && result.duplicate) {
+      const proceed = await confirm(
+        `${result.error} Submit it again anyway?`,
+        { danger: true, confirmLabel: "Submit anyway" }
+      );
+      if (!proceed) {
+        setSubmitting(false);
+        return;
+      }
+      result = await submitOneMatch({
+        teamAP1,
+        teamAP2,
+        teamBP1,
+        teamBP2,
+        teamAScore,
+        teamBScore,
+        currentUserId,
+        skipDuplicateCheck: true,
+      });
+    }
 
     if (!result.ok) {
       setSubmitError(result.error ?? "Something went wrong submitting this match.");
@@ -513,6 +591,7 @@ function QuickMatchEntry({
   players: PlayerStatus[];
   onPlayersChanged: () => void;
 }) {
+  const confirm = useConfirm();
   const [slots, setSlots] = useState<GameSlot[]>(loadQuickEntryDraft);
   const [submitting, setSubmitting] = useState(false);
   const [summary, setSummary] = useState<string | null>(null);
@@ -614,7 +693,7 @@ function QuickMatchEntry({
         continue;
       }
 
-      const result = await submitOneMatch({
+      let result = await submitOneMatch({
         teamAP1: slot.teamAP1,
         teamAP2: slot.teamAP2,
         teamBP1: slot.teamBP1,
@@ -623,6 +702,27 @@ function QuickMatchEntry({
         teamBScore: slot.teamBScore,
         currentUserId,
       });
+
+      if (!result.ok && result.duplicate) {
+        const proceed = await confirm(
+          `Game ${i + 1}: ${result.error} Submit it again anyway?`,
+          { danger: true, confirmLabel: "Submit anyway" }
+        );
+        if (proceed) {
+          result = await submitOneMatch({
+            teamAP1: slot.teamAP1,
+            teamAP2: slot.teamAP2,
+            teamBP1: slot.teamBP1,
+            teamBP2: slot.teamBP2,
+            teamAScore: slot.teamAScore,
+            teamBScore: slot.teamBScore,
+            currentUserId,
+            skipDuplicateCheck: true,
+          });
+        } else {
+          result = { ok: false, error: "Not submitted — you confirmed this was a duplicate." };
+        }
+      }
 
       if (result.ok) {
         succeeded++;

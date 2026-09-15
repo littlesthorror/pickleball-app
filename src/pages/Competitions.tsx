@@ -1976,7 +1976,7 @@ function FixtureRow({
       return;
     }
 
-    const result = await submitOneMatch({
+    let result = await submitOneMatch({
       teamAP1: teamA.player1_id,
       teamAP2: teamA.player2_id,
       teamBP1: teamB.player1_id,
@@ -1985,6 +1985,30 @@ function FixtureRow({
       teamBScore: scoreB,
       currentUserId,
     });
+
+    // Same duplicate-entry guard as Quarterly Cup / Match Entry
+    // (2026-09-15) — this fixture could equally get double-logged via
+    // regular Match/Quick Entry.
+    if (!result.ok && result.duplicate) {
+      const proceed = await confirm(`${result.error} Submit it again anyway?`, {
+        danger: true,
+        confirmLabel: "Submit anyway",
+      });
+      if (!proceed) {
+        setSubmitting(false);
+        return;
+      }
+      result = await submitOneMatch({
+        teamAP1: teamA.player1_id,
+        teamAP2: teamA.player2_id,
+        teamBP1: teamB.player1_id,
+        teamBP2: teamB.player2_id,
+        teamAScore: scoreA,
+        teamBScore: scoreB,
+        currentUserId,
+        skipDuplicateCheck: true,
+      });
+    }
 
     if (!result.ok) {
       setError(result.error ?? "Something went wrong.");

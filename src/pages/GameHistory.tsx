@@ -112,7 +112,7 @@ export default function GameHistory() {
     const teamB = teamLabel(m.team_b_player_1, m.team_b_player_2);
     if (
       !(await confirm(
-        `Delete this game (${teamA} ${m.team_a_score}–${m.team_b_score} ${teamB})? The match record itself is gone permanently — this can't be undone. If it's confirmed, every player's rating gets recalculated from the remaining match history afterward, which can shift ratings for people who never played in this game, not just these four.`,
+        `Delete this game (${teamA} ${m.team_a_score}–${m.team_b_score} ${teamB})? The match record itself is gone permanently — this can't be undone. If it's confirmed, EVERY player in the club gets their rating recalculated from scratch from the remaining match history afterward — not just these four — which can also change career highs and games-played counts club-wide, live, right away. Only delete a confirmed game if you're sure it shouldn't count.`,
         { danger: true }
       ))
     ) {
@@ -294,6 +294,16 @@ export default function GameHistory() {
                     day: "numeric",
                     month: "short",
                     year: "numeric",
+                  })}
+                  {/* Time added 2026-09-15 — with no time shown, several
+                      games from the same session (same date) were
+                      impossible to tell apart when trying to find a
+                      specific one to delete (came up for real, tracking
+                      down duplicate Cup matches). */}
+                  {" · "}
+                  {new Date(m.played_at).toLocaleTimeString(undefined, {
+                    hour: "numeric",
+                    minute: "2-digit",
                   })}
                 </span>
                 <span className="badge" style={statusStyle(m.status)}>
