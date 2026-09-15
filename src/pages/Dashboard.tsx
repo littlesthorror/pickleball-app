@@ -851,6 +851,21 @@ export default function Dashboard({
   if (!player) return <p className="error">Couldn't find your player profile.</p>;
 
   const lastDelta = history.length > 0 ? history[history.length - 1].rating_delta : null;
+  // "Today" session delta (2026-09-15, Ben's request) — a second, coarser
+  // stat sitting under "since last game": the combined swing across every
+  // game played today, not just the most recent one. Uses the viewer's
+  // local calendar day (not a rolling 24h window), same as how a real
+  // pickleball session naturally groups. Null (hidden) when no games
+  // today, same convention as lastDelta above.
+  const todayDelta = (() => {
+    const todayStr = new Date().toDateString();
+    const todaysGames = history.filter((h) => new Date(h.played_at).toDateString() === todayStr);
+    if (todaysGames.length === 0) return null;
+    return {
+      total: todaysGames.reduce((sum, h) => sum + h.rating_delta, 0),
+      games: todaysGames.length,
+    };
+  })();
   // Trimmed from 8 to 5 at Ben's request (2026-08-11) — Game history is
   // there for the full list; this is just a quick recent-form snapshot.
   // Starts at 5 with a "Show more" button (added 2026-09-02) rather than a
@@ -896,6 +911,17 @@ export default function Dashboard({
               </span>
             )}
           </div>
+        )}
+        {!(isOwnProfile && player.hide_own_rating) && todayDelta !== null && (
+          <p
+            className={
+              todayDelta.total > 0 ? "delta-positive" : todayDelta.total < 0 ? "delta-negative" : "delta-neutral"
+            }
+            style={{ fontSize: "0.85rem", margin: "0 0 4px" }}
+          >
+            {todayDelta.total > 0 ? "▲" : todayDelta.total < 0 ? "▼" : "–"} {Math.abs(Math.round(todayDelta.total))}{" "}
+            today ({todayDelta.games} game{todayDelta.games === 1 ? "" : "s"})
+          </p>
         )}
         <p className="stat-meta">
           {player.games_played} game{player.games_played === 1 ? "" : "s"} played

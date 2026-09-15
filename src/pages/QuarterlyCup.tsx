@@ -8,6 +8,8 @@ import { useToast } from "../components/Toast";
 import PageLoading from "../components/PageLoading";
 import type { QuarterlyCupRow, QuarterlyCupTeamRow, QuarterlyCupMatchRow, PlayerStatus, ScoringSystem } from "../types";
 import cupBanner from "../assets/quarterly-cup/cup-banner.jpg";
+import PodiumShareCard from "../components/PodiumShareCard";
+import type { PodiumStats } from "../lib/podiumImage";
 
 // The Quarterly Cup (2026-09-02, Ben's request) — a standalone fixed-team
 // doubles mini-league, deliberately separate from Competitions (no
@@ -557,7 +559,15 @@ function CupDetail({
 
       {(cup.status === "active" || cup.status === "completed") && (
         <>
-          <StandingsSection teams={teams} matches={matches} teamLabel={teamLabel} scoringSystem={cup.scoring_system} winnerTeamId={cup.winner_team_id} allowDraws={cup.allow_draws} />
+          <StandingsSection
+            cupName={cup.name}
+            teams={teams}
+            matches={matches}
+            teamLabel={teamLabel}
+            scoringSystem={cup.scoring_system}
+            winnerTeamId={cup.winner_team_id}
+            allowDraws={cup.allow_draws}
+          />
           <FixturesSection
             cup={cup}
             matches={matches}
@@ -789,6 +799,7 @@ function TeamsSection({
 }
 
 function StandingsSection({
+  cupName,
   teams,
   matches,
   teamLabel,
@@ -796,6 +807,7 @@ function StandingsSection({
   winnerTeamId,
   allowDraws,
 }: {
+  cupName: string;
   teams: QuarterlyCupTeamRow[];
   matches: (QuarterlyCupMatchRow & { matches: { team_a_score: number; team_b_score: number } | null })[];
   teamLabel: (id: string) => string;
@@ -803,6 +815,7 @@ function StandingsSection({
   winnerTeamId: string | null;
   allowDraws: boolean;
 }) {
+  const [showPodiumShare, setShowPodiumShare] = useState(false);
   const standings = computeGroupStandings(
     teams.map((t) => t.id),
     matches
@@ -811,14 +824,35 @@ function StandingsSection({
     scoringSystem
   );
 
+  // Podium graphic (2026-09-15, Ben's request) — only offered once the
+  // Cup is actually completed (winnerTeamId set), same gating as the
+  // Champions line above. Built from the same `standings` this table
+  // already computed, so it always matches what's on screen.
+  const podiumStats: PodiumStats = {
+    cupName,
+    teams: standings.slice(0, 3).map((row) => ({
+      name: teamLabel(row.teamId),
+      played: row.played,
+      won: row.won,
+      lost: row.lost,
+      pts: row.pts,
+    })),
+  };
+
   return (
     <div className="card">
       <h3 style={{ marginTop: 0 }}>Table</h3>
       {winnerTeamId && (
-        <p className="stat-meta" style={{ marginTop: 0, marginBottom: 12 }}>
-          🏆 Champions: <strong style={{ color: "var(--heading)" }}>{teamLabel(winnerTeamId)}</strong>
-        </p>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+          <p className="stat-meta" style={{ margin: 0 }}>
+            🏆 Champions: <strong style={{ color: "var(--heading)" }}>{teamLabel(winnerTeamId)}</strong>
+          </p>
+          <span className="link-action" onClick={() => setShowPodiumShare(true)}>
+            Share podium
+          </span>
+        </div>
       )}
+      {showPodiumShare && <PodiumShareCard stats={podiumStats} onClose={() => setShowPodiumShare(false)} />}
       <div className="qc-table-wrap">
         <table className="qc-table">
           <thead>
