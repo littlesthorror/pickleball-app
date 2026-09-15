@@ -1149,6 +1149,18 @@ export default function Dashboard({
                 </div>
               </div>
             </div>
+          ) : !player.profile_visible ? (
+            // Distinct from the "not enough games" case below (2026-09-15,
+            // fixing a real report) — get_season_standings excludes hidden
+            // profiles outright, regardless of games played, since season
+            // standings are just another leaderboard view. Someone with
+            // 29 games was seeing the generic "not yet established"
+            // message, which was simply wrong for their actual situation.
+            <p className="stat-meta">
+              {isOwnProfile
+                ? "Your leaderboard visibility is turned off, so you don't appear in season standings either — turn \"Show me on the club leaderboard\" back on in My Account to reappear here."
+                : "Not shown — this player's leaderboard visibility is turned off, so they don't appear in season standings either."}
+            </p>
           ) : (
             <p className="stat-meta">Not yet established (12+ games) this season.</p>
           )}
