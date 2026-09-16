@@ -44,8 +44,9 @@ const MIN_STREAK = 2;
 
 // How many of the club's current top-rated players to track on the
 // trajectory chart — recomputed live from current ratings each render, so
-// it's always whoever's actually in the top 7 today, not a fixed list.
-const TOP_N = 7;
+// it's always whoever's actually in the top 5 today, not a fixed list.
+// (7 -> 5, 2026-09-15, Ben's request.)
+const TOP_N = 5;
 
 // Distinct, readable-on-white line colours for up to 7 players at once —
 // the app's own navy/orange brand pair lead, then five more distinguishable
@@ -606,14 +607,23 @@ export default function ClubStats() {
       .map((p, i) => {
         const points = (byPlayer.get(p.id) ?? []).sort((a, b) => a.x - b.x);
         if (points.length === 0) return null;
+        // Extend flat to the current game (2026-09-15, Ben's request) — a
+        // player who hasn't played since club game X otherwise has their
+        // line stop dead at X, which read as if they'd dropped off the
+        // chart rather than just not having played since. A trailing point
+        // at the same rating carries the line to the shared right edge.
+        const last = points[points.length - 1];
+        if (last.x < maxX) {
+          points.push({ x: maxX, y: last.y, gameNumber: last.gameNumber });
+        }
         const color = TRAJECTORY_COLORS[i % TRAJECTORY_COLORS.length];
         return {
           label: p.display_name,
           data: points,
           borderColor: color,
           backgroundColor: color,
-          pointRadius: 2,
-          pointHoverRadius: 4,
+          pointRadius: 1,
+          pointHoverRadius: 3,
           borderWidth: 2,
           tension: 0.25,
         };
@@ -722,7 +732,7 @@ export default function ClubStats() {
 
       <div className="card">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-          <h2 style={{ marginBottom: 0 }}>Top 7 players — rating trajectory</h2>
+          <h2 style={{ marginBottom: 0 }}>Top 5 players — rating trajectory</h2>
           <div className="toggle-group">
             <button disabled={rangeMonths === 3} onClick={() => setRangeMonths(3)}>
               3m

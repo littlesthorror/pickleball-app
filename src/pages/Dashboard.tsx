@@ -456,6 +456,26 @@ export default function Dashboard({
     };
   }, [player, history, xAxis, isDarkTheme]);
 
+  // Explicit y-axis bounds (2026-09-15, Ben's request) — left to Chart.js's
+  // own auto-scaling, the axis stretched to fit the RD confidence band on
+  // EVERY point, including the very first ones where RD starts at 350 (so
+  // "game 0" alone spans 1150-1850). That's the correct band to draw, but
+  // it flattened the actual rating line's visible detail across the rest of
+  // the chart. Rescoped to only what should drive the range: every actual
+  // rating value reached, plus the error margin of just the most recent
+  // game (the only band value a player actually cares about "now") — early
+  // wide bands still draw, they just draw outside the visible range.
+  const yBounds = useMemo(() => {
+    if (!player || history.length === 0) return null;
+    const ratings = [1500, ...history.map((h) => h.post_rating)];
+    const last = history[history.length - 1];
+    const values = [...ratings, last.post_rating - last.post_rd, last.post_rating + last.post_rd];
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const pad = Math.max(8, (max - min) * 0.08);
+    return { min: Math.floor(min - pad), max: Math.ceil(max + pad) };
+  }, [player, history]);
+
   // Seasonal Top 10 badges — derived from seasonEntries (already fetched
   // live above for the Seasons history card), filtered to seasons that
   // have actually finished (excludes the current in-progress one, whose
@@ -1085,6 +1105,8 @@ export default function Dashboard({
                       ticks: { maxTicksLimit: 6, color: isDarkTheme ? TICKS_DARK : TICKS_LIGHT },
                     },
                     y: {
+                      min: yBounds?.min,
+                      max: yBounds?.max,
                       grid: { color: isDarkTheme ? GRID_DARK : GRID_LIGHT },
                       ticks: { color: isDarkTheme ? TICKS_DARK : TICKS_LIGHT },
                     },
@@ -1094,7 +1116,8 @@ export default function Dashboard({
             </div>
           )}
           <p className="stat-meta" style={{ marginTop: 8 }}>
-            Shaded band = rating deviation (confidence). Narrows as your rating becomes more established.
+            Shaded band = rating deviation (confidence). Narrows as your rating becomes more established. Chart is
+            scaled to your own rating range, so early wide bands may run off the top/bottom of the chart.
           </p>
           {bestPartner && (
             <p className="stat-meta" style={{ marginTop: 8, marginBottom: 0 }}>
