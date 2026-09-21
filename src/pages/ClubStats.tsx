@@ -17,6 +17,7 @@ import PageLoading from "../components/PageLoading";
 import { computeBadges, computeCompletionistBadge, dedupeBadges } from "../lib/badges";
 import type { CompetitionPlacement, MonthlyFinish, SeasonTop10Finish } from "../lib/badges";
 import { getTrackedSeasons, getCurrentSeason } from "../lib/seasons";
+import { fetchAllRows } from "../lib/fetchAllRows";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, Filler);
 
@@ -144,21 +145,30 @@ export default function ClubStats() {
 
   useEffect(() => {
     Promise.all([
-      supabase
-        .from("matches")
-        .select(
-          "id,played_at,team_a_player_1_id,team_a_player_2_id,team_b_player_1_id,team_b_player_2_id,team_a_score,team_b_score"
-        )
-        .eq("status", "confirmed"),
+      // Paginated (see fetchAllRows) — both of these are now past
+      // PostgREST's default 1000-row cap for the club, or will be soon, and
+      // a plain .select("*") silently truncates rather than erroring.
+      fetchAllRows<MatchTeams>((from, to) =>
+        supabase
+          .from("matches")
+          .select(
+            "id,played_at,team_a_player_1_id,team_a_player_2_id,team_b_player_1_id,team_b_player_2_id,team_a_score,team_b_score"
+          )
+          .eq("status", "confirmed")
+          .order("played_at", { ascending: true })
+          .range(from, to)
+      ),
       supabase.from("player_status").select("*").eq("is_active", true),
-      supabase.from("player_match_history").select("*"),
+      fetchAllRows<PlayerMatchHistoryRow>((from, to) =>
+        supabase.from("player_match_history").select("*").order("played_at", { ascending: true }).range(from, to)
+      ),
     ]).then(([matchesRes, playersRes, historyRes]) => {
-      if (matchesRes.error) setError(matchesRes.error.message);
-      else setMatches((matchesRes.data ?? []) as MatchTeams[]);
+      if (matchesRes.error) setError(matchesRes.error);
+      else setMatches(matchesRes.data);
       if (playersRes.error) setError(playersRes.error.message);
       else setPlayers((playersRes.data ?? []) as PlayerStatus[]);
-      if (historyRes.error) setError(historyRes.error.message);
-      else setHistory((historyRes.data ?? []) as PlayerMatchHistoryRow[]);
+      if (historyRes.error) setError(historyRes.error);
+      else setHistory(historyRes.data);
       setLoading(false);
     });
   }, []);

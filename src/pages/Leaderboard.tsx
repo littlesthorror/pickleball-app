@@ -350,13 +350,39 @@ export default function Leaderboard({
     return q ? rows.filter((r) => r.display_name.toLowerCase().includes(q)) : rows;
   }, [rows, search]);
 
+  // Games played THIS calendar month, per player — reuses the same
+  // monthlyHistory fetch the Club Player award already pulls (2026-09-21,
+  // Ben's request). Powers the leaderboard-eligibility rule directly below:
+  // separate from lifetime games_played/is_provisional, which never
+  // decreases and is used elsewhere (badges, Dashboard, Club Stats) for "has
+  // this player's rating ever settled" — a different question from "are
+  // they active enough right now to be ranked."
+  const monthGamesByPlayer = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const h of monthlyHistory) {
+      map.set(h.player_id, (map.get(h.player_id) ?? 0) + 1);
+    }
+    return map;
+  }, [monthlyHistory]);
+
+  // A player only counts as "established" on the club leaderboard if
+  // they're both lifetime-established (12+ games ever, never resets) AND
+  // have played 12+ games THIS calendar month (2026-09-21, Ben's request) —
+  // otherwise someone could reach the top and then simply stop playing
+  // while staying ranked there. Falls back to "Still establishing" exactly
+  // like a genuinely new player, and comes back once they've logged 12
+  // games again this month. Resets to zero on the 1st of every month, so
+  // everyone temporarily drops out until they've played enough that month —
+  // expected, not a bug.
   const established = useMemo(() => {
-    const list = filteredRows.filter((r) => !r.is_provisional);
+    const list = filteredRows.filter(
+      (r) => !r.is_provisional && (monthGamesByPlayer.get(r.id) ?? 0) >= MIN_GAMES_FOR_CLUB_PLAYER
+    );
     if (sort === "rating") {
       return [...list].sort((a, b) => b.rating - a.rating);
     }
     return [...list].sort((a, b) => (b.delta_30d ?? -Infinity) - (a.delta_30d ?? -Infinity));
-  }, [filteredRows, sort]);
+  }, [filteredRows, sort, monthGamesByPlayer]);
 
   // Split into two (2026-09-01, Ben's request): someone who hasn't played
   // a single game yet is still sitting at the flat starting rating (1500),
@@ -365,10 +391,17 @@ export default function Leaderboard({
   // "haven't played at all" separate from "played at least one game, still
   // under 12" means a newer player who's had a rough start never has to
   // see someone who hasn't even played yet sitting "above" them.
+  //
+  // Also catches, since 2026-09-21, an otherwise-established player who
+  // hasn't played 12 games this calendar month yet — they always have
+  // games_played > 0 (that's what made them established in the first
+  // place), so they land here rather than in "unplayed" below.
   const provisionalPlayed = useMemo(
     () =>
-      [...filteredRows.filter((r) => r.is_provisional && r.games_played > 0)].sort((a, b) => b.rating - a.rating),
-    [filteredRows]
+      [...filteredRows.filter((r) => r.games_played > 0 && (r.is_provisional || (monthGamesByPlayer.get(r.id) ?? 0) < MIN_GAMES_FOR_CLUB_PLAYER))].sort(
+        (a, b) => b.rating - a.rating
+      ),
+    [filteredRows, monthGamesByPlayer]
   );
   // Everyone here is tied at exactly 1500 (nothing to rank by yet), so
   // alphabetical is the only ordering that actually means anything.
@@ -493,7 +526,9 @@ export default function Leaderboard({
           </div>
         </div>
         <p className="stat-meta" style={{ marginBottom: 12 }}>
-          {sort === "rating" ? "Ranked by current rating." : "Ranked by rating change over the last 30 days."}
+          {sort === "rating" ? "Ranked by current rating." : "Ranked by rating change over the last 30 days."}{" "}
+          Requires 12+ games ever and 12+ games this calendar month — drops back to "Still establishing" without
+          enough activity this month, then returns once you've played enough again.
         </p>
         <input
           type="text"
@@ -852,23 +887,33 @@ export default function Leaderboard({
         <div className="card">
           <h2 style={{ marginBottom: 0 }}>Still establishing (played)</h2>
           <p className="stat-meta" style={{ marginBottom: 12 }}>
-            Fewer than 12 games — ratings still settling in, not yet ranked.
+            Fewer than 12 games ever, or fewer than 12 games so far this month — either way, not currently ranked.
           </p>
-          {visibleProvisionalPlayedRows.map((p) => (
-            <div
-              className="leaderboard-row"
-              key={p.id}
-              style={{ cursor: "pointer" }}
-              onClick={() => onSelectPlayer(p.id, p.display_name)}
-            >
-              <span className="badge badge-provisional" style={{ minWidth: 0 }}>
-                {p.games_played}/12
-              </span>
-              <Avatar name={p.display_name} url={p.avatar_url} size={28} />
-              <span className="name">{p.display_name}</span>
-              <span className="rating">{Math.round(p.rating)}</span>
-            </div>
-          ))}
+          {visibleProvisionalPlayedRows.map((p) => {
+            // Two different reasons land someone here (2026-09-21): a
+            // genuinely new player under 12 games EVER, or an established
+            // player who just hasn't played 12 games THIS calendar month —
+            // showing lifetime games_played for the second case would read
+            // as a nonsensical "35/12", so the badge switches to whichever
+            // count is actually why they're in this list.
+            const monthGames = monthGamesByPlayer.get(p.id) ?? 0;
+            const isMonthlyOnly = !p.is_provisional;
+            return (
+              <div
+                className="leaderboard-row"
+                key={p.id}
+                style={{ cursor: "pointer" }}
+                onClick={() => onSelectPlayer(p.id, p.display_name)}
+              >
+                <span className="badge badge-provisional" style={{ minWidth: 0 }}>
+                  {isMonthlyOnly ? `${monthGames}/12 this month` : `${p.games_played}/12`}
+                </span>
+                <Avatar name={p.display_name} url={p.avatar_url} size={28} />
+                <span className="name">{p.display_name}</span>
+                <span className="rating">{Math.round(p.rating)}</span>
+              </div>
+            );
+          })}
           {(provisionalPlayed.length > visibleProvisionalPlayed || visibleProvisionalPlayed > PROVISIONAL_PAGE_SIZE) && (
             <ShowMoreLess
               hasMore={provisionalPlayed.length > visibleProvisionalPlayed}
