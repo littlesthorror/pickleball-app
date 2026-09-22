@@ -16,7 +16,8 @@ export type ConfettiShape =
   | "fireworks"
   | "shamrock"
   | "stgeorge"
-  | "sparks";
+  | "sparks"
+  | "anniversary";
 
 interface ConfettiPiece {
   x: number;
@@ -77,6 +78,10 @@ const SHAMROCK_COLORS = ["#1a8f5e", "#2fae74", "#0f6e42"];
 const STGEORGE_COLORS = ["#c8102e"];
 // Warm ember tones for the Bonfire Night sparks.
 const SPARK_COLORS = ["#ff6a00", "#ff9f1a", "#ffcf4d", "#d64545"];
+// Sideline's own brand navy/orange plus a gold accent, for the club's
+// launch-anniversary rosette (Ben confirmed the club launched 1 Sept
+// 2026, 2026-09-22).
+const ANNIVERSARY_COLORS = ["#0f2547", "#e05f00", "#f2c14e"];
 
 // Easter Sunday's date moves every year (it's tied to the lunar calendar,
 // not a fixed day) — this is the standard "anonymous Gregorian" / Meeus/
@@ -123,17 +128,18 @@ function isWithinEasterWindow(now: Date): boolean {
 // 31 December-2 January -> fireworks, 1-14 February -> hearts
 // (Valentine's), 17 March -> shamrocks (St Patrick's), ~10 days around
 // Easter weekend -> pastel eggs, 23 April -> the St George's flag,
-// 1 October -> mini pumpkins, 5 November -> Bonfire Night sparks,
-// otherwise 1 November-31 December -> a snow/bauble mix. Exported so
-// callers (or the future admin panel, should Ben ever want one) can check
-// what's currently active without duplicating the date logic. Only
-// applies when a call site doesn't pass an explicit shape —
-// fireConfetti({ shape: "pickleball" }) always stays a pickleball, and
-// the birthday "cake" shape is always fired explicitly too (it depends on
-// a player's own DOB, not the calendar alone, so it can't live in this
-// date-only helper).
+// 1 September -> Sideline's own launch-anniversary rosette, 1 October ->
+// mini pumpkins, 5 November -> Bonfire Night sparks, otherwise
+// 1 November-31 December -> a snow/bauble mix. Exported so callers (or
+// the future admin panel, should Ben ever want one) can check what's
+// currently active without duplicating the date logic. Only applies when
+// a call site doesn't pass an explicit shape — fireConfetti({ shape:
+// "pickleball" }) always stays a pickleball, and the birthday "cake"
+// shape is always fired explicitly too (it depends on a player's own
+// DOB, not the calendar alone, so it can't live in this date-only
+// helper).
 export function getSeasonalConfettiShape(now: Date = new Date()): ConfettiShape | null {
-  const month = now.getMonth(); // 0-indexed: 0 = January, 1 = February, 2 = March, 3 = April, 9 = October, 10 = November, 11 = December
+  const month = now.getMonth(); // 0-indexed: 0 = January, 1 = February, 2 = March, 3 = April, 8 = September, 9 = October, 10 = November, 11 = December
   const day = now.getDate();
   // Checked first so it wins over the winter mix's broader Nov-Dec range.
   if ((month === 11 && day === 31) || (month === 0 && day <= 2)) return "fireworks";
@@ -141,6 +147,7 @@ export function getSeasonalConfettiShape(now: Date = new Date()): ConfettiShape 
   if (month === 2 && day === 17) return "shamrock";
   if (isWithinEasterWindow(now)) return "easter";
   if (month === 3 && day === 23) return "stgeorge";
+  if (month === 8 && day === 1) return "anniversary";
   if (month === 9) return "pumpkin";
   // Checked before the winter mix's broader Nov-Dec range, same reasoning
   // as the New Year carve-out above.
@@ -214,6 +221,8 @@ export function fireConfetti(
       ? STGEORGE_COLORS
       : shape === "sparks"
       ? SPARK_COLORS
+      : shape === "anniversary"
+      ? ANNIVERSARY_COLORS
       : DEFAULT_COLORS);
   const pieceCount = options.pieceCount ?? 140;
 
@@ -240,7 +249,11 @@ export function fireConfetti(
       rotation: Math.random() * 360,
       rotationSpeed: (Math.random() - 0.5) * 12,
       size:
-        shape === "pumpkin" || shape === "cake" || shape === "shamrock" || shape === "stgeorge"
+        shape === "pumpkin" ||
+        shape === "cake" ||
+        shape === "shamrock" ||
+        shape === "stgeorge" ||
+        shape === "anniversary"
           ? 10 + Math.random() * 6
           : 6 + Math.random() * 6,
       color,
@@ -419,6 +432,27 @@ export function fireConfetti(
         ctx.fillStyle = p.color;
         ctx.beginPath();
         ctx.arc(0, 0, r * 0.25, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (shape === "anniversary") {
+        // A small rosette/ribbon badge — a filled circle with two angled
+        // ribbon tails hanging below, in club brand colors, for
+        // Sideline's own launch anniversary rather than any player's own
+        // achievement.
+        const r = p.size / 2;
+        ctx.beginPath();
+        ctx.arc(0, -r * 0.3, r * 0.6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(-r * 0.35, r * 0.1);
+        ctx.lineTo(-r * 0.55, r * 1.2);
+        ctx.lineTo(-r * 0.1, r * 0.5);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(r * 0.35, r * 0.1);
+        ctx.lineTo(r * 0.55, r * 1.2);
+        ctx.lineTo(r * 0.1, r * 0.5);
+        ctx.closePath();
         ctx.fill();
       } else {
         ctx.fillRect(-p.size / 2, -p.size / 4, p.size, p.size / 2);
