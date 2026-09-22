@@ -6,6 +6,10 @@ import type { LeaderboardRow, QuarterlyCupRow, QuarterlyCupTeamRow, QuarterlyCup
 import { getCurrentSeason, getTrackedSeasons, getSeasonEndInfo } from "../lib/seasons";
 import { computeGroupStandings } from "../lib/competitionStandings";
 import PageLoading from "../components/PageLoading";
+import { fetchAllRows } from "../lib/fetchAllRows";
+import { computeAwardsNightStats } from "../lib/awardsNight";
+import type { AwardsNightStats, AwardsNightHistoryRow, AwardsNightMatchRow } from "../lib/awardsNight";
+import AwardsNightCard from "../components/AwardsNightCard";
 
 type SortMode = "rating" | "improved";
 
@@ -209,6 +213,14 @@ export default function Leaderboard({
   const [viewedSeasonIndex, setViewedSeasonIndex] = useState(() => Math.max(0, trackedSeasons.length - 1));
   const [seasonStandings, setSeasonStandings] = useState<SeasonStandingRow[]>([]);
   const [seasonLoading, setSeasonLoading] = useState(false);
+  // Awards Night (2026-09-22) — a shareable club-wide recap of a season's
+  // standout stats (MVP, Most Improved, etc.), generated on demand since
+  // it needs two extra club-wide, season-scoped fetches (see
+  // handleAwardsNight below) nobody needs just for viewing the standings
+  // table. See lib/awardsNight.ts for the data crunching.
+  const [awardsNightStats, setAwardsNightStats] = useState<AwardsNightStats | null>(null);
+  const [awardsNightLoading, setAwardsNightLoading] = useState(false);
+  const [awardsNightError, setAwardsNightError] = useState<string | null>(null);
 
   // The Quarterly Cup(s) (2026-09-02, extended to multiple cups
   // 2026-09-14) — every active or completed Cup, shown as public tables
@@ -344,6 +356,59 @@ export default function Leaderboard({
         setVisibleSeasonRows(PAGE_SIZE);
       });
   }, [viewedSeasonIndex, trackedSeasons, currentSeason]);
+
+  // Fetches the two extra club-wide, season-scoped datasets Awards Night
+  // needs (full match history + raw match rows, for the upset/partnership
+  // categories) and computes the stats — only run when someone actually
+  // clicks the button, not on every season view. Uses fetchAllRows since a
+  // full season's rows can exceed PostgREST's default 1000-row page (see
+  // lib/fetchAllRows.ts).
+  async function handleAwardsNight() {
+    const season = trackedSeasons[viewedSeasonIndex];
+    if (!season || seasonStandings.length === 0) return;
+    setAwardsNightLoading(true);
+    setAwardsNightError(null);
+    const [historyRes, matchesRes] = await Promise.all([
+      fetchAllRows<AwardsNightHistoryRow>((from, to) =>
+        supabase
+          .from("player_match_history")
+          .select("match_id, won, pre_rating, own_score, opponent_score, teammate_name, opponent_names")
+          .gte("played_at", season.start.toISOString())
+          .lt("played_at", season.nextStart.toISOString())
+          .range(from, to)
+      ),
+      fetchAllRows<AwardsNightMatchRow>((from, to) =>
+        supabase
+          .from("matches")
+          .select(
+            "team_a_player_1_id, team_a_player_2_id, team_b_player_1_id, team_b_player_2_id, team_a_score, team_b_score"
+          )
+          .eq("status", "confirmed")
+          .gte("played_at", season.start.toISOString())
+          .lt("played_at", season.nextStart.toISOString())
+          .range(from, to)
+      ),
+    ]);
+    setAwardsNightLoading(false);
+    if (historyRes.error || matchesRes.error) {
+      setAwardsNightError(historyRes.error ?? matchesRes.error ?? "Couldn't load season data.");
+      return;
+    }
+    const namesById = new Map(rows.map((r) => [r.id, r.display_name]));
+    const stats = computeAwardsNightStats(
+      season,
+      season.key !== currentSeason.key,
+      seasonStandings,
+      namesById,
+      historyRes.data,
+      matchesRes.data
+    );
+    if (!stats) {
+      setAwardsNightError("Not enough data yet to generate Awards Night for this season.");
+      return;
+    }
+    setAwardsNightStats(stats);
+  }
 
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -679,6 +744,18 @@ export default function Leaderboard({
                 )}${seasonEndInfo.daysLeft > 0 ? ` · ${seasonEndInfo.daysLeft} day${seasonEndInfo.daysLeft === 1 ? "" : "s"} left` : ""}.`
               : "Final standings for this season."}
           </p>
+          {seasonStandings.length > 0 && (
+            <p style={{ marginTop: -8, marginBottom: 12 }}>
+              <span className="link-action" role="button" tabIndex={0} onClick={handleAwardsNight}>
+                {awardsNightLoading ? "Preparing Awards Night…" : "🎉 Awards Night"}
+              </span>
+            </p>
+          )}
+          {awardsNightError && (
+            <p className="stat-meta" style={{ color: "var(--orange-600)", marginTop: -4 }}>
+              {awardsNightError}
+            </p>
+          )}
           {seasonLoading ? (
             <p className="stat-meta">Loading…</p>
           ) : seasonStandings.length === 0 ? (
@@ -957,6 +1034,10 @@ export default function Leaderboard({
             />
           )}
         </div>
+      )}
+
+      {awardsNightStats && (
+        <AwardsNightCard stats={awardsNightStats} onClose={() => setAwardsNightStats(null)} />
       )}
     </div>
   );
