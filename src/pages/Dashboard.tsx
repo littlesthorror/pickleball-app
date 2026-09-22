@@ -702,10 +702,15 @@ export default function Dashboard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOwnProfile, loading, player, badges, frameTier, personalBest]);
 
-  // Birthday balloons (2026-09-02) — once per calendar day, on your own
-  // dashboard, on your actual birthday. Separate localStorage key per day
-  // (rather than reusing the achievement-tracking pattern above) since
-  // this needs to re-fire every year, not just once ever.
+  // Birthday balloons + cake confetti (2026-09-02, cake added 2026-09-22
+  // at Ben's request) — once per calendar day, on your own dashboard, on
+  // your actual birthday, only if a DOB is actually on file (isBirthdayToday
+  // returns false with no DOB, so nothing fires for players who've never
+  // set one). Separate localStorage key per day (rather than reusing the
+  // achievement-tracking pattern above) since this needs to re-fire every
+  // year, not just once ever. Fires both effects together — rising
+  // balloons plus a burst of little cakes reads as a fuller celebration
+  // than either alone.
   useEffect(() => {
     if (!isOwnProfile || loading || !player) return;
     if (!isBirthdayToday(player.date_of_birth)) return;
@@ -713,6 +718,7 @@ export default function Dashboard({
     const seenKey = `sideline_birthday_shown_${player.id}_${todayKey}`;
     if (localStorage.getItem(seenKey)) return;
     fireBalloons();
+    fireConfetti({ shape: "cake", pieceCount: 90 });
     try {
       localStorage.setItem(seenKey, "1");
     } catch {
