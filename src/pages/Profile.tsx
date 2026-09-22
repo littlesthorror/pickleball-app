@@ -9,6 +9,22 @@ import type { PlayerStatus, PlayerMatchHistoryRow, PlayerPrivateInfo } from "../
 import { useConfirm } from "../components/ConfirmDialog";
 import { useToast } from "../components/Toast";
 
+// See the draft-persistence comment inside the component for why this
+// exists.
+const FIRST_TIME_PROFILE_DRAFT_KEY = "sideline-draft-first-time-profile";
+
+// Read on mount only, before any state is set up — kept as a plain
+// module-level function (not a hook) so it can be called directly inside
+// each field's useState initializer below.
+function loadFirstTimeProfileDraft(): Record<string, string> | null {
+  try {
+    const raw = sessionStorage.getItem(FIRST_TIME_PROFILE_DRAFT_KEY);
+    return raw ? (JSON.parse(raw) as Record<string, string>) : null;
+  } catch {
+    return null;
+  }
+}
+
 // Used two ways: as a one-time "complete your profile" step right after
 // first Google sign-in (isFirstTime=true, no way to skip past it except
 // saving), and later as a normal editable Profile tab. Full name, DOB, and
@@ -36,11 +52,35 @@ export default function Profile({
 }) {
   const confirm = useConfirm();
   const toast = useToast();
-  const [displayName, setDisplayName] = useState(player.display_name);
-  const [dob, setDob] = useState(player.date_of_birth ?? "");
-  const [dobVisible, setDobVisible] = useState(player.date_of_birth_visible);
-  const [profileVisible, setProfileVisible] = useState(player.profile_visible);
-  const [hideOwnRating, setHideOwnRating] = useState(player.hide_own_rating);
+
+  // Draft persistence for first-time setup only (2026-09-22, added after a
+  // real report — a new member said the page "reset" if they went off it
+  // mid-fill-in). This is the one-time onboarding form with no way to skip
+  // past it, so losing everything typed so far (name, emergency contact,
+  // medical info) on a backgrounded-tab reload is a much worse first
+  // impression than the same loss would be on the regular "My account"
+  // edit screen — scoped to isFirstTime for that reason, same sessionStorage
+  // approach as Notices/Events/FAQ/Quick Entry (see lib/useDraft.ts),
+  // applied by hand here since this form's fields are several separate
+  // useState calls rather than the single flat object useDraft expects.
+  // Booleans are stored as "true"/"false" strings, same constraint as
+  // useDraft — sessionStorage only holds strings. The photo can't be
+  // persisted this way (a picked File doesn't survive a reload regardless),
+  // so a re-pick is still needed after one — same known limitation as
+  // everywhere else this pattern is used.
+  const initialDraft = isFirstTime ? loadFirstTimeProfileDraft() : null;
+
+  const [displayName, setDisplayName] = useState(initialDraft?.displayName ?? player.display_name);
+  const [dob, setDob] = useState(initialDraft?.dob ?? (player.date_of_birth ?? ""));
+  const [dobVisible, setDobVisible] = useState(
+    initialDraft?.dobVisible !== undefined ? initialDraft.dobVisible === "true" : player.date_of_birth_visible
+  );
+  const [profileVisible, setProfileVisible] = useState(
+    initialDraft?.profileVisible !== undefined ? initialDraft.profileVisible === "true" : player.profile_visible
+  );
+  const [hideOwnRating, setHideOwnRating] = useState(
+    initialDraft?.hideOwnRating !== undefined ? initialDraft.hideOwnRating === "true" : player.hide_own_rating
+  );
   const [avatarUrl, setAvatarUrl] = useState(player.avatar_url);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -55,13 +95,47 @@ export default function Profile({
   // down by RLS to "the player themselves, or an admin" — these no longer
   // come from the `player` prop (PlayerStatus/player_status no longer
   // carries them at all), so they're fetched separately below.
-  const [emergencyName, setEmergencyName] = useState("");
-  const [emergencyPhone, setEmergencyPhone] = useState("");
+  const [emergencyName, setEmergencyName] = useState(initialDraft?.emergencyName ?? "");
+  const [emergencyPhone, setEmergencyPhone] = useState(initialDraft?.emergencyPhone ?? "");
 
   // Essential Medical Information (2026-08-28) — conditions, allergies,
   // current medications. Same admin-only visibility as the emergency
   // contact fields above, same save path.
-  const [medicalInfo, setMedicalInfo] = useState("");
+  const [medicalInfo, setMedicalInfo] = useState(initialDraft?.medicalInfo ?? "");
+
+  // Mirrors the fields above to sessionStorage on every change, first-time
+  // only — see the draft-persistence comment above.
+  useEffect(() => {
+    if (!isFirstTime) return;
+    try {
+      sessionStorage.setItem(
+        FIRST_TIME_PROFILE_DRAFT_KEY,
+        JSON.stringify({
+          displayName,
+          dob,
+          dobVisible: String(dobVisible),
+          profileVisible: String(profileVisible),
+          hideOwnRating: String(hideOwnRating),
+          emergencyName,
+          emergencyPhone,
+          medicalInfo,
+        })
+      );
+    } catch {
+      // storage full/unavailable — not worth surfacing an error for a
+      // convenience feature
+    }
+  }, [
+    isFirstTime,
+    displayName,
+    dob,
+    dobVisible,
+    profileVisible,
+    hideOwnRating,
+    emergencyName,
+    emergencyPhone,
+    medicalInfo,
+  ]);
 
   useEffect(() => {
     if (isFirstTime) return; // nothing to fetch yet during first-time setup
@@ -365,6 +439,13 @@ export default function Profile({
     setSaving(false);
     if (refreshed) onSaved(refreshed as PlayerStatus);
     if (!isFirstTime) toast.success("Saved!");
+    if (isFirstTime) {
+      try {
+        sessionStorage.removeItem(FIRST_TIME_PROFILE_DRAFT_KEY);
+      } catch {
+        // ignore
+      }
+    }
   }
 
   return (
@@ -373,7 +454,8 @@ export default function Profile({
         <>
           <h1>Welcome!</h1>
           <p style={{ color: "#475569" }}>
-            Quick one-time setup — everything below is optional except your name.
+            Quick one-time setup — everything below is optional except your name. Your answers are saved on this
+            device as you go, so it's safe to leave and come back if you get interrupted partway through.
           </p>
         </>
       ) : (
@@ -381,6 +463,17 @@ export default function Profile({
       )}
 
       <div className="card">
+        {/* Section numbering (2026-09-22, Ben's request) — purely visual
+            structure so the one-time setup reads as three short groups
+            instead of one long wall of fields. First-time only; the regular
+            "My account" edit page stays as plain labels since it's not a
+            step-based setup. */}
+        {isFirstTime && (
+          <p className="stat-meta" style={{ marginTop: 0, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", fontSize: "0.72rem" }}>
+            1 of 3 — About you
+          </p>
+        )}
+
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
           <Avatar name={displayName} url={avatarUrl} size={72} />
           <div>
@@ -410,7 +503,26 @@ export default function Profile({
           </div>
         </div>
 
-        <label>Full name</label>
+        <label>
+          Full name
+          {isFirstTime && (
+            <span
+              style={{
+                marginLeft: 8,
+                fontSize: "0.68rem",
+                fontWeight: 700,
+                color: "var(--orange-500)",
+                border: "1px solid var(--orange-500)",
+                borderRadius: 6,
+                padding: "1px 6px",
+                textTransform: "uppercase",
+                letterSpacing: "0.03em",
+              }}
+            >
+              Required
+            </span>
+          )}
+        </label>
         <input
           type="text"
           value={displayName}
@@ -447,6 +559,15 @@ export default function Profile({
         </div>
         <p className="stat-meta">Hidden from everyone else by default — only you (and admins) can see it either way.</p>
 
+        {isFirstTime && (
+          <p
+            className="stat-meta"
+            style={{ marginTop: 24, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", fontSize: "0.72rem" }}
+          >
+            2 of 3 — Privacy settings
+          </p>
+        )}
+
         <label>Leaderboard visibility</label>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <input
@@ -482,6 +603,15 @@ export default function Profile({
           still get ranked, and still show up normally to everyone else — you just won't see the number
           yourself.
         </p>
+
+        {isFirstTime && (
+          <p
+            className="stat-meta"
+            style={{ marginTop: 24, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", fontSize: "0.72rem" }}
+          >
+            3 of 3 — Emergency & medical (optional)
+          </p>
+        )}
 
         <label>Emergency contact name (optional)</label>
         <input
