@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import { FunctionsHttpError } from "@supabase/supabase-js";
 import { supabase } from "../supabaseClient";
@@ -6,6 +6,7 @@ import type { MatchStatus } from "../types";
 import { useConfirm } from "../components/ConfirmDialog";
 import { useToast } from "../components/Toast";
 import PageLoading from "../components/PageLoading";
+import { fetchAllRows } from "../lib/fetchAllRows";
 
 const PAGE_SIZE = 20;
 
@@ -62,6 +63,19 @@ export default function GameHistory() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState({ teamA: "", teamB: "" });
   const [savingEdit, setSavingEdit] = useState(false);
+  // Search (2026-09-24, Ben's request) — matches by player name (any of
+  // the 4 slots) or by score. The normal view below stays efficiently
+  // server-paginated (only ever fetches 20 rows at a time), but searching
+  // "any game with this player in it" isn't something a single page can
+  // answer, so a search fetches the WHOLE match history once (via
+  // fetchAllRows, same fix as ClubStats' PostgREST 1000-row cap issue)
+  // and filters/paginates that client-side instead. Only fetched lazily,
+  // the first time someone actually types something.
+  const [search, setSearch] = useState("");
+  const [allMatches, setAllMatches] = useState<MatchRow[] | null>(null);
+  const [allMatchesLoading, setAllMatchesLoading] = useState(false);
+  const [allMatchesError, setAllMatchesError] = useState<string | null>(null);
+  const searchActive = search.trim().length > 0;
 
   function load() {
     setLoading(true);
@@ -100,6 +114,70 @@ export default function GameHistory() {
 
   useEffect(load, [page]);
 
+  // Refreshes the normal paginated view AND drops the cached full-history
+  // search results (if any), so an edit/delete made while searching
+  // doesn't leave stale rows/scores behind in that cached copy — the
+  // search effect above re-fetches automatically once allMatches is null
+  // again, same as its very first load.
+  function reload() {
+    load();
+    setAllMatches(null);
+  }
+
+  useEffect(() => {
+    if (!searchActive || allMatches !== null || allMatchesLoading) return;
+    setAllMatchesLoading(true);
+    setAllMatchesError(null);
+    // Typed <any> here rather than <MatchRow> — Supabase's query builder
+    // infers an embedded to-one relation (via the named FK hint) as an
+    // array shape without generated DB types telling it otherwise, same
+    // reason load()'s own query above casts its result afterward instead
+    // of typing the select() call directly.
+    fetchAllRows<any>((from, to) =>
+      supabase
+        .from("matches")
+        .select(
+          `
+          id,
+          played_at,
+          team_a_score,
+          team_b_score,
+          status,
+          team_a_player_1:players!matches_team_a_player_1_id_fkey(display_name),
+          team_a_player_2:players!matches_team_a_player_2_id_fkey(display_name),
+          team_b_player_1:players!matches_team_b_player_1_id_fkey(display_name),
+          team_b_player_2:players!matches_team_b_player_2_id_fkey(display_name)
+        `
+        )
+        .order("played_at", { ascending: false })
+        .range(from, to)
+    ).then(({ data, error }) => {
+      setAllMatchesLoading(false);
+      if (error) setAllMatchesError(error);
+      else setAllMatches(data as unknown as MatchRow[]);
+    });
+  }, [searchActive, allMatches, allMatchesLoading]);
+
+  // Reset to page 1 whenever the search text changes (including clearing
+  // it) — a page number left over from a longer filtered/unfiltered list
+  // could otherwise point past the end of a shorter one.
+  useEffect(() => {
+    setPage(0);
+  }, [search]);
+
+  const searchResults = useMemo(() => {
+    if (!searchActive || !allMatches) return [];
+    const q = search.trim().toLowerCase();
+    return allMatches.filter((m) => {
+      const names = [m.team_a_player_1, m.team_a_player_2, m.team_b_player_1, m.team_b_player_2].map(
+        (p) => p?.display_name.toLowerCase() ?? ""
+      );
+      const scoreText = `${m.team_a_score}-${m.team_b_score}`;
+      const reverseScoreText = `${m.team_b_score}-${m.team_a_score}`;
+      return names.some((n) => n.includes(q)) || scoreText.includes(q) || reverseScoreText.includes(q);
+    });
+  }, [search, allMatches, searchActive]);
+
   // Only ever offered for a mis-entered game. Any confirmed game can be
   // deleted, not just the most recent one for its four players — if it's
   // an older game, the edge function automatically recalculates every
@@ -133,7 +211,7 @@ export default function GameHistory() {
       // failed request alone.
       const { data: recheck } = await supabase.from("matches").select("id").eq("id", m.id).maybeSingle();
       if (!recheck) {
-        load();
+        reload();
         return;
       }
 
@@ -159,7 +237,7 @@ export default function GameHistory() {
       toast.error(data.error);
       return;
     }
-    load();
+    reload();
   }
 
   function startEdit(m: MatchRow) {
@@ -232,7 +310,7 @@ export default function GameHistory() {
 
       if (recheck?.team_a_score === teamAScore && recheck?.team_b_score === teamBScore) {
         setEditingId(null);
-        load();
+        reload();
         return;
       }
 
@@ -252,12 +330,21 @@ export default function GameHistory() {
       return;
     }
     setEditingId(null);
-    load();
+    reload();
   }
 
-  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
-  const from = totalCount === 0 ? 0 : page * PAGE_SIZE + 1;
-  const to = Math.min(totalCount, (page + 1) * PAGE_SIZE);
+  // While searching, everything below reads from the client-filtered/
+  // paginated searchResults instead of the normal server-paginated
+  // matches/totalCount — same PAGE_SIZE, same page state, just a
+  // different source list.
+  const displayedMatches = searchActive ? searchResults.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE) : matches;
+  const displayedTotalCount = searchActive ? searchResults.length : totalCount;
+  const displayedLoading = searchActive ? allMatchesLoading : loading;
+  const displayedError = searchActive ? allMatchesError : error;
+
+  const totalPages = Math.max(1, Math.ceil(displayedTotalCount / PAGE_SIZE));
+  const from = displayedTotalCount === 0 ? 0 : page * PAGE_SIZE + 1;
+  const to = Math.min(displayedTotalCount, (page + 1) * PAGE_SIZE);
 
   return (
     <div>
@@ -266,19 +353,27 @@ export default function GameHistory() {
         Every game entered into the system, newest first.
       </p>
 
-      {loading ? (
+      <input
+        type="text"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        placeholder="Search by player name or score…"
+        style={{ marginBottom: 16 }}
+      />
+
+      {displayedLoading ? (
         <PageLoading label="Loading games…" />
-      ) : error ? (
-        <p className="error">{error}</p>
-      ) : matches.length === 0 ? (
-        <p className="stat-meta">No games have been entered yet.</p>
+      ) : displayedError ? (
+        <p className="error">{displayedError}</p>
+      ) : displayedMatches.length === 0 ? (
+        <p className="stat-meta">{searchActive ? "No games match your search." : "No games have been entered yet."}</p>
       ) : (
         <>
           <p className="stat-meta">
-            Showing {from}–{to} of {totalCount} game{totalCount === 1 ? "" : "s"}
+            Showing {from}–{to} of {displayedTotalCount} game{displayedTotalCount === 1 ? "" : "s"}
           </p>
 
-          {matches.map((m) => (
+          {displayedMatches.map((m) => (
             <div className="card" key={m.id}>
               <div
                 style={{

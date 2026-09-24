@@ -106,11 +106,18 @@ export function buildFixturesDocxBlob(
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`;
 
   const encoder = new TextEncoder();
-  return buildZip([
-    { name: "[Content_Types].xml", data: encoder.encode(contentTypesXml) },
-    { name: "_rels/.rels", data: encoder.encode(rootRelsXml) },
-    { name: "word/document.xml", data: encoder.encode(documentXml) },
-  ]);
+  return buildZip(
+    [
+      { name: "[Content_Types].xml", data: encoder.encode(contentTypesXml) },
+      { name: "_rels/.rels", data: encoder.encode(rootRelsXml) },
+      { name: "word/document.xml", data: encoder.encode(documentXml) },
+    ],
+    // Real Word MIME type, not the zipWriter default of "application/zip"
+    // — see zipWriter.ts's header comment for why this matters on
+    // Android (2026-09-24 bug: a Samsung phone unpacked the download into
+    // a folder of XML instead of opening it as a document).
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  );
 }
 
 export function downloadBlob(filename: string, blob: Blob) {

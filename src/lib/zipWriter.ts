@@ -7,6 +7,15 @@
 // writer is a few dozen lines, not a project. Not intended as a general
 // zip tool: no directories, no streaming, no compression, entries capped
 // well under 4GB (fine for a text-only document).
+//
+// `mimeType` defaults to plain "application/zip" but a caller building a
+// specific container format (a .docx, in fixturesDocx.ts's case) should
+// pass that format's real MIME type instead — some Android browsers/file
+// managers key off the blob's actual MIME type rather than the filename
+// extension when deciding what to do with a download, and label a
+// generic "application/zip" blob as an archive to auto-extract rather
+// than a document to open. Fixed 2026-09-24 after exactly this happened
+// on a Samsung phone (the .docx came out as an unpacked folder of XML).
 
 export interface ZipEntry {
   name: string;
@@ -38,7 +47,7 @@ function writeUint32LE(arr: number[], v: number) {
   arr.push(v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff);
 }
 
-export function buildZip(entries: ZipEntry[]): Blob {
+export function buildZip(entries: ZipEntry[], mimeType = "application/zip"): Blob {
   const encoder = new TextEncoder();
   const { date, time } = dosDateTime();
   const chunks: Uint8Array[] = [];
@@ -104,5 +113,5 @@ export function buildZip(entries: ZipEntry[]): Blob {
   writeUint16LE(end, 0); // comment length
   chunks.push(new Uint8Array(end));
 
-  return new Blob(chunks as BlobPart[], { type: "application/zip" });
+  return new Blob(chunks as BlobPart[], { type: mimeType });
 }
