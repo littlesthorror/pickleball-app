@@ -2,14 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { FunctionsHttpError } from "@supabase/supabase-js";
 import { supabase } from "../supabaseClient";
-import Avatar from "../components/Avatar";
 import type { LegacyBadgeRow, MatchAuditLogRow, PlayerPrivateInfo, PlayerStatus } from "../types";
 import { useConfirm } from "../components/ConfirmDialog";
 import { useToast } from "../components/Toast";
 import PageLoading from "../components/PageLoading";
-import { ShowMoreLess } from "../components/ShowMoreLess";
+import MemberList from "../components/MemberList";
 
-const PAGE_SIZE = 20;
 const ERROR_LOG_LIMIT = 50;
 const MATCH_AUDIT_LOG_LIMIT = 100;
 
@@ -68,20 +66,18 @@ interface ClientErrorLog {
   players: { display_name: string } | null;
 }
 
-// Full admin-management screen — replaces the earlier "hardcoded admin
-// emails" approach. Any existing admin can promote/demote other players,
-// deactivate/reactivate accounts, soft-reset a player's rating history
-// (their own view resets to a fresh start; everyone else's shared match
-// data is untouched — see supabase/functions/reset-player), and delete a
-// player outright, but only once they have zero games played (the delete
-// button is hidden otherwise, and the database's foreign-key constraints
-// are the real backstop if that's ever bypassed).
+// Club settings + admin roster screen — replaces the earlier "hardcoded
+// admin emails" approach. Any existing admin can promote/demote other
+// admins, and the same per-member actions (deactivate, reset rating
+// history, delete, legacy badges) are available here for admins
+// themselves via the shared MemberList component (see
+// src/components/MemberList.tsx).
 //
-// Every registered player shows up here, not just admins — this is also
-// where roles/deactivation/reset live for anyone. With ~200 club members
-// potentially signed up, admins are pinned to the top (highest priority
-// to find quickly), then everyone else alphabetically, with a search box
-// and "show more" pagination so the list stays manageable.
+// Split 2026-09-24 (Ben: this page "keeps getting pushed down" as more
+// settings sections were added) — everyone who ISN'T an admin now lives
+// on the separate Player List page/tab instead, which is where the
+// search box and full member roster live. This page only ever shows the
+// (short) admin list, so no search bar is needed here.
 export default function AdminManagement({
   currentUserId,
   onSelectPlayer,
@@ -105,10 +101,7 @@ export default function AdminManagement({
   const [privateInfoByPlayer, setPrivateInfoByPlayer] = useState<Record<string, PlayerPrivateInfo>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [busyId, setBusyId] = useState<string | null>(null);
   const [recomputing, setRecomputing] = useState(false);
-  const [search, setSearch] = useState("");
-  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   // The one shared code new members enter to join — see InviteGate.tsx and
   // the redeem_invite_code() function. Anyone who doesn't have this code
@@ -130,15 +123,6 @@ export default function AdminManagement({
   const [showQuarterlyCupTab, setShowQuarterlyCupTab] = useState(false);
   const [savingQuarterlyCupTab, setSavingQuarterlyCupTab] = useState(false);
 
-  // Draft text for each player's role title, keyed by player id — lets
-  // each card have its own editable field without a form per player.
-  const [roleDrafts, setRoleDrafts] = useState<Record<string, string>>({});
-  const [nameDrafts, setNameDrafts] = useState<Record<string, string>>({});
-  // Which player's name is currently being edited (pencil-icon toggle,
-  // added 2026-08-27 to replace the always-visible name input with a
-  // cleaner "tap to edit" row per Ben's request — only one at a time).
-  const [editingNameId, setEditingNameId] = useState<string | null>(null);
-
   // Client-side error logs (2026-08-25) — see src/lib/errorLogging.ts.
   const [errorLogs, setErrorLogs] = useState<ClientErrorLog[]>([]);
   const [errorLogsLoading, setErrorLogsLoading] = useState(true);
@@ -159,19 +143,6 @@ export default function AdminManagement({
   // legacy_badges migration). Fetched once for every player, then grouped
   // by player_id client-side rather than one query per card.
   const [legacyBadges, setLegacyBadges] = useState<LegacyBadgeRow[]>([]);
-  const [openLegacyFormId, setOpenLegacyFormId] = useState<string | null>(null);
-  // Which player's medical info is currently expanded (2026-08-28) — kept
-  // collapsed behind a small tap-to-reveal pill by default, same idiom as
-  // badge descriptions on the Dashboard, so a long entry never blows out
-  // the card's height or looks messy when the list first loads.
-  const [expandedMedicalId, setExpandedMedicalId] = useState<string | null>(null);
-  const [legacyDraft, setLegacyDraft] = useState({
-    emoji: "🏆",
-    label: "",
-    description: "",
-    achievedAt: new Date().toISOString().slice(0, 10),
-  });
-  const [grantingBadge, setGrantingBadge] = useState(false);
 
   // Placeholder/dummy players (2026-09-01) — for members reluctant to sign
   // up themselves who still need to be registered in matches/competitions.
@@ -191,9 +162,7 @@ export default function AdminManagement({
         if (error) {
           setError(error.message);
         } else {
-          const rows = (data ?? []) as PlayerStatus[];
-          setPlayers(rows);
-          setRoleDrafts(Object.fromEntries(rows.map((p) => [p.id, p.role_title ?? ""])));
+          setPlayers((data ?? []) as PlayerStatus[]);
         }
         setLoading(false);
       });
@@ -300,55 +269,6 @@ export default function AdminManagement({
 
   const playerNameById = useMemo(() => new Map(players.map((p) => [p.id, p.display_name])), [players]);
 
-  async function grantLegacyBadge(player: PlayerStatus) {
-    if (!legacyDraft.label.trim() || !legacyDraft.description.trim()) return;
-    setGrantingBadge(true);
-    const { error } = await supabase.from("legacy_badges").insert({
-      player_id: player.id,
-      emoji: legacyDraft.emoji.trim() || "🏆",
-      label: legacyDraft.label.trim(),
-      description: legacyDraft.description.trim(),
-      achieved_at: legacyDraft.achievedAt,
-      granted_by: currentUserId,
-    });
-    setGrantingBadge(false);
-    if (error) {
-      toast.error(`Couldn't grant this badge: ${error.message}`);
-      return;
-    }
-    setLegacyDraft({ emoji: "🏆", label: "", description: "", achievedAt: new Date().toISOString().slice(0, 10) });
-    setOpenLegacyFormId(null);
-    loadLegacyBadges();
-  }
-
-  async function revokeLegacyBadge(badge: LegacyBadgeRow) {
-    if (!(await confirm(`Remove the "${badge.label}" badge from this player?`, { danger: true }))) return;
-    const { error } = await supabase.from("legacy_badges").delete().eq("id", badge.id);
-    if (error) {
-      toast.error(`Couldn't remove this badge: ${error.message}`);
-      return;
-    }
-    loadLegacyBadges();
-  }
-
-  // Admins first (highest priority to find quickly), then everyone else
-  // alphabetically. Search filters by name before sorting/paginating.
-  const filteredSorted = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    const filtered = q ? players.filter((p) => p.display_name.toLowerCase().includes(q)) : players;
-    return [...filtered].sort((a, b) => {
-      if (a.is_admin !== b.is_admin) return a.is_admin ? -1 : 1;
-      return a.display_name.localeCompare(b.display_name);
-    });
-  }, [players, search]);
-
-  useEffect(() => {
-    setVisibleCount(PAGE_SIZE);
-  }, [search]);
-
-  const visiblePlayers = filteredSorted.slice(0, visibleCount);
-  const remaining = filteredSorted.length - visiblePlayers.length;
-
   async function saveInviteCode() {
     if (!inviteCodeInput.trim()) return;
     setSavingCode(true);
@@ -370,121 +290,6 @@ export default function AdminManagement({
     const random = Math.random().toString(36).slice(2, 10).toUpperCase();
     setInviteCodeInput(random);
     setCodeSaved(false);
-  }
-
-  // Lets an admin correct a member's display name (typo, name change,
-  // maiden/married name, etc.) without them needing to do it themselves.
-  // Added 2026-08-27. Only the name changes — this doesn't touch their
-  // login/email, avatar, or any match history, which is all keyed off
-  // their player id, not their name.
-  async function saveName(player: PlayerStatus) {
-    const value = (nameDrafts[player.id] ?? player.display_name).trim();
-    if (!value) {
-      toast.error("Name can't be empty.");
-      return;
-    }
-    if (value === player.display_name) {
-      setEditingNameId(null);
-      return;
-    }
-    setBusyId(player.id);
-    const { error } = await supabase.from("players").update({ display_name: value }).eq("id", player.id);
-    setBusyId(null);
-    if (error) {
-      toast.error(`Couldn't update name: ${error.message}`);
-      return;
-    }
-    setEditingNameId(null);
-    load();
-  }
-
-  function cancelEditName(player: PlayerStatus) {
-    setNameDrafts((prev) => ({ ...prev, [player.id]: player.display_name }));
-    setEditingNameId(null);
-  }
-
-  async function saveRole(player: PlayerStatus) {
-    const value = (roleDrafts[player.id] ?? "").trim();
-    setBusyId(player.id);
-    const { error } = await supabase
-      .from("players")
-      .update({ role_title: value || null })
-      .eq("id", player.id);
-    setBusyId(null);
-    if (error) {
-      toast.error(`Couldn't update role: ${error.message}`);
-      return;
-    }
-    load();
-  }
-
-  async function toggleAdmin(player: PlayerStatus) {
-    setBusyId(player.id);
-    const { error } = await supabase
-      .from("players")
-      .update({ is_admin: !player.is_admin })
-      .eq("id", player.id);
-    setBusyId(null);
-    if (error) {
-      toast.error(`Couldn't update admin status: ${error.message}`);
-      return;
-    }
-    load();
-  }
-
-  async function toggleActive(player: PlayerStatus) {
-    setBusyId(player.id);
-    const { error } = await supabase
-      .from("players")
-      .update({ is_active: !player.is_active })
-      .eq("id", player.id);
-    setBusyId(null);
-    if (error) {
-      toast.error(`Couldn't update: ${error.message}`);
-      return;
-    }
-    load();
-  }
-
-  async function resetHistory(player: PlayerStatus) {
-    if (
-      !(await confirm(
-        `Reset ${player.display_name}'s rating back to a fresh start? Their own dashboard will only count games from this point forward — everyone else's match history against them stays exactly as it is.`,
-        { danger: true }
-      ))
-    ) {
-      return;
-    }
-    setBusyId(player.id);
-    const { error } = await supabase.functions.invoke("reset-player", {
-      body: { player_id: player.id },
-    });
-    setBusyId(null);
-    if (error) {
-      // Same false-failure class as confirm/delete/edit-match — invoke()
-      // can report a client-side error even when the reset actually went
-      // through server-side. Recheck the DB before showing an alarming
-      // message: if reset_at was just set, it worked.
-      const { data: recheck } = await supabase
-        .from("player_ratings")
-        .select("reset_at")
-        .eq("player_id", player.id)
-        .maybeSingle();
-      const justReset =
-        !!recheck?.reset_at && new Date(recheck.reset_at).getTime() > Date.now() - 15000;
-      if (justReset) {
-        load();
-        return;
-      }
-      if (error instanceof FunctionsHttpError) {
-        const body = await error.context.json().catch(() => null);
-        toast.error(body?.error ?? "Couldn't reset this player's history.");
-      } else {
-        toast.error("Couldn't reach the server to reset this player's history — check your connection and try again.");
-      }
-      return;
-    }
-    load();
   }
 
   // Rebuilds EVERY player's rating from the complete confirmed match
@@ -563,34 +368,14 @@ export default function AdminManagement({
     load();
   }
 
-  async function deletePlayer(player: PlayerStatus) {
-    if (!(await confirm(`Permanently delete ${player.display_name}'s account? This can't be undone.`, { danger: true }))) {
-      return;
-    }
-    setBusyId(player.id);
-    const { error } = await supabase.from("players").delete().eq("id", player.id);
-    setBusyId(null);
-    if (error) {
-      // The database's foreign-key constraints are the real safety net —
-      // a player with any match history simply can't be deleted, so this
-      // just explains that in plain language rather than showing the raw
-      // Postgres error.
-      toast.error(
-        `Couldn't delete ${player.display_name} — they still have match history attached to their account. Use "Deactivate" instead to hide them from match entry without losing anyone's shared results.`
-      );
-      return;
-    }
-    load();
-  }
-
   if (loading) return <PageLoading label="Loading players…" />;
   if (error) return <p className="error">{error}</p>;
 
   return (
     <div>
-      <h1>Manage admins</h1>
+      <h1>Admins</h1>
       <p className="stat-meta" style={{ marginBottom: 16 }}>
-        Promote or demote admins, deactivate accounts, or reset a player's rating history.
+        Club-wide settings, plus the admin roster itself. Everyone else lives on the Player list page.
       </p>
 
       <CollapsibleCard title="Invite code">
@@ -844,403 +629,19 @@ export default function AdminManagement({
         </div>
       </CollapsibleCard>
 
-      <div className="card">
-        <h2 style={{ marginTop: 0 }}>Members</h2>
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by name…"
-          style={{ marginBottom: 0 }}
-        />
-        <p className="stat-meta">
-          {filteredSorted.length} member{filteredSorted.length === 1 ? "" : "s"}
-          {search && ` matching "${search}"`} · admins shown first
-        </p>
-      </div>
-
-      {visiblePlayers.map((p) => (
-        <div className={`card${p.is_admin ? " card-admin" : ""}`} key={p.id}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-            <span
-              role={onSelectPlayer ? "button" : undefined}
-              tabIndex={onSelectPlayer ? 0 : undefined}
-              aria-label={onSelectPlayer ? `View ${p.display_name}'s profile` : undefined}
-              onClick={() => onSelectPlayer?.(p.id, p.display_name)}
-              style={{ cursor: onSelectPlayer ? "pointer" : undefined, flexShrink: 0 }}
-            >
-              <Avatar name={p.display_name} url={p.avatar_url} size={40} />
-            </span>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              {editingNameId === p.id ? (
-                // Inline edit mode — replaces the old always-visible name
-                // input row with a pencil-icon toggle (2026-08-27, per
-                // Ben: "rather than another text bar, a pencil icon next
-                // to the name" is neater). Enter saves, Escape cancels.
-                <div style={{ display: "flex", gap: 8 }}>
-                  <input
-                    type="text"
-                    autoFocus
-                    value={nameDrafts[p.id] ?? p.display_name}
-                    onChange={(e) => setNameDrafts((prev) => ({ ...prev, [p.id]: e.target.value }))}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") saveName(p);
-                      if (e.key === "Escape") cancelEditName(p);
-                    }}
-                    placeholder="Display name"
-                    style={{
-                      flex: 1,
-                      minWidth: 0,
-                      padding: "6px 8px",
-                      borderRadius: 8,
-                      border: "1px solid var(--border)",
-                      fontSize: "0.9rem",
-                      fontWeight: 700,
-                    }}
-                  />
-                  <button
-                    disabled={busyId === p.id || (nameDrafts[p.id] ?? p.display_name).trim() === ""}
-                    onClick={() => saveName(p)}
-                    aria-label="Save name"
-                    style={{ flex: "0 0 auto", width: "auto", marginTop: 0, padding: "6px 10px", fontSize: "0.9rem" }}
-                  >
-                    ✓
-                  </button>
-                  <button
-                    disabled={busyId === p.id}
-                    onClick={() => cancelEditName(p)}
-                    aria-label="Cancel editing name"
-                    style={{
-                      flex: "0 0 auto",
-                      width: "auto",
-                      marginTop: 0,
-                      padding: "6px 10px",
-                      fontSize: "0.9rem",
-                      background: "transparent",
-                      color: "var(--navy-500)",
-                      border: "1px solid var(--border)",
-                    }}
-                  >
-                    ✕
-                  </button>
-                </div>
-              ) : (
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <div
-                    role={onSelectPlayer ? "button" : undefined}
-                    tabIndex={onSelectPlayer ? 0 : undefined}
-                    aria-label={onSelectPlayer ? `View ${p.display_name}'s profile` : undefined}
-                    onClick={() => onSelectPlayer?.(p.id, p.display_name)}
-                    style={{
-                      fontWeight: 700,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                      cursor: onSelectPlayer ? "pointer" : undefined,
-                    }}
-                  >
-                    {p.display_name}
-                  </div>
-                  {p.is_placeholder && (
-                    <span
-                      title="Added by an admin — hasn't signed up themselves"
-                      style={{
-                        flexShrink: 0,
-                        padding: "1px 6px",
-                        borderRadius: 999,
-                        background: "var(--border)",
-                        color: "var(--text-muted)",
-                        fontSize: "0.68rem",
-                        fontWeight: 700,
-                      }}
-                    >
-                      Guest
-                    </span>
-                  )}
-                  <button
-                    onClick={() => {
-                      setNameDrafts((prev) => ({ ...prev, [p.id]: p.display_name }));
-                      setEditingNameId(p.id);
-                    }}
-                    aria-label={`Edit ${p.display_name}'s name`}
-                    style={{
-                      flex: "0 0 auto",
-                      width: "auto",
-                      marginTop: 0,
-                      padding: "2px 6px",
-                      fontSize: "0.85rem",
-                      lineHeight: 1,
-                      background: "transparent",
-                      color: "var(--text-muted)",
-                      border: "none",
-                    }}
-                  >
-                    ✏️
-                  </button>
-                </div>
-              )}
-              <div className="stat-meta" style={{ marginTop: 0 }}>
-                {/* Games played removed from here 2026-08-28 (Ben: profile
-                    was feeling busy) — still used elsewhere (e.g. gating
-                    the Delete button below), just not shown in this line
-                    any more. "Admin" capitalised per Ben's request. */}
-                {[!p.is_active && "Deactivated", p.is_admin && "Admin", p.role_title]
-                  .filter(Boolean)
-                  .join(" · ")}
-              </div>
-              {/* Emergency contact (2026-08-28) — set by the player themselves
-                  in My Account, shown here since admins are the only people
-                  who should ever see it. Read from player_private_info
-                  (2026-08-31) rather than the player_status row — see
-                  types.ts's PlayerPrivateInfo comment. */}
-              {(privateInfoByPlayer[p.id]?.emergency_contact_name || privateInfoByPlayer[p.id]?.emergency_contact_phone) && (
-                <div className="stat-meta" style={{ marginTop: 2 }}>
-                  🚨 Emergency contact: {privateInfoByPlayer[p.id]?.emergency_contact_name ?? "—"}
-                  {privateInfoByPlayer[p.id]?.emergency_contact_phone ? ` · ${privateInfoByPlayer[p.id]?.emergency_contact_phone}` : ""}
-                </div>
-              )}
-              {/* Essential Medical Information (2026-08-28) — same
-                  admin-only visibility as emergency contact above. Kept
-                  behind a tap-to-reveal pill rather than always shown
-                  inline, since a long entry would otherwise blow out the
-                  card's height and look messy — the pill itself is always
-                  visible (so admins can always see at a glance that info
-                  is on file) even when collapsed. Reworked 2026-08-28 at
-                  Ben's request. */}
-              {privateInfoByPlayer[p.id]?.medical_info && (
-                <div style={{ marginTop: 6 }}>
-                  <span
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => setExpandedMedicalId((id) => (id === p.id ? null : p.id))}
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 4,
-                      padding: "3px 9px",
-                      borderRadius: 999,
-                      background: "var(--orange-100)",
-                      color: "var(--orange-600)",
-                      fontSize: "0.75rem",
-                      fontWeight: 700,
-                      cursor: "pointer",
-                    }}
-                  >
-                    ⚕️ Medical info on file {expandedMedicalId === p.id ? "▲" : "▼"}
-                  </span>
-                  {expandedMedicalId === p.id && (
-                    <div
-                      style={{
-                        marginTop: 4,
-                        padding: "8px 10px",
-                        borderRadius: 8,
-                        background: "var(--orange-100)",
-                        color: "var(--orange-600)",
-                        fontSize: "0.8rem",
-                        fontWeight: 600,
-                        maxWidth: 420,
-                      }}
-                    >
-                      {privateInfoByPlayer[p.id]?.medical_info}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-            {/* Leaderboard-visibility indicator (2026-08-29, at Ben's
-                request) — a subtle open/crossed-out eye reflecting each
-                player's own "Show me on the club leaderboard" toggle in My
-                Account (player_status.profile_visible), so admins can see
-                at a glance who's hidden without opening each profile. */}
-            <span
-              title={p.profile_visible ? "Visible on the leaderboard" : "Hidden from the leaderboard"}
-              aria-label={p.profile_visible ? "Visible on the leaderboard" : "Hidden from the leaderboard"}
-              style={{ flexShrink: 0, alignSelf: "flex-start", color: "var(--text-muted)", opacity: p.profile_visible ? 0.5 : 0.85 }}
-            >
-              {p.profile_visible ? (
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z" />
-                  <circle cx="12" cy="12" r="3" />
-                </svg>
-              ) : (
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 7 11 7a13.16 13.16 0 0 1-1.67 2.68M6.61 6.61A13.53 13.53 0 0 0 1 12s4 7 11 7a9.26 9.26 0 0 0 5.39-1.61M14.12 14.12a3 3 0 1 1-4.24-4.24" />
-                  <path d="M1 1l22 22" />
-                </svg>
-              )}
-            </span>
-          </div>
-
-          <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-            <input
-              type="text"
-              value={roleDrafts[p.id] ?? ""}
-              onChange={(e) => setRoleDrafts((prev) => ({ ...prev, [p.id]: e.target.value }))}
-              placeholder="Role (optional) — e.g. Club Coach"
-              style={{
-                flex: 1,
-                padding: "8px 10px",
-                borderRadius: 8,
-                border: "1px solid var(--border)",
-                fontSize: "0.85rem",
-              }}
-            />
-            <button
-              disabled={busyId === p.id || (roleDrafts[p.id] ?? "") === (p.role_title ?? "")}
-              onClick={() => saveRole(p)}
-              style={{ flex: "0 0 auto", width: "auto", marginTop: 0, padding: "8px 14px", fontSize: "0.85rem" }}
-            >
-              Save
-            </button>
-          </div>
-
-          {/* Legacy badges (2026-08-28) — manual grant for achievements that
-              predate this app's own records, e.g. an old competition run
-              before Competitions existed in-app. See legacy_badges
-              migration for why every other badge is computed, not granted. */}
-          <div style={{ marginBottom: 12 }}>
-            {legacyBadges.filter((b) => b.player_id === p.id).length > 0 && (
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
-                {legacyBadges
-                  .filter((b) => b.player_id === p.id)
-                  .map((b) => (
-                    <span
-                      key={b.id}
-                      title={b.description}
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 4,
-                        padding: "3px 8px",
-                        borderRadius: 999,
-                        border: "1px solid var(--border)",
-                        fontSize: "0.78rem",
-                      }}
-                    >
-                      {b.emoji} {b.label}
-                      <span
-                        role="button"
-                        tabIndex={0}
-                        aria-label={`Remove ${b.label} badge`}
-                        onClick={() => revokeLegacyBadge(b)}
-                        style={{ cursor: "pointer", color: "var(--text-muted)", marginLeft: 2 }}
-                      >
-                        ✕
-                      </span>
-                    </span>
-                  ))}
-              </div>
-            )}
-            {openLegacyFormId === p.id ? (
-              <div style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 10 }}>
-                <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-                  <input
-                    type="text"
-                    value={legacyDraft.emoji}
-                    onChange={(e) => setLegacyDraft((d) => ({ ...d, emoji: e.target.value }))}
-                    placeholder="🏆"
-                    style={{ width: 56, flex: "0 0 auto", padding: "6px 8px", borderRadius: 8, border: "1px solid var(--border)", textAlign: "center" }}
-                  />
-                  <input
-                    type="text"
-                    value={legacyDraft.label}
-                    onChange={(e) => setLegacyDraft((d) => ({ ...d, label: e.target.value }))}
-                    placeholder="Badge name — e.g. 2024 Summer Champion"
-                    style={{ flex: 1, padding: "6px 8px", borderRadius: 8, border: "1px solid var(--border)" }}
-                  />
-                </div>
-                <textarea
-                  value={legacyDraft.description}
-                  onChange={(e) => setLegacyDraft((d) => ({ ...d, description: e.target.value }))}
-                  placeholder="Description shown on their Dashboard — e.g. Won the 2024 Summer Doubles Championship."
-                  rows={2}
-                  style={{ width: "100%", padding: "6px 8px", borderRadius: 8, border: "1px solid var(--border)", fontFamily: "inherit", marginBottom: 8, resize: "vertical" }}
-                />
-                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                  <input
-                    type="date"
-                    value={legacyDraft.achievedAt}
-                    onChange={(e) => setLegacyDraft((d) => ({ ...d, achievedAt: e.target.value }))}
-                    style={{ padding: "6px 8px", borderRadius: 8, border: "1px solid var(--border)" }}
-                  />
-                  <button
-                    disabled={grantingBadge || !legacyDraft.label.trim() || !legacyDraft.description.trim()}
-                    onClick={() => grantLegacyBadge(p)}
-                    style={{ flex: "0 0 auto", width: "auto", marginTop: 0, padding: "6px 12px", fontSize: "0.85rem" }}
-                  >
-                    {grantingBadge ? "Granting…" : "Grant badge"}
-                  </button>
-                  <button
-                    onClick={() => setOpenLegacyFormId(null)}
-                    style={{ flex: "0 0 auto", width: "auto", marginTop: 0, padding: "6px 12px", fontSize: "0.85rem", background: "transparent", color: "var(--navy-500)", border: "1px solid var(--border)" }}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <span
-                className="link-action"
-                role="button"
-                tabIndex={0}
-                onClick={() => {
-                  setLegacyDraft({ emoji: "🏆", label: "", description: "", achievedAt: new Date().toISOString().slice(0, 10) });
-                  setOpenLegacyFormId(p.id);
-                }}
-                style={{ fontSize: "0.78rem" }}
-              >
-                🏅 Grant legacy badge
-              </span>
-            )}
-          </div>
-
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            {p.id !== currentUserId && (
-              <button
-                disabled={busyId === p.id}
-                onClick={() => toggleAdmin(p)}
-                style={{ flex: "1 1 140px", marginTop: 0, padding: "8px", fontSize: "0.85rem" }}
-              >
-                {p.is_admin ? "Remove admin" : "Make admin"}
-              </button>
-            )}
-            <button
-              disabled={busyId === p.id}
-              onClick={() => toggleActive(p)}
-              style={{ flex: "1 1 140px", marginTop: 0, padding: "8px", fontSize: "0.85rem", background: "transparent", color: "var(--navy-500)", border: "1px solid var(--border)" }}
-            >
-              {p.is_active ? "Deactivate" : "Reactivate"}
-            </button>
-            <button
-              disabled={busyId === p.id}
-              onClick={() => resetHistory(p)}
-              style={{ flex: "1 1 140px", marginTop: 0, padding: "8px", fontSize: "0.85rem", background: "transparent", color: "var(--danger)", border: "1px solid var(--border)" }}
-            >
-              Reset history
-            </button>
-            {p.games_played === 0 && (
-              <button
-                disabled={busyId === p.id}
-                onClick={() => deletePlayer(p)}
-                style={{ flex: "1 1 140px", marginTop: 0, padding: "8px", fontSize: "0.85rem", background: "var(--danger)" }}
-              >
-                Delete
-              </button>
-            )}
-          </div>
-        </div>
-      ))}
-
-      {filteredSorted.length === 0 && (
-        <p className="stat-meta">No members match "{search}".</p>
-      )}
-
-      <ShowMoreLess
-        hasMore={remaining > 0}
-        expanded={visibleCount > PAGE_SIZE}
-        moreCount={remaining}
-        onShowMore={() => setVisibleCount((c) => c + PAGE_SIZE)}
-        onShowLess={() => setVisibleCount(PAGE_SIZE)}
+      <MemberList
+        players={players}
+        privateInfoByPlayer={privateInfoByPlayer}
+        legacyBadges={legacyBadges}
+        currentUserId={currentUserId}
+        onSelectPlayer={onSelectPlayer}
+        onReload={load}
+        onReloadBadges={loadLegacyBadges}
+        filter={(p) => p.is_admin}
+        showSearch={false}
+        sortAdminsFirst={false}
+        listLabel="admin"
+        emptyMessage="No admins yet."
       />
     </div>
   );

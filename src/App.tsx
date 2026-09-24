@@ -5,6 +5,7 @@ import MatchEntry from "./pages/MatchEntry";
 import Matchmaking from "./pages/Matchmaking";
 import Login from "./pages/Login";
 import AdminManagement from "./pages/AdminManagement";
+import PlayerList from "./pages/PlayerList";
 import GameHistory from "./pages/GameHistory";
 import Dashboard from "./pages/Dashboard";
 import Leaderboard from "./pages/Leaderboard";
@@ -51,6 +52,7 @@ const TABS = [
   "match-entry",
   "matchmaking",
   "manage-admins",
+  "player-list",
   "game-history",
   "profile",
 ] as const;
@@ -317,7 +319,7 @@ export default function App() {
     setPreviewAsPlayer(next);
     // Bounce back to the dashboard if entering preview mode from a tab a
     // regular player wouldn't have access to.
-    if (next && (tab === "match-entry" || tab === "matchmaking" || tab === "manage-admins")) {
+    if (next && (tab === "match-entry" || tab === "matchmaking" || tab === "manage-admins" || tab === "player-list")) {
       setTab("dashboard");
     }
   }
@@ -487,6 +489,9 @@ export default function App() {
                   <button disabled={tab === "manage-admins"} onClick={() => changeTab("manage-admins")}>
                     Admins
                   </button>
+                  <button disabled={tab === "player-list"} onClick={() => changeTab("player-list")}>
+                    Players
+                  </button>
                   <button disabled={tab === "game-history"} onClick={() => changeTab("game-history")}>
                     Game history
                   </button>
@@ -532,6 +537,12 @@ export default function App() {
                     <AdminManagement
                       currentUserId={session.user.id}
                       onSelectPlayer={(id, name) => setViewingPlayer({ id, name, backLabel: "Back to Manage admins" })}
+                    />
+                  )}
+                  {tab === "player-list" && effectiveIsAdmin && (
+                    <PlayerList
+                      currentUserId={session.user.id}
+                      onSelectPlayer={(id, name) => setViewingPlayer({ id, name, backLabel: "Back to Player list" })}
                     />
                   )}
                   {tab === "game-history" && effectiveIsAdmin && <GameHistory />}
