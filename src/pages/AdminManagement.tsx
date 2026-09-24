@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { FunctionsHttpError } from "@supabase/supabase-js";
 import { supabase } from "../supabaseClient";
 import Avatar from "../components/Avatar";
-import type { LegacyBadgeRow, PlayerPrivateInfo, PlayerStatus } from "../types";
+import type { LegacyBadgeRow, MatchAuditLogRow, PlayerPrivateInfo, PlayerStatus } from "../types";
 import { useConfirm } from "../components/ConfirmDialog";
 import { useToast } from "../components/Toast";
 import PageLoading from "../components/PageLoading";
@@ -11,6 +11,7 @@ import { ShowMoreLess } from "../components/ShowMoreLess";
 
 const PAGE_SIZE = 20;
 const ERROR_LOG_LIMIT = 50;
+const MATCH_AUDIT_LOG_LIMIT = 100;
 
 // Reusable collapsible settings section (2026-08-29, Ben's request to
 // "clean up" this page) — Invite code / Competitions tab / Ratings / Error
@@ -141,6 +142,15 @@ export default function AdminManagement({
   // Client-side error logs (2026-08-25) — see src/lib/errorLogging.ts.
   const [errorLogs, setErrorLogs] = useState<ClientErrorLog[]>([]);
   const [errorLogsLoading, setErrorLogsLoading] = useState(true);
+  // Match score audit log (2026-09-24) — who edited or deleted a
+  // confirmed match's score, and what it changed to/from. Player names
+  // are resolved client-side against the `players` list already loaded
+  // above rather than via an embedded join, since the log has 5 separate
+  // player-id columns (performed_by plus the 4 team slots) and Postgrest
+  // needs an FK hint per embedded relation, which gets unwieldy fast for
+  // one row shape.
+  const [matchAuditLog, setMatchAuditLog] = useState<MatchAuditLogRow[]>([]);
+  const [matchAuditLogLoading, setMatchAuditLogLoading] = useState(true);
   const [clearingLogs, setClearingLogs] = useState(false);
   const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
 
@@ -259,6 +269,19 @@ export default function AdminManagement({
     loadErrorLogs();
   }
 
+  function loadMatchAuditLog() {
+    setMatchAuditLogLoading(true);
+    supabase
+      .from("match_score_audit_log")
+      .select("*")
+      .order("performed_at", { ascending: false })
+      .limit(MATCH_AUDIT_LOG_LIMIT)
+      .then(({ data, error }) => {
+        if (!error) setMatchAuditLog((data ?? []) as MatchAuditLogRow[]);
+        setMatchAuditLogLoading(false);
+      });
+  }
+
   function loadLegacyBadges() {
     supabase
       .from("legacy_badges")
@@ -272,7 +295,10 @@ export default function AdminManagement({
   useEffect(load, []);
   useEffect(loadInviteCode, []);
   useEffect(loadErrorLogs, []);
+  useEffect(loadMatchAuditLog, []);
   useEffect(loadLegacyBadges, []);
+
+  const playerNameById = useMemo(() => new Map(players.map((p) => [p.id, p.display_name])), [players]);
 
   async function grantLegacyBadge(player: PlayerStatus) {
     if (!legacyDraft.label.trim() || !legacyDraft.description.trim()) return;
@@ -664,6 +690,61 @@ export default function AdminManagement({
         >
           {recomputing ? "Recomputing…" : "Recompute history"}
         </button>
+      </CollapsibleCard>
+
+      <CollapsibleCard
+        title="Score edit & delete log"
+        subtitle={
+          matchAuditLogLoading ? undefined : matchAuditLog.length === 0 ? "Nothing logged" : `${matchAuditLog.length} logged`
+        }
+      >
+        <p className="stat-meta" style={{ marginTop: 0 }}>
+          Every score correction or deletion done from Game history, so it's answerable here directly rather than
+          needing to dig through raw logs afterward.
+        </p>
+        {matchAuditLogLoading ? (
+          <p className="stat-meta">Loading…</p>
+        ) : matchAuditLog.length === 0 ? (
+          <p className="stat-meta">No corrections or deletions logged yet.</p>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {matchAuditLog.map((entry) => {
+              const a1 = entry.team_a_player_1_id ? playerNameById.get(entry.team_a_player_1_id) ?? "?" : "?";
+              const a2 = entry.team_a_player_2_id ? playerNameById.get(entry.team_a_player_2_id) ?? "?" : "?";
+              const b1 = entry.team_b_player_1_id ? playerNameById.get(entry.team_b_player_1_id) ?? "?" : "?";
+              const b2 = entry.team_b_player_2_id ? playerNameById.get(entry.team_b_player_2_id) ?? "?" : "?";
+              const by = entry.performed_by ? playerNameById.get(entry.performed_by) ?? "Unknown admin" : "Unknown admin";
+              return (
+                <div key={entry.id} style={{ border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
+                    <span style={{ fontWeight: 600, fontSize: "0.85rem" }}>
+                      {entry.action === "delete" ? "Deleted" : "Score corrected"}
+                    </span>
+                    <span className="stat-meta" style={{ marginTop: 0, flex: "0 0 auto" }}>
+                      {new Date(entry.performed_at).toLocaleString(undefined, {
+                        month: "short",
+                        day: "numeric",
+                        hour: "numeric",
+                        minute: "2-digit",
+                      })}
+                    </span>
+                  </div>
+                  <div className="stat-meta" style={{ marginTop: 2 }}>
+                    {a1} & {a2} vs {b1} & {b2} · played{" "}
+                    {new Date(entry.played_at).toLocaleDateString(undefined, { day: "numeric", month: "short" })}
+                  </div>
+                  <div className="stat-meta" style={{ marginTop: 2, color: "var(--text)" }}>
+                    {entry.old_team_a_score}-{entry.old_team_b_score}
+                    {entry.action === "edit_score"
+                      ? ` → ${entry.new_team_a_score}-${entry.new_team_b_score}`
+                      : " (deleted)"}{" "}
+                    · by {by}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </CollapsibleCard>
 
       <CollapsibleCard

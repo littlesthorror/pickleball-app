@@ -64,10 +64,12 @@ Deno.serve(async (req) => {
     }
 
     // Neither of these needs the other's result, so they run together
-    // instead of one after another.
+    // instead of one after another. Selecting the full row (not just
+    // id/status) now — the audit log below needs the old scores, player
+    // ids, and played_at to record what actually changed.
     const [{ data: callerData }, { data: match, error: matchError }] = await Promise.all([
       callerClient.auth.getUser(),
-      supabase.from("matches").select("id, status").eq("id", match_id).single(),
+      supabase.from("matches").select("*").eq("id", match_id).single(),
     ]);
 
     const callerId = callerData?.user?.id;
@@ -94,6 +96,27 @@ Deno.serve(async (req) => {
     if (updateError) {
       return new Response(JSON.stringify({ error: updateError.message }), { status: 500, headers: corsHeaders });
     }
+
+    // Best-effort audit row — logged for any successful score change
+    // (pending or confirmed), not just the confirmed ones that trigger a
+    // recompute, so the log is a complete record of every correction
+    // rather than a partial one. A failure here shouldn't undo or block
+    // the score change itself, which is why this isn't awaited into the
+    // error-response path below.
+    await supabase.from("match_score_audit_log").insert({
+      action: "edit_score",
+      match_id: match.id,
+      played_at: match.played_at,
+      team_a_player_1_id: match.team_a_player_1_id,
+      team_a_player_2_id: match.team_a_player_2_id,
+      team_b_player_1_id: match.team_b_player_1_id,
+      team_b_player_2_id: match.team_b_player_2_id,
+      old_team_a_score: match.team_a_score,
+      old_team_b_score: match.team_b_score,
+      new_team_a_score: team_a_score,
+      new_team_b_score: team_b_score,
+      performed_by: callerId,
+    });
 
     if (match.status !== "confirmed") {
       // No rating changes were ever applied for this match — the new

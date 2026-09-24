@@ -193,6 +193,29 @@ export interface LegacyBadgeRow {
   created_at: string;
 }
 
+// Match score audit log (2026-09-24) — see 0077_add_match_score_audit_log.sql
+// for why this exists: written by edit-match/delete-match so a score
+// correction or deletion is answerable directly in the app afterward,
+// rather than needing a log-diving investigation. Player ids/played_at
+// are a denormalized snapshot taken at the time of the action, since a
+// delete removes the real matches row entirely.
+export interface MatchAuditLogRow {
+  id: string;
+  action: "edit_score" | "delete";
+  match_id: string;
+  played_at: string;
+  team_a_player_1_id: string | null;
+  team_a_player_2_id: string | null;
+  team_b_player_1_id: string | null;
+  team_b_player_2_id: string | null;
+  old_team_a_score: number;
+  old_team_b_score: number;
+  new_team_a_score: number | null;
+  new_team_b_score: number | null;
+  performed_by: string | null;
+  performed_at: string;
+}
+
 // Partner-finder board (2026-08-28) — see 0051_add_partner_requests.sql.
 // Deliberately a Dashboard widget only, not a dedicated page/nav tab (Ben's
 // explicit preference).

@@ -74,6 +74,28 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "match not found" }), { status: 404, headers: corsHeaders });
     }
 
+    // Best-effort audit row, logged only after a delete actually succeeds
+    // (never before) — the matches row is captured here from the `match`
+    // object already in memory, since by the time anyone reads this log
+    // the real row will be gone. A failure here shouldn't block the
+    // delete's own success response.
+    async function logDeleteAudit() {
+      await supabase.from("match_score_audit_log").insert({
+        action: "delete",
+        match_id: match.id,
+        played_at: match.played_at,
+        team_a_player_1_id: match.team_a_player_1_id,
+        team_a_player_2_id: match.team_a_player_2_id,
+        team_b_player_1_id: match.team_b_player_1_id,
+        team_b_player_2_id: match.team_b_player_2_id,
+        old_team_a_score: match.team_a_score,
+        old_team_b_score: match.team_b_score,
+        new_team_a_score: null,
+        new_team_b_score: null,
+        performed_by: callerId,
+      });
+    }
+
     if (match.status !== "confirmed") {
       // No rating changes were ever applied for this match — safe to just
       // remove it outright, no recompute needed.
@@ -81,6 +103,7 @@ Deno.serve(async (req) => {
       if (deleteError) {
         return new Response(JSON.stringify({ error: deleteError.message }), { status: 500, headers: corsHeaders });
       }
+      await logDeleteAudit();
       return new Response(JSON.stringify({ ok: true, recomputed: false }), { status: 200, headers: corsHeaders });
     }
 
@@ -88,6 +111,7 @@ Deno.serve(async (req) => {
     if (deleteError) {
       return new Response(JSON.stringify({ error: deleteError.message }), { status: 500, headers: corsHeaders });
     }
+    await logDeleteAudit();
 
     const result = await recomputeAllRatings(supabase);
     if (!result.ok) {
