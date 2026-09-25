@@ -595,10 +595,21 @@ function CompetitionDetail({
     return Promise.all([
       supabase.from("competition_teams").select("*").eq("competition_id", competition.id),
       supabase.from("competition_groups").select("*").eq("competition_id", competition.id).order("sort_order"),
+      // Ordered by created_at (2026-09-25 bugfix) — without an explicit
+      // order, Postgres makes no promise about row order at all, and it
+      // was genuinely shifting between reloads. scheduleFixturesByCourt
+      // chunks matches into printed rounds/courts purely by their position
+      // in this array within each raw round, so an unstable fetch order
+      // was reshuffling OTHER fixtures' displayed Round/Court every time
+      // anything triggered a reload (editing a single match's court
+      // included) — not just the one being changed. created_at matches
+      // the order fixtures were originally generated in, which is also
+      // the intended round grouping.
       supabase
         .from("competition_matches")
         .select("*, matches(team_a_score, team_b_score)")
-        .eq("competition_id", competition.id),
+        .eq("competition_id", competition.id)
+        .order("created_at", { ascending: true }),
     ]).then(async ([teamsRes, groupsRes, matchesRes]) => {
       if (teamsRes.error) setError(teamsRes.error.message);
       else setTeams((teamsRes.data ?? []) as CompetitionTeamRow[]);
