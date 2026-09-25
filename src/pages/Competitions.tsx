@@ -1755,7 +1755,7 @@ function GroupFixturesSection({
           return (
             <div key={g.id} style={{ marginBottom: 16, marginTop: groups.length > 1 ? 16 : 0 }}>
               <strong>{g.name}</strong>
-              {groupMatches.map((m) => (
+              {scheduled.map((m) => (
                 <FixtureRow
                   key={m.id}
                   match={m}
@@ -1764,6 +1764,11 @@ function GroupFixturesSection({
                   currentUserId={currentUserId}
                   onChanged={onChanged}
                   locked={competition.status === "completed"}
+                  // No group-wide court schedule here, but a match can still
+                  // carry its own court_override (2026-09-25) — show the
+                  // chip for that one fixture even though the rest of the
+                  // group has no Round/Court layout at all.
+                  courtLabel={m.court != null ? `Court ${m.court}` : undefined}
                   allowDraws={competition.allow_draws}
                 />
               ))}
@@ -1893,6 +1898,39 @@ function FixtureRow({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+
+  // Per-match court override (2026-09-25, Ben's request — "can we edit
+  // them here too?" re: the Court chip). A group's whole schedule can be
+  // fixed at once via "Edit courts" above, but sometimes it's just one
+  // fixture that needs to move — e.g. a court's unexpectedly unavailable
+  // on the day. Reads/writes competition_matches.court_override directly
+  // (see migration 0078 and scheduleFixturesByCourt) rather than going
+  // through edit-match — this is display-only scheduling info, nothing to
+  // do with scores or ratings, so there's no replay to trigger.
+  const [editingCourt, setEditingCourt] = useState(false);
+  const [courtDraft, setCourtDraft] = useState("");
+  const [savingCourt, setSavingCourt] = useState(false);
+
+  function startEditCourt() {
+    setCourtDraft(match.court_override != null ? String(match.court_override) : "");
+    setEditingCourt(true);
+  }
+
+  async function saveCourt() {
+    const value = courtDraft.trim() ? Number(courtDraft) : null;
+    setSavingCourt(true);
+    const { error: courtError } = await supabase
+      .from("competition_matches")
+      .update({ court_override: value })
+      .eq("id", match.id);
+    setSavingCourt(false);
+    if (courtError) {
+      setError(`Couldn't update the court: ${courtError.message}`);
+      return;
+    }
+    setEditingCourt(false);
+    onChanged();
+  }
 
   // Mirrors the not-yet-submitted score to sessionStorage on every change.
   useEffect(() => {
@@ -2105,8 +2143,12 @@ function FixtureRow({
     <div className="match-row" style={{ flexWrap: "wrap" }}>
       <div className="opponent" style={{ flex: "1 1 100%" }}>
         {teamLabel(match.team_a_id)} vs {teamLabel(match.team_b_id)}
-        {courtLabel && (
+        {courtLabel && !editingCourt && (
           <span
+            role={isAdmin ? "button" : undefined}
+            tabIndex={isAdmin ? 0 : undefined}
+            title={isAdmin ? "Tap to change this fixture's court" : undefined}
+            onClick={isAdmin ? startEditCourt : undefined}
             style={{
               display: "inline-block",
               marginLeft: 8,
@@ -2117,9 +2159,62 @@ function FixtureRow({
               fontSize: "0.72rem",
               fontWeight: 700,
               verticalAlign: "middle",
+              cursor: isAdmin ? "pointer" : undefined,
             }}
           >
             {courtLabel}
+            {isAdmin && " ✏️"}
+          </span>
+        )}
+        {isAdmin && editingCourt && (
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 4, marginLeft: 8, verticalAlign: "middle" }}>
+            <input
+              type="number"
+              min={1}
+              autoFocus
+              value={courtDraft}
+              onChange={(e) => setCourtDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") saveCourt();
+                if (e.key === "Escape") setEditingCourt(false);
+              }}
+              placeholder="Court"
+              style={{ width: 60, padding: "2px 6px", fontSize: "0.75rem" }}
+            />
+            <button
+              disabled={savingCourt}
+              onClick={saveCourt}
+              style={{ flex: "0 0 auto", width: "auto", marginTop: 0, padding: "3px 8px", fontSize: "0.72rem" }}
+            >
+              ✓
+            </button>
+            <button
+              disabled={savingCourt}
+              onClick={() => setEditingCourt(false)}
+              style={{
+                flex: "0 0 auto",
+                width: "auto",
+                marginTop: 0,
+                padding: "3px 8px",
+                fontSize: "0.72rem",
+                background: "transparent",
+                color: "var(--navy-500)",
+                border: "1px solid var(--border)",
+              }}
+            >
+              ✕
+            </button>
+          </span>
+        )}
+        {!courtLabel && !editingCourt && isAdmin && match.group_id && (
+          <span
+            className="link-action"
+            role="button"
+            tabIndex={0}
+            onClick={startEditCourt}
+            style={{ marginLeft: 8, fontSize: "0.72rem", verticalAlign: "middle" }}
+          >
+            + Court
           </span>
         )}
         {match.group_id && match.leg === 2 && (

@@ -171,6 +171,10 @@ export function generateGroupFixtures(
 
 export interface ScheduledMatch {
   round: number | null;
+  // Optional per-match court pin (2026-09-25) — see migration 0078.
+  // Callers that don't have this column (or don't care) simply never set
+  // it, so it's optional rather than widening every existing call site.
+  court_override?: number | null;
 }
 
 // Takes a group's already-generated fixtures (each carrying the raw
@@ -189,8 +193,12 @@ export function scheduleFixturesByCourt<T extends ScheduledMatch>(
   startCourt: number,
   courtCount: number
 ): (T & { printedRound: number | null; court: number | null })[] {
+  // A per-match court_override (2026-09-25) always wins over the computed
+  // value, regardless of whether the group has court scheduling configured
+  // at all — pinning one fixture's court shouldn't require the whole group
+  // to have start_court/court_count set first.
   if (!startCourt || !courtCount || courtCount < 1) {
-    return matches.map((m) => ({ ...m, printedRound: null, court: null }));
+    return matches.map((m) => ({ ...m, printedRound: null, court: m.court_override ?? null }));
   }
   const scheduled = matches.filter((m) => m.round != null);
   const unscheduled = matches.filter((m) => m.round == null);
@@ -210,13 +218,13 @@ export function scheduleFixturesByCourt<T extends ScheduledMatch>(
     for (let i = 0; i < roundMatches.length; i += courtCount) {
       const chunk = roundMatches.slice(i, i + courtCount);
       chunk.forEach((m, idx) => {
-        result.push({ ...m, printedRound, court: startCourt + idx });
+        result.push({ ...m, printedRound, court: m.court_override ?? startCourt + idx });
       });
       printedRound++;
     }
   }
   for (const m of unscheduled) {
-    result.push({ ...m, printedRound: null, court: null });
+    result.push({ ...m, printedRound: null, court: m.court_override ?? null });
   }
   return result;
 }

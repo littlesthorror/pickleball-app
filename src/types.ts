@@ -416,6 +416,11 @@ export interface CompetitionMatchRow {
   // and for group fixtures generated before this column existed.
   round: number | null;
   created_at: string;
+  // Per-match court pin (2026-09-25) — overrides the court this fixture
+  // would otherwise be scheduled onto by scheduleFixturesByCourt's
+  // start_court/court_count math. Null (the normal case) means "use the
+  // computed value". See migration 0078 for the full rationale.
+  court_override: number | null;
 }
 
 export interface CompetitionResultRow {
