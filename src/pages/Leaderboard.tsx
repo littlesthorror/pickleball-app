@@ -284,15 +284,26 @@ export default function Leaderboard({
   useEffect(() => {
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-    supabase
-      .from("player_match_history")
-      .select(
-        "player_id, match_id, won, rating_delta, pre_rating, own_score, opponent_score, teammate_name, opponent_names"
-      )
-      .gte("played_at", monthStart)
-      .then(({ data, error }) => {
-        if (!error) setMonthlyHistory((data ?? []) as MonthlyHistoryRow[]);
-      });
+    // Paginated (see fetchAllRows, 2026-09-25 bugfix) — a busy month's worth
+    // of player_match_history rows across ~200 members can pass PostgREST's
+    // default 1000-row cap (September hit 1,344), and a plain .select()
+    // silently truncates rather than erroring. That truncation was
+    // undercounting some players' games-this-month total, which fed
+    // straight into the 12-games-this-month eligibility check below and
+    // incorrectly dropped established players (who'd genuinely played
+    // plenty this month) out of the main ranked table. Same fix as
+    // ClubStats.tsx's equivalent fetch.
+    fetchAllRows<MonthlyHistoryRow>((from, to) =>
+      supabase
+        .from("player_match_history")
+        .select(
+          "player_id, match_id, won, rating_delta, pre_rating, own_score, opponent_score, teammate_name, opponent_names"
+        )
+        .gte("played_at", monthStart)
+        .range(from, to)
+    ).then(({ data, error }) => {
+      if (!error) setMonthlyHistory(data);
+    });
 
     // Every active/completed Quarterly Cup, not just the most recent one
     // (2026-09-14) — the club now runs a Men's and a Women's cup at the
