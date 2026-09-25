@@ -1498,6 +1498,17 @@ function GroupFixturesSection({
   // editable right up until their first played group game, same
   // affordance as SetupStage's team edit, just available later too.
   const [showEditTeams, setShowEditTeams] = useState(false);
+  // Edit courts after fixtures are already generated (2026-09-25, Ben's
+  // request — the day's actual court layout sometimes needs correcting
+  // once play is under way, not just back in Setup). Reuses
+  // GroupCourtFields as-is: it already just updates the group's
+  // start_court/court_count and calls onChanged(), and scheduleFixturesByCourt
+  // below re-derives every match's Round/Court from those two numbers on
+  // every render, so changing them here re-schedules the whole group
+  // immediately — no separate migration path needed for already-played
+  // games, since Round/Court is cosmetic scheduling info, not stored
+  // per-match.
+  const [showEditCourts, setShowEditCourts] = useState(false);
   const [editingTeamId, setEditingTeamId] = useState<string | null>(null);
   const [editP1, setEditP1] = useState("");
   const [editP2, setEditP2] = useState("");
@@ -1690,6 +1701,43 @@ function GroupFixturesSection({
                   </div>
                 );
               })}
+            </div>
+          )}
+        </div>
+      )}
+      {isAdmin && (
+        <div style={{ marginBottom: 16 }}>
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => setShowEditCourts(!showEditCourts)}
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              cursor: "pointer",
+              paddingTop: 12,
+              borderTop: "1px solid var(--border)",
+            }}
+          >
+            <strong style={{ fontSize: "0.9rem", color: "var(--danger)" }}>Edit courts</strong>
+            <span style={{ color: "var(--danger)", fontWeight: 700, fontSize: "0.85rem" }}>
+              {showEditCourts ? "Hide ▲" : "Show ▼"}
+            </span>
+          </div>
+          {showEditCourts && (
+            <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 16 }}>
+              <p className="stat-meta" style={{ marginTop: 0 }}>
+                Fix the day's court layout if it's changed since Setup — updates every fixture's Round/Court
+                straight away, including games already played (their scores aren't affected, just where they're
+                shown as having been played).
+              </p>
+              {groups.map((g) => (
+                <div key={g.id}>
+                  <strong style={{ fontSize: "0.85rem" }}>{g.name}</strong>
+                  <GroupCourtFields group={g} onChanged={onChanged} />
+                </div>
+              ))}
             </div>
           )}
         </div>
