@@ -421,6 +421,11 @@ export interface CompetitionMatchRow {
   // start_court/court_count math. Null (the normal case) means "use the
   // computed value". See migration 0078 for the full rationale.
   court_override: number | null;
+  // Fixed generation-time sequence number (2026-09-25) — see migration
+  // 0079. Fetches order by this so scheduleFixturesByCourt's printed
+  // Round/Court chunking is fully deterministic, not dependent on
+  // Postgres's undefined row order for a batch of same-timestamp inserts.
+  fixture_order: number | null;
 }
 
 export interface CompetitionResultRow {

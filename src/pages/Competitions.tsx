@@ -595,20 +595,26 @@ function CompetitionDetail({
     return Promise.all([
       supabase.from("competition_teams").select("*").eq("competition_id", competition.id),
       supabase.from("competition_groups").select("*").eq("competition_id", competition.id).order("sort_order"),
-      // Ordered by created_at (2026-09-25 bugfix) — without an explicit
-      // order, Postgres makes no promise about row order at all, and it
-      // was genuinely shifting between reloads. scheduleFixturesByCourt
+      // Ordered by fixture_order (2026-09-25 bugfix, see migration 0079)
+      // — without a stable explicit order, Postgres makes no promise
+      // about row order at all, and it was genuinely shifting between
+      // reloads. An earlier attempt ordered by created_at instead, but
+      // that turned out not to help: every fixture in a group is inserted
+      // in one bulk INSERT, so they all share the exact same created_at
+      // timestamp down to the microsecond, meaning created_at alone still
+      // ties and still doesn't fix the ordering. scheduleFixturesByCourt
       // chunks matches into printed rounds/courts purely by their position
       // in this array within each raw round, so an unstable fetch order
       // was reshuffling OTHER fixtures' displayed Round/Court every time
       // anything triggered a reload (editing a single match's court
-      // included) — not just the one being changed. created_at matches
-      // the order fixtures were originally generated in, which is also
-      // the intended round grouping.
+      // included) — not just the one being changed. fixture_order is a
+      // real sequence number set once at generation time, so this sort is
+      // now fully deterministic.
       supabase
         .from("competition_matches")
         .select("*, matches(team_a_score, team_b_score)")
         .eq("competition_id", competition.id)
+        .order("fixture_order", { ascending: true, nullsFirst: false })
         .order("created_at", { ascending: true }),
     ]).then(async ([teamsRes, groupsRes, matchesRes]) => {
       if (teamsRes.error) setError(teamsRes.error.message);
@@ -1111,15 +1117,22 @@ function SetupStage({
     }
     setStarting(true);
 
+    // fixture_order (2026-09-25 bugfix) — a plain per-group sequence
+    // number set once here, at generation time, matching the exact order
+    // generateGroupFixtures produced. Fetches order by this so the
+    // printed Round/Court layout can never silently reshuffle itself
+    // later — see migration 0079 for the full story (a single-court edit
+    // was found to be reshuffling unrelated fixtures' displayed courts).
     const fixtureRows = groups.flatMap((g) => {
       const teamIds = groupTeams.filter((gt) => gt.group_id === g.id).map((gt) => gt.team_id);
-      return generateGroupFixtures(teamIds, competition.double_round_robin).map((f) => ({
+      return generateGroupFixtures(teamIds, competition.double_round_robin).map((f, idx) => ({
         competition_id: competition.id,
         group_id: g.id,
         team_a_id: f.teamAId,
         team_b_id: f.teamBId,
         leg: f.leg,
         round: f.round,
+        fixture_order: idx,
       }));
     });
 
