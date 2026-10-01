@@ -978,12 +978,19 @@ export default function Leaderboard({
             Fewer than 12 games ever, or fewer than 12 games so far this month — either way, not currently ranked.
           </p>
           {visibleProvisionalPlayedRows.map((p) => {
-            // Two different reasons land someone here (2026-09-21): a
-            // genuinely new player under 12 games EVER, or an established
-            // player who just hasn't played 12 games THIS calendar month —
-            // showing lifetime games_played for the second case would read
-            // as a nonsensical "35/12", so the badge switches to whichever
-            // count is actually why they're in this list.
+            // Two different reasons land someone here (2026-09-21, labels
+            // clarified 2026-10-01 per Ben: the bare "X/12" for a genuinely
+            // new player read as ambiguous next to the monthly one, so it's
+            // now explicitly labelled "all time"): a genuinely new player
+            // under 12 games EVER, or an established player who just hasn't
+            // played 12 games THIS calendar month — showing lifetime
+            // games_played for the second case would read as a nonsensical
+            // "35/12", so the badge switches to whichever count is actually
+            // why they're in this list. The badge also gets a fixed width
+            // (2026-10-01) so the avatar/name column lines up whichever
+            // label is showing — before this, "0/12 this month" was wider
+            // than "10/12 all time", so avatars and names zig-zagged down
+            // the list.
             const monthGames = monthGamesByPlayer.get(p.id) ?? 0;
             const isMonthlyOnly = !p.is_provisional;
             return (
@@ -993,8 +1000,11 @@ export default function Leaderboard({
                 style={{ cursor: "pointer" }}
                 onClick={() => onSelectPlayer(p.id, p.display_name)}
               >
-                <span className="badge badge-provisional" style={{ whiteSpace: "nowrap", flexShrink: 0 }}>
-                  {isMonthlyOnly ? `${monthGames}/12 this month` : `${p.games_played}/12`}
+                <span
+                  className="badge badge-provisional"
+                  style={{ whiteSpace: "nowrap", flexShrink: 0, minWidth: 140, justifyContent: "center" }}
+                >
+                  {isMonthlyOnly ? `${monthGames}/12 this month` : `${p.games_played}/12 all time`}
                 </span>
                 <Avatar name={p.display_name} url={p.avatar_url} size={28} />
                 <span className="name" style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
