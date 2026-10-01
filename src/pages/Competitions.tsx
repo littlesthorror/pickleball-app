@@ -593,7 +593,21 @@ function CompetitionDetail({
   function load() {
     if (!hasLoadedOnce.current) setLoading(true);
     return Promise.all([
-      supabase.from("competition_teams").select("*").eq("competition_id", competition.id),
+      // Ordered by created_at + id (2026-10-01 bugfix) — this query had NO
+      // order clause at all, so Postgres made no promise about row order,
+      // and editing a team (an UPDATE) could shift its physical row
+      // position and visibly reshuffle the whole team list on the very
+      // next load — same root cause as the fixture_order bug above, just
+      // for competition_teams instead of competition_matches. Teams are
+      // always inserted one at a time (unlike the bulk-inserted fixtures),
+      // so created_at alone is already distinct per team, but id is added
+      // as a final deterministic tiebreak just in case two ever tie.
+      supabase
+        .from("competition_teams")
+        .select("*")
+        .eq("competition_id", competition.id)
+        .order("created_at", { ascending: true })
+        .order("id", { ascending: true }),
       supabase.from("competition_groups").select("*").eq("competition_id", competition.id).order("sort_order"),
       // Ordered by fixture_order (2026-09-25 bugfix, see migration 0079)
       // — without a stable explicit order, Postgres makes no promise

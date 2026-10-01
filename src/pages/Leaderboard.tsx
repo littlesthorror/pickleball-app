@@ -993,11 +993,13 @@ export default function Leaderboard({
                 style={{ cursor: "pointer" }}
                 onClick={() => onSelectPlayer(p.id, p.display_name)}
               >
-                <span className="badge badge-provisional" style={{ minWidth: 0 }}>
+                <span className="badge badge-provisional" style={{ whiteSpace: "nowrap", flexShrink: 0 }}>
                   {isMonthlyOnly ? `${monthGames}/12 this month` : `${p.games_played}/12`}
                 </span>
                 <Avatar name={p.display_name} url={p.avatar_url} size={28} />
-                <span className="name">{p.display_name}</span>
+                <span className="name" style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {p.display_name}
+                </span>
                 <span className="rating">{Math.round(p.rating)}</span>
               </div>
             );
@@ -1027,11 +1029,13 @@ export default function Leaderboard({
               style={{ cursor: "pointer" }}
               onClick={() => onSelectPlayer(p.id, p.display_name)}
             >
-              <span className="badge badge-provisional" style={{ minWidth: 0 }}>
+              <span className="badge badge-provisional" style={{ whiteSpace: "nowrap", flexShrink: 0 }}>
                 {p.games_played}/12
               </span>
               <Avatar name={p.display_name} url={p.avatar_url} size={28} />
-              <span className="name">{p.display_name}</span>
+              <span className="name" style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {p.display_name}
+              </span>
               <span className="rating">{Math.round(p.rating)}</span>
             </div>
           ))}
