@@ -41,6 +41,10 @@ interface WorkingPlayer extends Glicko2Player {
   games_played: number;
 }
 
+// Matches created at/after this instant use per-player rating updates
+// (2026-10-13 00:00 UTC, Ben's request) instead of one team-averaged swing.
+const PER_PLAYER_UPDATE_FROM = Date.parse("2026-10-13T00:00:00Z");
+
 const DEFAULT_PLAYER: WorkingPlayer = { rating: 1500, rd: 350, volatility: 0.06, games_played: 0 };
 
 type MatchRow = {
@@ -152,16 +156,38 @@ export async function recomputeAllRatings(
     const deltaA = newTeamA.rating - teamA.rating;
     const deltaB = newTeamB.rating - teamB.rating;
 
-    working.set(m.team_a_player_1_id, { rating: rA1.rating + deltaA, rd: newTeamA.rd, volatility: newTeamA.volatility, games_played: rA1.games_played + 1 });
-    working.set(m.team_a_player_2_id, { rating: rA2.rating + deltaA, rd: newTeamA.rd, volatility: newTeamA.volatility, games_played: rA2.games_played + 1 });
-    working.set(m.team_b_player_1_id, { rating: rB1.rating + deltaB, rd: newTeamB.rd, volatility: newTeamB.volatility, games_played: rB1.games_played + 1 });
-    working.set(m.team_b_player_2_id, { rating: rB2.rating + deltaB, rd: newTeamB.rd, volatility: newTeamB.volatility, games_played: rB2.games_played + 1 });
+    // Per-player updates from PER_PLAYER_UPDATE_FROM onward (2026-10-13,
+    // Ben's request) — see the same comment in confirm-match/index.ts.
+    // Games before that date keep the original team-averaged behaviour, so
+    // no historical rating moves. Must stay identical to confirm-match.
+    const perPlayer = new Date(m.created_at).getTime() >= PER_PLAYER_UPDATE_FROM;
+    const individual = (p: WorkingPlayer, team: Glicko2Player, opp: Glicko2Player, actual: number, confidence: number) => {
+      if (!perPlayer) {
+        const t = team === teamA ? { d: deltaA, n: newTeamA } : { d: deltaB, n: newTeamB };
+        return { delta: t.d, rd: t.n.rd, volatility: t.n.volatility };
+      }
+      const res = updateRating({ rating: team.rating, rd: p.rd, volatility: p.volatility }, opp, actual, confidence);
+      const raw = res.rating - team.rating;
+      const teamDelta = team === teamA ? deltaA : deltaB;
+      // Capped at the old team-averaged swing (see confirm-match).
+      const capped = Math.sign(raw) === Math.sign(teamDelta) ? Math.sign(raw) * Math.min(Math.abs(raw), Math.abs(teamDelta)) : raw;
+      return { delta: capped, rd: res.rd, volatility: res.volatility };
+    };
+    const uA1 = individual(rA1, teamA, teamB, actualA, confidenceForTeamA);
+    const uA2 = individual(rA2, teamA, teamB, actualA, confidenceForTeamA);
+    const uB1 = individual(rB1, teamB, teamA, actualB, confidenceForTeamB);
+    const uB2 = individual(rB2, teamB, teamA, actualB, confidenceForTeamB);
+
+    working.set(m.team_a_player_1_id, { rating: rA1.rating + uA1.delta, rd: uA1.rd, volatility: uA1.volatility, games_played: rA1.games_played + 1 });
+    working.set(m.team_a_player_2_id, { rating: rA2.rating + uA2.delta, rd: uA2.rd, volatility: uA2.volatility, games_played: rA2.games_played + 1 });
+    working.set(m.team_b_player_1_id, { rating: rB1.rating + uB1.delta, rd: uB1.rd, volatility: uB1.volatility, games_played: rB1.games_played + 1 });
+    working.set(m.team_b_player_2_id, { rating: rB2.rating + uB2.delta, rd: uB2.rd, volatility: uB2.volatility, games_played: rB2.games_played + 1 });
 
     participantRows.push(
-      { match_id: m.id, player_id: m.team_a_player_1_id, team: "a", pre_rating: rA1.rating, pre_rd: rA1.rd, post_rating: rA1.rating + deltaA, post_rd: newTeamA.rd },
-      { match_id: m.id, player_id: m.team_a_player_2_id, team: "a", pre_rating: rA2.rating, pre_rd: rA2.rd, post_rating: rA2.rating + deltaA, post_rd: newTeamA.rd },
-      { match_id: m.id, player_id: m.team_b_player_1_id, team: "b", pre_rating: rB1.rating, pre_rd: rB1.rd, post_rating: rB1.rating + deltaB, post_rd: newTeamB.rd },
-      { match_id: m.id, player_id: m.team_b_player_2_id, team: "b", pre_rating: rB2.rating, pre_rd: rB2.rd, post_rating: rB2.rating + deltaB, post_rd: newTeamB.rd }
+      { match_id: m.id, player_id: m.team_a_player_1_id, team: "a", pre_rating: rA1.rating, pre_rd: rA1.rd, post_rating: rA1.rating + uA1.delta, post_rd: uA1.rd },
+      { match_id: m.id, player_id: m.team_a_player_2_id, team: "a", pre_rating: rA2.rating, pre_rd: rA2.rd, post_rating: rA2.rating + uA2.delta, post_rd: uA2.rd },
+      { match_id: m.id, player_id: m.team_b_player_1_id, team: "b", pre_rating: rB1.rating, pre_rd: rB1.rd, post_rating: rB1.rating + uB1.delta, post_rd: uB1.rd },
+      { match_id: m.id, player_id: m.team_b_player_2_id, team: "b", pre_rating: rB2.rating, pre_rd: rB2.rd, post_rating: rB2.rating + uB2.delta, post_rd: uB2.rd }
     );
 
     matchUpdates.push({ id: m.id, teamA, teamB, newTeamA, newTeamB });

@@ -160,16 +160,43 @@ Deno.serve(async (req) => {
     const newTeamA = updateRating(teamA, teamB, actualA, confidenceForTeamA);
     const newTeamB = updateRating(teamB, teamA, actualB, confidenceForTeamB);
 
-    // Apply the whole team-level delta identically to both teammates —
-    // confirmed to match the old system's behavior (see comment above).
-    const deltaA = newTeamA.rating - teamA.rating;
-    const deltaB = newTeamB.rating - teamB.rating;
+    // Per-player update (2026-10-13, Ben's request, applies to matches from
+    // that date onward — see PER_PLAYER_UPDATE_FROM in replay.ts). Before,
+    // the team's averaged RD drove one swing applied identically to both
+    // partners, so a brand-new player (RD 350) made their settled partner
+    // lose/gain far too much (e.g. -75 in a 2-15 loss) and inflated that
+    // partner's RD too. Now each player is updated using THEIR OWN RD and
+    // volatility against the opposing team, so a settled player's swing
+    // stays small whoever they partner, while the new player still
+    // converges quickly. Opponent-confidence damping is unchanged.
+    // A player's swing is also capped at the old team-averaged swing, so a
+    // newcomer (whose own RD is huge) can never move MORE than they did
+    // before this change — the fix only ever protects settled partners.
+    const teamDeltaA = newTeamA.rating - teamA.rating;
+    const teamDeltaB = newTeamB.rating - teamB.rating;
+    const individual = (
+      p: { rd: number; volatility: number },
+      team: Glicko2Player,
+      opp: Glicko2Player,
+      actual: number,
+      confidence: number,
+      teamDelta: number
+    ) => {
+      const res = updateRating({ rating: team.rating, rd: p.rd, volatility: p.volatility }, opp, actual, confidence);
+      const raw = res.rating - team.rating;
+      const capped = Math.sign(raw) === Math.sign(teamDelta) ? Math.sign(raw) * Math.min(Math.abs(raw), Math.abs(teamDelta)) : raw;
+      return { delta: capped, rd: res.rd, volatility: res.volatility };
+    };
+    const uA1 = individual(rA1, teamA, teamB, actualA, confidenceForTeamA, teamDeltaA);
+    const uA2 = individual(rA2, teamA, teamB, actualA, confidenceForTeamA, teamDeltaA);
+    const uB1 = individual(rB1, teamB, teamA, actualB, confidenceForTeamB, teamDeltaB);
+    const uB2 = individual(rB2, teamB, teamA, actualB, confidenceForTeamB, teamDeltaB);
 
     const updatedPlayers = [
-      { ...rA1, rating: rA1.rating + deltaA, rd: newTeamA.rd, volatility: newTeamA.volatility },
-      { ...rA2, rating: rA2.rating + deltaA, rd: newTeamA.rd, volatility: newTeamA.volatility },
-      { ...rB1, rating: rB1.rating + deltaB, rd: newTeamB.rd, volatility: newTeamB.volatility },
-      { ...rB2, rating: rB2.rating + deltaB, rd: newTeamB.rd, volatility: newTeamB.volatility },
+      { ...rA1, rating: rA1.rating + uA1.delta, rd: uA1.rd, volatility: uA1.volatility },
+      { ...rA2, rating: rA2.rating + uA2.delta, rd: uA2.rd, volatility: uA2.volatility },
+      { ...rB1, rating: rB1.rating + uB1.delta, rd: uB1.rd, volatility: uB1.volatility },
+      { ...rB2, rating: rB2.rating + uB2.delta, rd: uB2.rd, volatility: uB2.volatility },
     ];
 
     for (const p of updatedPlayers) {
@@ -188,10 +215,10 @@ Deno.serve(async (req) => {
     await supabase
       .from("match_participant_ratings")
       .insert([
-        { match_id, player_id: rA1.player_id, team: "a", pre_rating: rA1.rating, pre_rd: rA1.rd, post_rating: rA1.rating + deltaA, post_rd: newTeamA.rd },
-        { match_id, player_id: rA2.player_id, team: "a", pre_rating: rA2.rating, pre_rd: rA2.rd, post_rating: rA2.rating + deltaA, post_rd: newTeamA.rd },
-        { match_id, player_id: rB1.player_id, team: "b", pre_rating: rB1.rating, pre_rd: rB1.rd, post_rating: rB1.rating + deltaB, post_rd: newTeamB.rd },
-        { match_id, player_id: rB2.player_id, team: "b", pre_rating: rB2.rating, pre_rd: rB2.rd, post_rating: rB2.rating + deltaB, post_rd: newTeamB.rd },
+        { match_id, player_id: rA1.player_id, team: "a", pre_rating: rA1.rating, pre_rd: rA1.rd, post_rating: rA1.rating + uA1.delta, post_rd: uA1.rd },
+        { match_id, player_id: rA2.player_id, team: "a", pre_rating: rA2.rating, pre_rd: rA2.rd, post_rating: rA2.rating + uA2.delta, post_rd: uA2.rd },
+        { match_id, player_id: rB1.player_id, team: "b", pre_rating: rB1.rating, pre_rd: rB1.rd, post_rating: rB1.rating + uB1.delta, post_rd: uB1.rd },
+        { match_id, player_id: rB2.player_id, team: "b", pre_rating: rB2.rating, pre_rd: rB2.rd, post_rating: rB2.rating + uB2.delta, post_rd: uB2.rd },
       ]);
 
     await supabase
