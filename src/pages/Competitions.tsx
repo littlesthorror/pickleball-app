@@ -540,6 +540,10 @@ function CompetitionDetail({
   const scoreboardUrl = competition.public_share_token
     ? `${window.location.origin}${window.location.pathname}#scoreboard/${competition.public_share_token}`
     : "";
+  // TV mode link (2026-10-16) — same token, "/tv" suffix: every group's
+  // table on one non-scrolling screen for a wall display.
+  const tvUrl = scoreboardUrl ? `${scoreboardUrl}/tv` : "";
+  const [tvCopied, setTvCopied] = useState(false);
 
   async function enableScoreboard() {
     setSavingShare(true);
@@ -860,6 +864,28 @@ function CompetitionDetail({
                     style={{ width: "auto", marginTop: 0, padding: "6px 12px", fontSize: "0.82rem" }}
                   >
                     {linkCopied ? "Copied!" : "Copy link"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => window.open(tvUrl, "_blank")}
+                    style={{ width: "auto", marginTop: 0, padding: "6px 12px", fontSize: "0.82rem" }}
+                  >
+                    Open TV view
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(tvUrl);
+                        setTvCopied(true);
+                        setTimeout(() => setTvCopied(false), 2000);
+                      } catch {
+                        toast.error("Couldn't copy — open the TV view and copy the address from the browser.");
+                      }
+                    }}
+                    style={{ width: "auto", marginTop: 0, padding: "6px 12px", fontSize: "0.82rem" }}
+                  >
+                    {tvCopied ? "Copied!" : "Copy TV link"}
                   </button>
                   <button
                     type="button"

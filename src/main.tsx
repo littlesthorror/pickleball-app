@@ -55,6 +55,15 @@ registerSW({
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    {scoreboardMatch ? <PublicScoreboard token={decodeURIComponent(scoreboardMatch[1])} /> : <App />}
+    {scoreboardMatch ? (
+      // "#scoreboard/<token>/tv" = TV mode (2026-10-16): all groups side by
+      // side on one non-scrolling screen. Same token, same data.
+      <PublicScoreboard
+        token={decodeURIComponent(scoreboardMatch[1]).replace(/\/tv$/, "")}
+        tv={/\/tv$/.test(decodeURIComponent(scoreboardMatch[1]))}
+      />
+    ) : (
+      <App />
+    )}
   </React.StrictMode>
 );

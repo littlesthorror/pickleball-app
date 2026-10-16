@@ -65,7 +65,7 @@ interface ScoreboardData {
 
 const REFRESH_MS = 20000;
 
-export default function PublicScoreboard({ token }: { token: string }) {
+export default function PublicScoreboard({ token, tv = false }: { token: string; tv?: boolean }) {
   // undefined = still loading for the first time, null = token invalid or
   // scoreboard turned off, object = real data.
   const [data, setData] = useState<ScoreboardData | null | undefined>(undefined);
@@ -139,6 +139,171 @@ export default function PublicScoreboard({ token }: { token: string }) {
 
   const groupMatches = data.matches.filter((m) => m.group_id);
   const knockoutMatches = data.matches.filter((m) => m.knockout_round);
+
+  // TV mode (2026-10-16): every group's table on one non-scrolling screen,
+  // for a wall-mounted display. Grid is up to 4 columns wide; rows share the
+  // remaining height equally. Text scales with the viewport and with the
+  // grid density so ~16 groups still fit on a 1080p TV.
+  if (tv) {
+    const sortedGroups = [...data.groups].sort((a, b) => a.sort_order - b.sort_order);
+    const hasKnockout = knockoutMatches.length > 0;
+    const cells = sortedGroups.length + (hasKnockout ? 1 : 0);
+    const cols = Math.max(1, Math.min(cells, 4));
+    const rows = Math.max(1, Math.ceil(cells / cols));
+    // Row font size in vh keyed to grid rows / teams per group so a full 4x4 stays legible.
+    const maxTeams = Math.max(1, ...sortedGroups.map((g) => g.team_ids.length));
+    const rowFs = `${Math.max(1.1, Math.min(2.6, 70 / (rows * (maxTeams + 2.5))))}vh`;
+
+    return (
+      <div
+        style={{
+          ...pageStyle,
+          height: "100vh",
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
+          padding: "1.2vh 1.2vw",
+          boxSizing: "border-box",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: "1vh" }}>
+          <div style={{ fontSize: "3.4vh", fontWeight: 800 }}>🏆 {data.competition.name}</div>
+          <div style={{ fontSize: "1.6vh", opacity: 0.6 }}>
+            {error ? `Couldn't refresh: ${error}` : lastUpdated ? `Live · updated ${lastUpdated.toLocaleTimeString()}` : ""}
+          </div>
+        </div>
+        {sortedGroups.length === 0 && !hasKnockout ? (
+          <p style={{ textAlign: "center", opacity: 0.7, fontSize: "2.4vh" }}>
+            Fixtures haven't been set up yet — check back soon.
+          </p>
+        ) : (
+          <div
+            style={{
+              flex: 1,
+              minHeight: 0,
+              display: "grid",
+              gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
+              gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))`,
+              gap: "1vh 0.8vw",
+            }}
+          >
+            {sortedGroups.map((g) => {
+              const played = groupMatches
+                .filter((m) => m.group_id === g.id && m.team_a_score != null && m.team_b_score != null)
+                .map((m) => ({
+                  teamAId: m.team_a_id,
+                  teamBId: m.team_b_id,
+                  teamAScore: m.team_a_score as number,
+                  teamBScore: m.team_b_score as number,
+                }));
+              const standings = computeGroupStandings(g.team_ids, played, data.competition.scoring_system);
+              return (
+                <div
+                  key={g.id}
+                  style={{
+                    background: "rgba(255,255,255,0.07)",
+                    borderRadius: 10,
+                    padding: "0.8vh 0.8vw",
+                    overflow: "hidden",
+                    fontSize: rowFs,
+                    minWidth: 0,
+                  }}
+                >
+                  <div style={{ fontWeight: 800, fontSize: "1.25em", marginBottom: "0.5vh", color: "var(--orange-500)" }}>
+                    {g.name}
+                  </div>
+                  <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
+                    <colgroup>
+                      <col />
+                      <col style={{ width: "9%" }} />
+                      <col style={{ width: "9%" }} />
+                      <col style={{ width: "9%" }} />
+                      <col style={{ width: "14%" }} />
+                      <col style={{ width: "12%" }} />
+                    </colgroup>
+                    <thead>
+                      <tr style={{ opacity: 0.6, textAlign: "left", fontSize: "0.8em" }}>
+                        <th>Team</th>
+                        <th style={{ textAlign: "center" }}>P</th>
+                        <th style={{ textAlign: "center" }}>W</th>
+                        <th style={{ textAlign: "center" }}>L</th>
+                        <th style={{ textAlign: "center" }}>Diff</th>
+                        <th style={{ textAlign: "center" }}>Pts</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {standings.map((row) => (
+                        <tr key={row.teamId} style={{ borderTop: "1px solid rgba(255,255,255,0.12)" }}>
+                          <td style={{ padding: "0.3vh 0.4vw 0.3vh 0", lineHeight: 1.1 }}>{teamLabel(row.teamId)}</td>
+                          <td style={{ textAlign: "center" }}>{row.played}</td>
+                          <td style={{ textAlign: "center" }}>{row.won}</td>
+                          <td style={{ textAlign: "center" }}>{row.lost}</td>
+                          <td style={{ textAlign: "center" }}>{row.diff > 0 ? `+${row.diff}` : row.diff}</td>
+                          <td style={{ textAlign: "center", fontWeight: 800 }}>{row.pts}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              );
+            })}
+            {hasKnockout && (
+              <div
+                style={{
+                  background: "rgba(255,255,255,0.07)",
+                  borderRadius: 10,
+                  padding: "0.8vh 0.8vw",
+                  overflow: "hidden",
+                  fontSize: rowFs,
+                  minWidth: 0,
+                }}
+              >
+                <div style={{ fontWeight: 800, fontSize: "1.25em", marginBottom: "0.5vh", color: "var(--orange-500)" }}>
+                  Knockout
+                </div>
+                {KNOCKOUT_ROUNDS.map(({ value, label }) => {
+                  const rm = knockoutMatches
+                    .filter((m) => m.knockout_round === value)
+                    .sort((a, b) => (a.knockout_slot ?? 0) - (b.knockout_slot ?? 0));
+                  if (rm.length === 0) return null;
+                  return (
+                    <div key={value} style={{ marginBottom: "0.6vh" }}>
+                      <div style={{ opacity: 0.6, fontSize: "0.8em", fontWeight: 700 }}>{label}</div>
+                      {rm.map((m) => {
+                        const done = m.team_a_score != null && m.team_b_score != null;
+                        return (
+                          <div
+                            key={m.id}
+                            style={{ display: "flex", justifyContent: "space-between", gap: 6, lineHeight: 1.15 }}
+                          >
+                            <span style={{ fontWeight: m.winner_team_id === m.team_a_id ? 800 : 400, minWidth: 0 }}>
+                              {teamLabel(m.team_a_id)}
+                            </span>
+                            <span style={{ opacity: 0.7, flexShrink: 0 }}>
+                              {done ? `${m.team_a_score}–${m.team_b_score}` : "vs"}
+                            </span>
+                            <span
+                              style={{
+                                fontWeight: m.winner_team_id === m.team_b_id ? 800 : 400,
+                                textAlign: "right",
+                                minWidth: 0,
+                              }}
+                            >
+                              {teamLabel(m.team_b_id)}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div style={{ ...pageStyle, padding: "20px 16px 40px" }}>
