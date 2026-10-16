@@ -923,6 +923,7 @@ function CompetitionDetail({
           groups={groups}
           matches={matches}
           teams={teams}
+          groupTeams={groupTeams}
           players={players}
           teamLabel={teamLabel}
           isAdmin={isAdmin}
@@ -1501,6 +1502,7 @@ function GroupFixturesSection({
   groups,
   matches,
   teams,
+  groupTeams,
   players,
   teamLabel,
   isAdmin,
@@ -1511,6 +1513,7 @@ function GroupFixturesSection({
   groups: CompetitionGroupRow[];
   matches: (CompetitionMatchRow & { matches: { team_a_score: number; team_b_score: number } | null })[];
   teams: CompetitionTeamRow[];
+  groupTeams: CompetitionGroupTeamRow[];
   players: PlayerStatus[];
   teamLabel: (id: string) => string;
   isAdmin: boolean;
@@ -1547,6 +1550,117 @@ function GroupFixturesSection({
   // games, since Round/Court is cosmetic scheduling info, not stored
   // per-match.
   const [showEditCourts, setShowEditCourts] = useState(false);
+
+  // Reshuffle groups after fixtures exist (2026-10-16, Ben's request — "The
+  // BIG Indoor Competition": drop-outs left some groups weaker, so teams
+  // need moving between groups). Draft = teamId -> chosen groupId, only for
+  // teams the admin has actually moved. Applying regenerates fixtures ONLY
+  // for groups whose membership changed, and only if none of those groups'
+  // games have been played, so no recorded result is ever deleted.
+  const [showRegroup, setShowRegroup] = useState(false);
+  const [regroupDraft, setRegroupDraft] = useState<Record<string, string>>({});
+  const [regrouping, setRegrouping] = useState(false);
+  const groupIdByTeamIdLocal = new Map(groupTeams.map((gt) => [gt.team_id, gt.group_id]));
+
+  async function applyRegroup() {
+    // Final team -> group map after the draft is applied.
+    const finalGroup = new Map<string, string>();
+    for (const t of teams) {
+      const gid = regroupDraft[t.id] ?? groupIdByTeamIdLocal.get(t.id);
+      if (gid) finalGroup.set(t.id, gid);
+    }
+    const membersAfter = (gid: string) => teams.filter((t) => finalGroup.get(t.id) === gid).map((t) => t.id);
+    const membersBefore = (gid: string) => groupTeams.filter((gt) => gt.group_id === gid).map((gt) => gt.team_id);
+    const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every((x) => b.includes(x));
+
+    const affected = groups.filter((g) => !sameSet(membersBefore(g.id), membersAfter(g.id)));
+    if (affected.length === 0) {
+      toast.error("Nothing to change — no team has been moved to a different group.");
+      return;
+    }
+    const tooSmall = affected.filter((g) => membersAfter(g.id).length < 2);
+    if (tooSmall.length > 0) {
+      toast.error(`Every group needs at least 2 teams — check ${tooSmall.map((g) => g.name).join(", ")}.`);
+      return;
+    }
+    const locked = affected.filter((g) => matches.some((m) => m.group_id === g.id && m.matches));
+    if (locked.length > 0) {
+      toast.error(
+        `${locked.map((g) => g.name).join(", ")} already ha${locked.length > 1 ? "ve" : "s"} played games, so ${
+          locked.length > 1 ? "they" : "it"
+        } can't be reshuffled.`
+      );
+      return;
+    }
+    const ok = await confirm(
+      `Reshuffle ${affected.map((g) => g.name).join(", ")}? Their fixture lists will be regenerated from scratch (no games have been played in them). Other groups are untouched.`
+    );
+    if (!ok) return;
+
+    setRegrouping(true);
+    // Remember court overrides per group so any pairing that still exists in
+    // the same group keeps its pinned court. Key = group + sorted pair + leg.
+    const pairKey = (gid: string, a: string, b: string, leg: number) => `${gid}|${[a, b].sort().join("|")}|${leg}`;
+    const overrides = new Map<string, number>();
+    for (const m of matches) {
+      if (m.group_id && m.court_override != null && affected.some((g) => g.id === m.group_id)) {
+        overrides.set(pairKey(m.group_id, m.team_a_id, m.team_b_id, m.leg), m.court_override);
+      }
+    }
+
+    // 1) Move the teams (upsert on team_id, same as Setup's assign).
+    const moved = teams.filter((t) => finalGroup.get(t.id) !== groupIdByTeamIdLocal.get(t.id));
+    const { error: moveError } = await supabase
+      .from("competition_group_teams")
+      .upsert(
+        moved.map((t) => ({ team_id: t.id, group_id: finalGroup.get(t.id)! })),
+        { onConflict: "team_id" }
+      );
+    if (moveError) {
+      setRegrouping(false);
+      toast.error(`Couldn't move teams: ${moveError.message}`);
+      return;
+    }
+
+    // 2) Delete the affected groups' old (all unplayed) fixtures.
+    const { error: delError } = await supabase
+      .from("competition_matches")
+      .delete()
+      .in(
+        "group_id",
+        affected.map((g) => g.id)
+      );
+    if (delError) {
+      setRegrouping(false);
+      toast.error(`Teams moved, but clearing old fixtures failed: ${delError.message}. Reload and try again.`);
+      onChanged();
+      return;
+    }
+
+    // 3) Regenerate fixtures for each affected group.
+    const rows = affected.flatMap((g) =>
+      generateGroupFixtures(membersAfter(g.id), competition.double_round_robin).map((f, idx) => ({
+        competition_id: competition.id,
+        group_id: g.id,
+        team_a_id: f.teamAId,
+        team_b_id: f.teamBId,
+        leg: f.leg,
+        round: f.round,
+        fixture_order: idx,
+        court_override: overrides.get(pairKey(g.id, f.teamAId, f.teamBId, f.leg)) ?? null,
+      }))
+    );
+    const { error: insError } = await supabase.from("competition_matches").insert(rows);
+    setRegrouping(false);
+    if (insError) {
+      toast.error(`Teams moved, but regenerating fixtures failed: ${insError.message}. Reload and try again.`);
+      onChanged();
+      return;
+    }
+    setRegroupDraft({});
+    toast.success(`Reshuffled ${affected.map((g) => g.name).join(", ")}.`);
+    onChanged();
+  }
   const [editingTeamId, setEditingTeamId] = useState<string | null>(null);
   const [editP1, setEditP1] = useState("");
   const [editP2, setEditP2] = useState("");
@@ -1776,6 +1890,89 @@ function GroupFixturesSection({
                   <GroupCourtFields group={g} onChanged={onChanged} />
                 </div>
               ))}
+            </div>
+          )}
+        </div>
+      )}
+      {isAdmin && (
+        <div style={{ marginBottom: 16 }}>
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => setShowRegroup(!showRegroup)}
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              cursor: "pointer",
+              paddingTop: 12,
+              borderTop: "1px solid var(--border)",
+            }}
+          >
+            <strong style={{ fontSize: "0.9rem", color: "var(--danger)" }}>Reshuffle groups</strong>
+            <span style={{ color: "var(--danger)", fontWeight: 700, fontSize: "0.85rem" }}>
+              {showRegroup ? "Hide ▲" : "Show ▼"}
+            </span>
+          </div>
+          {showRegroup && (
+            <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 12 }}>
+              <p className="stat-meta" style={{ marginTop: 0 }}>
+                Move teams between groups (e.g. after drop-outs). Only groups whose teams change get a fresh
+                fixture list — other groups are left alone. A group can only be changed while none of its games
+                have been played. Court overrides are kept for any pairing that survives in the same group.
+              </p>
+              {groups.map((g) => {
+                const current = teams.filter((t) => (regroupDraft[t.id] ?? groupIdByTeamIdLocal.get(t.id)) === g.id);
+                const played = matches.filter((m) => m.group_id === g.id && m.matches).length;
+                return (
+                  <div key={g.id} style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 10 }}>
+                    <strong style={{ fontSize: "0.85rem" }}>
+                      {g.name} ({current.length} teams{played > 0 ? `, ${played} played — locked` : ""})
+                    </strong>
+                    {current.map((t) => (
+                      <div key={t.id} className="match-row">
+                        <div className="opponent">{teamLabel(t.id)}</div>
+                        <select
+                          value={regroupDraft[t.id] ?? groupIdByTeamIdLocal.get(t.id) ?? ""}
+                          onChange={(e) => setRegroupDraft({ ...regroupDraft, [t.id]: e.target.value })}
+                          style={{ width: "auto", marginTop: 0 }}
+                        >
+                          {groups.map((o) => (
+                            <option key={o.id} value={o.id}>
+                              {o.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })}
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  disabled={regrouping || Object.keys(regroupDraft).length === 0}
+                  onClick={applyRegroup}
+                  style={{ flex: "0 0 auto", width: "auto", marginTop: 0, padding: "8px 14px", fontSize: "0.85rem" }}
+                >
+                  {regrouping ? "Applying…" : "Apply reshuffle"}
+                </button>
+                <button
+                  disabled={regrouping || Object.keys(regroupDraft).length === 0}
+                  onClick={() => setRegroupDraft({})}
+                  style={{
+                    flex: "0 0 auto",
+                    width: "auto",
+                    marginTop: 0,
+                    padding: "8px 14px",
+                    fontSize: "0.85rem",
+                    background: "transparent",
+                    color: "var(--text-muted)",
+                    border: "1px solid var(--border)",
+                  }}
+                >
+                  Reset
+                </button>
+              </div>
             </div>
           )}
         </div>
