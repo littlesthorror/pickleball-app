@@ -283,8 +283,8 @@ export default function PublicScoreboard({ token, tv = false }: { token: string;
                         <col style={{ width: "8%" }} />
                         <col style={{ width: "8%" }} />
                         <col style={{ width: "8%" }} />
-                        <col style={{ width: "13%" }} />
-                        <col style={{ width: "13%" }} />
+                        <col style={{ width: "12%" }} />
+                        <col style={{ width: "14%" }} />
                       </colgroup>
                       <thead>
                         <tr style={{ opacity: 0.55, fontSize: "0.75em", textTransform: "uppercase", letterSpacing: "0.06em" }}>
@@ -293,7 +293,7 @@ export default function PublicScoreboard({ token, tv = false }: { token: string;
                           <th>P</th>
                           <th>W</th>
                           <th>L</th>
-                          <th>Diff</th>
+                          <th>Dif</th>
                           <th>Pts</th>
                         </tr>
                       </thead>
@@ -307,10 +307,10 @@ export default function PublicScoreboard({ token, tv = false }: { token: string;
                               background: i === 0 && row.played > 0 ? "rgba(255,122,26,0.16)" : undefined,
                             }}
                           >
-                            <td style={{ fontWeight: 800, color: i === 0 ? "var(--orange-500)" : "#7fc0ff", padding: "0.3vh 0" }}>
+                            <td style={{ fontWeight: 800, color: i <= 1 ? "var(--orange-500)" : "#7fc0ff", padding: "0.3vh 0" }}>
                               {i + 1}
                             </td>
-                            <td style={{ textAlign: "left", padding: "0.3vh 0.4vw 0.3vh 0", lineHeight: 1.1, fontWeight: i === 0 ? 700 : 500 }}>
+                            <td style={{ textAlign: "left", padding: "0.3vh 0.4vw 0.3vh 0.9vw", lineHeight: 1.1, fontWeight: i === 0 ? 700 : 500 }}>
                               {teamLabel(row.teamId)}
                             </td>
                             <td style={{ opacity: 0.8 }}>{row.played}</td>
