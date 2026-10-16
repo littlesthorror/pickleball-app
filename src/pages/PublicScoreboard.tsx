@@ -150,26 +150,101 @@ export default function PublicScoreboard({ token, tv = false }: { token: string;
     const cells = sortedGroups.length + (hasKnockout ? 1 : 0);
     const cols = Math.max(1, Math.min(cells, 4));
     const rows = Math.max(1, Math.ceil(cells / cols));
-    // Row font size in vh keyed to grid rows / teams per group so a full 4x4 stays legible.
     const maxTeams = Math.max(1, ...sortedGroups.map((g) => g.team_ids.length));
-    const rowFs = `${Math.max(1.1, Math.min(2.6, 70 / (rows * (maxTeams + 2.5))))}vh`;
+    // Row font size in vh keyed to grid rows / teams per group so a full 4x4 stays legible.
+    const rowFs = `${Math.max(1.1, Math.min(2.6, 64 / (rows * (maxTeams + 3))))}vh`;
+    const cardStyle = {
+      background: "linear-gradient(160deg, rgba(255,255,255,0.10), rgba(255,255,255,0.04))",
+      border: "1px solid rgba(255,255,255,0.12)",
+      boxShadow: "0 6px 24px rgba(0,0,0,0.35)",
+      borderRadius: 14,
+      overflow: "hidden",
+      fontSize: rowFs,
+      minWidth: 0,
+      display: "flex",
+      flexDirection: "column" as const,
+    };
+    const cardHeader = {
+      background: "linear-gradient(90deg, var(--orange-600), var(--orange-500))",
+      color: "#fff",
+      fontWeight: 800,
+      fontSize: "1.2em",
+      padding: "0.5vh 0.9vw",
+      letterSpacing: "0.04em",
+      textTransform: "uppercase" as const,
+    };
+    const statusLabel = data.competition.status.replace(/_/g, " ");
+    const dateLabel = data.competition.event_date
+      ? new Date(data.competition.event_date).toLocaleDateString(undefined, {
+          weekday: "long",
+          day: "numeric",
+          month: "long",
+          year: "numeric",
+        })
+      : "";
 
     return (
       <div
         style={{
-          ...pageStyle,
           height: "100vh",
           overflow: "hidden",
           display: "flex",
           flexDirection: "column",
-          padding: "1.2vh 1.2vw",
+          padding: "1.4vh 1.4vw",
           boxSizing: "border-box",
+          color: "#fff",
+          background:
+            "radial-gradient(ellipse at 15% 0%, #1d4f9a 0%, rgba(29,79,154,0) 45%), radial-gradient(ellipse at 100% 100%, rgba(255,122,26,0.22) 0%, rgba(255,122,26,0) 40%), linear-gradient(180deg, var(--navy-800), var(--navy-900))",
         }}
       >
-        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: "1vh" }}>
-          <div style={{ fontSize: "3.4vh", fontWeight: 800 }}>🏆 {data.competition.name}</div>
-          <div style={{ fontSize: "1.6vh", opacity: 0.6 }}>
-            {error ? `Couldn't refresh: ${error}` : lastUpdated ? `Live · updated ${lastUpdated.toLocaleTimeString()}` : ""}
+        <style>{`
+          @keyframes tvPulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .35; transform: scale(.8); } }
+        `}</style>
+        <div style={{ display: "flex", alignItems: "center", gap: "1.2vw", marginBottom: "1.4vh" }}>
+          <img
+            src="/logo.png"
+            alt=""
+            style={{ height: "9vh", width: "9vh", objectFit: "contain", filter: "drop-shadow(0 3px 8px rgba(0,0,0,0.5))" }}
+            onError={(e) => (e.currentTarget.style.display = "none")}
+          />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: "1.7vh", letterSpacing: "0.3em", textTransform: "uppercase", color: "#7fc0ff", fontWeight: 700 }}>
+              Huntingdon Pickleball
+            </div>
+            <div style={{ fontSize: "4.6vh", fontWeight: 800, lineHeight: 1.05, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {data.competition.name}
+            </div>
+            {dateLabel && <div style={{ fontSize: "1.7vh", opacity: 0.65, marginTop: "0.3vh" }}>{dateLabel}</div>}
+          </div>
+          <div style={{ textAlign: "right", flexShrink: 0 }}>
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "0.6vw",
+                padding: "0.7vh 1.2vw",
+                borderRadius: 999,
+                background: "rgba(255,255,255,0.1)",
+                border: "1px solid rgba(255,255,255,0.18)",
+                fontSize: "2vh",
+                fontWeight: 800,
+                letterSpacing: "0.12em",
+              }}
+            >
+              <span
+                style={{
+                  width: "1.3vh",
+                  height: "1.3vh",
+                  borderRadius: "50%",
+                  background: error ? "#ff5a5a" : "#3ddc84",
+                  animation: "tvPulse 1.8s ease-in-out infinite",
+                }}
+              />
+              LIVE
+            </div>
+            <div style={{ fontSize: "1.5vh", opacity: 0.6, marginTop: "0.6vh", textTransform: "capitalize" }}>
+              {error ? "Reconnecting…" : `${statusLabel}${lastUpdated ? ` · updated ${lastUpdated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : ""}`}
+            </div>
           </div>
         </div>
         {sortedGroups.length === 0 && !hasKnockout ? (
@@ -184,7 +259,7 @@ export default function PublicScoreboard({ token, tv = false }: { token: string;
               display: "grid",
               gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
               gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))`,
-              gap: "1vh 0.8vw",
+              gap: "1.4vh 1vw",
             }}
           >
             {sortedGroups.map((g) => {
@@ -198,105 +273,109 @@ export default function PublicScoreboard({ token, tv = false }: { token: string;
                 }));
               const standings = computeGroupStandings(g.team_ids, played, data.competition.scoring_system);
               return (
-                <div
-                  key={g.id}
-                  style={{
-                    background: "rgba(255,255,255,0.07)",
-                    borderRadius: 10,
-                    padding: "0.8vh 0.8vw",
-                    overflow: "hidden",
-                    fontSize: rowFs,
-                    minWidth: 0,
-                  }}
-                >
-                  <div style={{ fontWeight: 800, fontSize: "1.25em", marginBottom: "0.5vh", color: "var(--orange-500)" }}>
-                    {g.name}
-                  </div>
-                  <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
-                    <colgroup>
-                      <col />
-                      <col style={{ width: "9%" }} />
-                      <col style={{ width: "9%" }} />
-                      <col style={{ width: "9%" }} />
-                      <col style={{ width: "14%" }} />
-                      <col style={{ width: "12%" }} />
-                    </colgroup>
-                    <thead>
-                      <tr style={{ opacity: 0.6, textAlign: "left", fontSize: "0.8em" }}>
-                        <th>Team</th>
-                        <th style={{ textAlign: "center" }}>P</th>
-                        <th style={{ textAlign: "center" }}>W</th>
-                        <th style={{ textAlign: "center" }}>L</th>
-                        <th style={{ textAlign: "center" }}>Diff</th>
-                        <th style={{ textAlign: "center" }}>Pts</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {standings.map((row) => (
-                        <tr key={row.teamId} style={{ borderTop: "1px solid rgba(255,255,255,0.12)" }}>
-                          <td style={{ padding: "0.3vh 0.4vw 0.3vh 0", lineHeight: 1.1 }}>{teamLabel(row.teamId)}</td>
-                          <td style={{ textAlign: "center" }}>{row.played}</td>
-                          <td style={{ textAlign: "center" }}>{row.won}</td>
-                          <td style={{ textAlign: "center" }}>{row.lost}</td>
-                          <td style={{ textAlign: "center" }}>{row.diff > 0 ? `+${row.diff}` : row.diff}</td>
-                          <td style={{ textAlign: "center", fontWeight: 800 }}>{row.pts}</td>
+                <div key={g.id} style={cardStyle}>
+                  <div style={cardHeader}>{g.name}</div>
+                  <div style={{ padding: "0.5vh 0.9vw 0.7vh", flex: 1, minHeight: 0 }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
+                      <colgroup>
+                        <col style={{ width: "7%" }} />
+                        <col />
+                        <col style={{ width: "8%" }} />
+                        <col style={{ width: "8%" }} />
+                        <col style={{ width: "8%" }} />
+                        <col style={{ width: "13%" }} />
+                        <col style={{ width: "13%" }} />
+                      </colgroup>
+                      <thead>
+                        <tr style={{ opacity: 0.55, fontSize: "0.75em", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                          <th />
+                          <th style={{ textAlign: "left" }}>Team</th>
+                          <th>P</th>
+                          <th>W</th>
+                          <th>L</th>
+                          <th>Diff</th>
+                          <th>Pts</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {standings.map((row, i) => (
+                          <tr
+                            key={row.teamId}
+                            style={{
+                              borderTop: "1px solid rgba(255,255,255,0.1)",
+                              textAlign: "center",
+                              background: i === 0 && row.played > 0 ? "rgba(255,122,26,0.16)" : undefined,
+                            }}
+                          >
+                            <td style={{ fontWeight: 800, color: i === 0 ? "var(--orange-500)" : "#7fc0ff", padding: "0.3vh 0" }}>
+                              {i + 1}
+                            </td>
+                            <td style={{ textAlign: "left", padding: "0.3vh 0.4vw 0.3vh 0", lineHeight: 1.1, fontWeight: i === 0 ? 700 : 500 }}>
+                              {teamLabel(row.teamId)}
+                            </td>
+                            <td style={{ opacity: 0.8 }}>{row.played}</td>
+                            <td style={{ opacity: 0.8 }}>{row.won}</td>
+                            <td style={{ opacity: 0.8 }}>{row.lost}</td>
+                            <td style={{ opacity: 0.8 }}>{row.diff > 0 ? `+${row.diff}` : row.diff}</td>
+                            <td style={{ fontWeight: 800, fontSize: "1.15em" }}>{row.pts}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               );
             })}
             {hasKnockout && (
-              <div
-                style={{
-                  background: "rgba(255,255,255,0.07)",
-                  borderRadius: 10,
-                  padding: "0.8vh 0.8vw",
-                  overflow: "hidden",
-                  fontSize: rowFs,
-                  minWidth: 0,
-                }}
-              >
-                <div style={{ fontWeight: 800, fontSize: "1.25em", marginBottom: "0.5vh", color: "var(--orange-500)" }}>
-                  Knockout
-                </div>
-                {KNOCKOUT_ROUNDS.map(({ value, label }) => {
-                  const rm = knockoutMatches
-                    .filter((m) => m.knockout_round === value)
-                    .sort((a, b) => (a.knockout_slot ?? 0) - (b.knockout_slot ?? 0));
-                  if (rm.length === 0) return null;
-                  return (
-                    <div key={value} style={{ marginBottom: "0.6vh" }}>
-                      <div style={{ opacity: 0.6, fontSize: "0.8em", fontWeight: 700 }}>{label}</div>
-                      {rm.map((m) => {
-                        const done = m.team_a_score != null && m.team_b_score != null;
-                        return (
-                          <div
-                            key={m.id}
-                            style={{ display: "flex", justifyContent: "space-between", gap: 6, lineHeight: 1.15 }}
-                          >
-                            <span style={{ fontWeight: m.winner_team_id === m.team_a_id ? 800 : 400, minWidth: 0 }}>
-                              {teamLabel(m.team_a_id)}
-                            </span>
-                            <span style={{ opacity: 0.7, flexShrink: 0 }}>
-                              {done ? `${m.team_a_score}–${m.team_b_score}` : "vs"}
-                            </span>
-                            <span
+              <div style={cardStyle}>
+                <div style={{ ...cardHeader, background: "linear-gradient(90deg, #1d6fd1, #4aa3ff)" }}>Knockout</div>
+                <div style={{ padding: "0.6vh 0.9vw", flex: 1, minHeight: 0 }}>
+                  {KNOCKOUT_ROUNDS.map(({ value, label }) => {
+                    const rm = knockoutMatches
+                      .filter((m) => m.knockout_round === value)
+                      .sort((a, b) => (a.knockout_slot ?? 0) - (b.knockout_slot ?? 0));
+                    if (rm.length === 0) return null;
+                    return (
+                      <div key={value} style={{ marginBottom: "0.8vh" }}>
+                        <div style={{ opacity: 0.6, fontSize: "0.75em", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                          {label}
+                        </div>
+                        {rm.map((m) => {
+                          const done = m.team_a_score != null && m.team_b_score != null;
+                          return (
+                            <div
+                              key={m.id}
                               style={{
-                                fontWeight: m.winner_team_id === m.team_b_id ? 800 : 400,
-                                textAlign: "right",
-                                minWidth: 0,
+                                display: "flex",
+                                justifyContent: "space-between",
+                                gap: 8,
+                                lineHeight: 1.15,
+                                padding: "0.3vh 0",
+                                borderTop: "1px solid rgba(255,255,255,0.1)",
                               }}
                             >
-                              {teamLabel(m.team_b_id)}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  );
-                })}
+                              <span style={{ fontWeight: m.winner_team_id === m.team_a_id ? 800 : 400, minWidth: 0 }}>
+                                {teamLabel(m.team_a_id)}
+                              </span>
+                              <span style={{ opacity: 0.8, flexShrink: 0, fontWeight: 700 }}>
+                                {done ? `${m.team_a_score}–${m.team_b_score}` : "vs"}
+                              </span>
+                              <span
+                                style={{
+                                  fontWeight: m.winner_team_id === m.team_b_id ? 800 : 400,
+                                  textAlign: "right",
+                                  minWidth: 0,
+                                }}
+                              >
+                                {teamLabel(m.team_b_id)}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
           </div>
