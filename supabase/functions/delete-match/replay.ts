@@ -170,7 +170,11 @@ export async function recomputeAllRatings(
       const raw = res.rating - team.rating;
       const teamDelta = team === teamA ? deltaA : deltaB;
       // Capped at the old team-averaged swing (see confirm-match).
-      const capped = Math.sign(raw) === Math.sign(teamDelta) ? Math.sign(raw) * Math.min(Math.abs(raw), Math.abs(teamDelta)) : raw;
+      let capped = Math.sign(raw) === Math.sign(teamDelta) ? Math.sign(raw) * Math.min(Math.abs(raw), Math.abs(teamDelta)) : raw;
+      // 2026-10-19 (Ben's request): a player with fewer than 12 games can't
+      // GAIN more than 25 points from one game. Losses unaffected. Must stay
+      // identical to confirm-match/index.ts.
+      if (p.games_played < 12 && capped > 25) capped = 25;
       return { delta: capped, rd: res.rd, volatility: res.volatility };
     };
     const uA1 = individual(rA1, teamA, teamB, actualA, confidenceForTeamA);

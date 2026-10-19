@@ -2706,8 +2706,8 @@ function KnockoutSection({
               {label}
             </div>
             {roundMatches.map((m) => (
+              <div key={m.id}>
               <FixtureRow
-                key={m.id}
                 match={m}
                 teamLabel={teamLabel}
                 isAdmin={isAdmin}
@@ -2715,6 +2715,10 @@ function KnockoutSection({
                 onChanged={onChanged}
                 locked={competition.status === "completed"}
               />
+              {isAdmin && competition.status === "knockout" && !m.match_id && (
+                <KnockoutMatchAdmin match={m} allTeams={teams} teamLabel={teamLabel} onChanged={onChanged} />
+              )}
+              </div>
             ))}
           </div>
         );
@@ -2779,6 +2783,104 @@ function KnockoutSection({
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+// Edit/remove an unplayed knockout match (2026-10-19, Ben's request: a team
+// dropped out of the quarter finals and there was no way to swap them out).
+// Only offered while the match has no result yet; any team in the
+// competition can be picked (a replacement needn't have qualified from the
+// group stage). To change a played match, correct its score instead.
+function KnockoutMatchAdmin({
+  match,
+  allTeams,
+  teamLabel,
+  onChanged,
+}: {
+  match: CompetitionMatchRow;
+  allTeams: CompetitionTeamRow[];
+  teamLabel: (id: string) => string;
+  onChanged: () => void;
+}) {
+  const confirm = useConfirm();
+  const toast = useToast();
+  const [open, setOpen] = useState(false);
+  const [a, setA] = useState(match.team_a_id);
+  const [b, setB] = useState(match.team_b_id);
+  const [busy, setBusy] = useState(false);
+
+  async function save() {
+    if (!a || !b || a === b) {
+      toast.error("Pick two different teams.");
+      return;
+    }
+    setBusy(true);
+    const { error } = await supabase
+      .from("competition_matches")
+      .update({ team_a_id: a, team_b_id: b })
+      .eq("id", match.id);
+    setBusy(false);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    toast.success("Match updated.");
+    setOpen(false);
+    onChanged();
+  }
+
+  async function remove() {
+    if (!(await confirm("Remove this match from the bracket?"))) return;
+    setBusy(true);
+    const { error } = await supabase.from("competition_matches").delete().eq("id", match.id);
+    setBusy(false);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    toast.success("Match removed.");
+    onChanged();
+  }
+
+  if (!open) {
+    return (
+      <div style={{ display: "flex", gap: 12, margin: "-2px 0 8px" }}>
+        <button type="button" className="show-more-btn" onClick={() => setOpen(true)} style={{ width: "auto", marginTop: 0 }}>
+          Change teams
+        </button>
+        <button type="button" className="show-more-btn" onClick={remove} disabled={busy} style={{ width: "auto", marginTop: 0 }}>
+          Remove match
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div style={{ margin: "4px 0 10px", padding: 10, border: "1px solid var(--border)", borderRadius: 8 }}>
+      <label>Team A</label>
+      <select value={a} onChange={(e) => setA(e.target.value)}>
+        {allTeams.map((t) => (
+          <option key={t.id} value={t.id}>
+            {teamLabel(t.id)}
+          </option>
+        ))}
+      </select>
+      <label>Team B</label>
+      <select value={b} onChange={(e) => setB(e.target.value)}>
+        {allTeams.map((t) => (
+          <option key={t.id} value={t.id}>
+            {teamLabel(t.id)}
+          </option>
+        ))}
+      </select>
+      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+        <button type="button" onClick={save} disabled={busy} style={{ width: "auto", marginTop: 0 }}>
+          {busy ? "Saving…" : "Save"}
+        </button>
+        <button type="button" onClick={() => setOpen(false)} style={{ width: "auto", marginTop: 0 }}>
+          Cancel
+        </button>
+      </div>
     </div>
   );
 }

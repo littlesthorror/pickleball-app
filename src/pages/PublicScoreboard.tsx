@@ -147,9 +147,12 @@ export default function PublicScoreboard({ token, tv = false }: { token: string;
   if (tv) {
     const sortedGroups = [...data.groups].sort((a, b) => a.sort_order - b.sort_order);
     const hasKnockout = knockoutMatches.length > 0;
-    const cells = sortedGroups.length + (hasKnockout ? 1 : 0);
+    const cells = sortedGroups.length;
     const cols = Math.max(1, Math.min(cells, 4));
-    const rows = Math.max(1, Math.ceil(cells / cols));
+    const groupRows = Math.ceil(cells / cols);
+    // Knockout (when present) is a full-width band under the groups, so
+    // quarter/semi/final results are never pushed off the bottom of the screen.
+    const rows = Math.max(1, groupRows + (hasKnockout ? 1.5 : 0));
     const maxTeams = Math.max(1, ...sortedGroups.map((g) => g.team_ids.length));
     // Row font size in vh keyed to grid rows / teams per group so a full 4x4 stays legible.
     const rowFs = `${Math.max(1.1, Math.min(2.6, 64 / (rows * (maxTeams + 3))))}vh`;
@@ -258,7 +261,7 @@ export default function PublicScoreboard({ token, tv = false }: { token: string;
               minHeight: 0,
               display: "grid",
               gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
-              gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))`,
+              gridTemplateRows: [groupRows > 0 ? `repeat(${groupRows}, minmax(0, 1fr))` : null, hasKnockout ? "minmax(0, 1.5fr)" : null].filter(Boolean).join(" "),
               gap: "1.4vh 1vw",
             }}
           >
@@ -327,17 +330,26 @@ export default function PublicScoreboard({ token, tv = false }: { token: string;
               );
             })}
             {hasKnockout && (
-              <div style={cardStyle}>
+              <div style={{ ...cardStyle, gridColumn: "1 / -1" }}>
                 <div style={{ ...cardHeader, background: "linear-gradient(90deg, #1d6fd1, #4aa3ff)" }}>Knockout</div>
-                <div style={{ padding: "0.6vh 0.9vw", flex: 1, minHeight: 0 }}>
+                <div
+                  style={{
+                    padding: "0.6vh 0.9vw",
+                    flex: 1,
+                    minHeight: 0,
+                    display: "flex",
+                    gap: "1.2vw",
+                    overflow: "hidden",
+                  }}
+                >
                   {KNOCKOUT_ROUNDS.map(({ value, label }) => {
                     const rm = knockoutMatches
                       .filter((m) => m.knockout_round === value)
                       .sort((a, b) => (a.knockout_slot ?? 0) - (b.knockout_slot ?? 0));
                     if (rm.length === 0) return null;
                     return (
-                      <div key={value} style={{ marginBottom: "0.8vh" }}>
-                        <div style={{ opacity: 0.6, fontSize: "0.75em", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                      <div key={value} style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ opacity: 0.65, fontSize: "0.75em", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "0.3vh" }}>
                           {label}
                         </div>
                         {rm.map((m) => {
@@ -348,16 +360,17 @@ export default function PublicScoreboard({ token, tv = false }: { token: string;
                               style={{
                                 display: "flex",
                                 justifyContent: "space-between",
-                                gap: 8,
-                                lineHeight: 1.15,
-                                padding: "0.3vh 0",
+                                alignItems: "center",
+                                gap: 6,
+                                lineHeight: 1.1,
+                                padding: "0.25vh 0",
                                 borderTop: "1px solid rgba(255,255,255,0.1)",
                               }}
                             >
                               <span style={{ fontWeight: m.winner_team_id === m.team_a_id ? 800 : 400, minWidth: 0 }}>
                                 {teamLabel(m.team_a_id)}
                               </span>
-                              <span style={{ opacity: 0.8, flexShrink: 0, fontWeight: 700 }}>
+                              <span style={{ opacity: 0.9, flexShrink: 0, fontWeight: 800 }}>
                                 {done ? `${m.team_a_score}–${m.team_b_score}` : "vs"}
                               </span>
                               <span

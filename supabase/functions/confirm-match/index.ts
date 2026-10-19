@@ -174,8 +174,14 @@ Deno.serve(async (req) => {
     // before this change — the fix only ever protects settled partners.
     const teamDeltaA = newTeamA.rating - teamA.rating;
     const teamDeltaB = newTeamB.rating - teamB.rating;
+    // 2026-10-19 (Ben's request): a player with fewer than 12 games can't
+    // GAIN more than 25 points from a single game (e.g. a brand-new player
+    // went +39 in their 3rd game on a 12-1 win). Losses are unaffected. Must
+    // stay identical to replay.ts.
+    const PROVISIONAL_GAMES = 12;
+    const PROVISIONAL_MAX_GAIN = 25;
     const individual = (
-      p: { rd: number; volatility: number },
+      p: { rd: number; volatility: number; games_played: number },
       team: Glicko2Player,
       opp: Glicko2Player,
       actual: number,
@@ -184,7 +190,8 @@ Deno.serve(async (req) => {
     ) => {
       const res = updateRating({ rating: team.rating, rd: p.rd, volatility: p.volatility }, opp, actual, confidence);
       const raw = res.rating - team.rating;
-      const capped = Math.sign(raw) === Math.sign(teamDelta) ? Math.sign(raw) * Math.min(Math.abs(raw), Math.abs(teamDelta)) : raw;
+      let capped = Math.sign(raw) === Math.sign(teamDelta) ? Math.sign(raw) * Math.min(Math.abs(raw), Math.abs(teamDelta)) : raw;
+      if (p.games_played < PROVISIONAL_GAMES && capped > PROVISIONAL_MAX_GAIN) capped = PROVISIONAL_MAX_GAIN;
       return { delta: capped, rd: res.rd, volatility: res.volatility };
     };
     const uA1 = individual(rA1, teamA, teamB, actualA, confidenceForTeamA, teamDeltaA);
