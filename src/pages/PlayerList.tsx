@@ -80,6 +80,7 @@ export default function PlayerList({
         searchPlaceholder="Search by name…"
         sortAdminsFirst={false}
         listLabel="member"
+        allowGrantLegacyBadge={false}
       />
     </div>
   );

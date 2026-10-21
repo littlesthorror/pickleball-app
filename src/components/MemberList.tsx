@@ -39,6 +39,7 @@ export default function MemberList({
   sortAdminsFirst = true,
   listLabel = "member",
   emptyMessage,
+  allowGrantLegacyBadge = false,
 }: {
   players: PlayerStatus[];
   privateInfoByPlayer: Record<string, PlayerPrivateInfo>;
@@ -53,6 +54,9 @@ export default function MemberList({
   sortAdminsFirst?: boolean;
   listLabel?: string;
   emptyMessage?: string;
+  // Show the "Grant legacy badge" action. Off everywhere by default (Ben no
+  // longer needs it, 2026-10-21); pass true to bring it back.
+  allowGrantLegacyBadge?: boolean;
 }) {
   const confirm = useConfirm();
   const toast = useToast();
@@ -595,7 +599,7 @@ export default function MemberList({
                   </button>
                 </div>
               </div>
-            ) : (
+            ) : !allowGrantLegacyBadge ? null : (
               <span
                 className="link-action"
                 role="button"
