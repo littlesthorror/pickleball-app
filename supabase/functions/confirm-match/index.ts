@@ -154,8 +154,10 @@ Deno.serve(async (req) => {
     // each team's OWN delta — the opposing (provisional) team's own
     // updateRating() call always uses confidence 1, so new players still
     // converge to their true rating at normal speed.
-    const confidenceForTeamA = Math.min(1, Math.max(0, Math.min(rB1.games_played, rB2.games_played)) / 12);
-    const confidenceForTeamB = Math.min(1, Math.max(0, Math.min(rA1.games_played, rA2.games_played)) / 12);
+    // Games since a rating-only reset (0 offset if none) — see migration 0080.
+    const prov = (r: { games_played: number; rating_reset_games?: number | null }) => r.games_played - (r.rating_reset_games ?? 0);
+    const confidenceForTeamA = Math.min(1, Math.max(0, Math.min(prov(rB1), prov(rB2))) / 12);
+    const confidenceForTeamB = Math.min(1, Math.max(0, Math.min(prov(rA1), prov(rA2))) / 12);
 
     const newTeamA = updateRating(teamA, teamB, actualA, confidenceForTeamA);
     const newTeamB = updateRating(teamB, teamA, actualB, confidenceForTeamB);
@@ -181,7 +183,7 @@ Deno.serve(async (req) => {
     const PROVISIONAL_GAMES = 12;
     const PROVISIONAL_MAX_GAIN = 25;
     const individual = (
-      p: { rd: number; volatility: number; games_played: number },
+      p: { rd: number; volatility: number; games_played: number; rating_reset_games?: number | null },
       team: Glicko2Player,
       opp: Glicko2Player,
       actual: number,
@@ -191,7 +193,7 @@ Deno.serve(async (req) => {
       const res = updateRating({ rating: team.rating, rd: p.rd, volatility: p.volatility }, opp, actual, confidence);
       const raw = res.rating - team.rating;
       let capped = Math.sign(raw) === Math.sign(teamDelta) ? Math.sign(raw) * Math.min(Math.abs(raw), Math.abs(teamDelta)) : raw;
-      if (p.games_played < PROVISIONAL_GAMES && capped > PROVISIONAL_MAX_GAIN) capped = PROVISIONAL_MAX_GAIN;
+      if (p.games_played - (p.rating_reset_games ?? 0) < PROVISIONAL_GAMES && capped > PROVISIONAL_MAX_GAIN) capped = PROVISIONAL_MAX_GAIN;
       return { delta: capped, rd: res.rd, volatility: res.volatility };
     };
     const uA1 = individual(rA1, teamA, teamB, actualA, confidenceForTeamA, teamDeltaA);

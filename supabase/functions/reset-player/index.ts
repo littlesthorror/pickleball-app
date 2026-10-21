@@ -48,9 +48,37 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "admins only" }), { status: 403, headers: corsHeaders });
     }
 
-    const { player_id } = await req.json();
+    const { player_id, rating_only } = await req.json();
     if (!player_id) {
       return new Response(JSON.stringify({ error: "player_id is required" }), { status: 400, headers: corsHeaders });
+    }
+
+    // rating_only: restart the rating but keep match history, games_played and
+    // badges (reset_at stays untouched). See migration 0080.
+    if (rating_only) {
+      const { data: cur, error: curErr } = await supabase
+        .from("player_ratings")
+        .select("games_played")
+        .eq("player_id", player_id)
+        .single();
+      if (curErr || !cur) {
+        return new Response(JSON.stringify({ error: curErr?.message ?? "player not found" }), { status: 500, headers: corsHeaders });
+      }
+      const { error: rErr } = await supabase
+        .from("player_ratings")
+        .update({
+          rating: 1500,
+          rd: 350,
+          volatility: 0.06,
+          rating_reset_at: new Date().toISOString(),
+          rating_reset_games: cur.games_played,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("player_id", player_id);
+      if (rErr) {
+        return new Response(JSON.stringify({ error: rErr.message }), { status: 500, headers: corsHeaders });
+      }
+      return new Response(JSON.stringify({ ok: true }), { status: 200, headers: corsHeaders });
     }
 
     const { error } = await supabase
@@ -60,6 +88,8 @@ Deno.serve(async (req) => {
         rd: 350,
         volatility: 0.06,
         games_played: 0,
+        rating_reset_at: null,
+        rating_reset_games: 0,
         reset_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })

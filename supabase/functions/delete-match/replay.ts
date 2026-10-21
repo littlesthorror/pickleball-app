@@ -39,13 +39,19 @@ import { updateRating, type Glicko2Player } from "./glicko2.ts";
 
 interface WorkingPlayer extends Glicko2Player {
   games_played: number;
+  // games_played at the player's last "rating-only reset" (0 if none). Games
+  // since then (games_played - base_games) drive the provisional rules (gain
+  // cap, opponent-confidence damping); games_played itself keeps counting
+  // everything, so badges/leaderboard eligibility are untouched.
+  base_games: number;
 }
 
 // Matches created at/after this instant use per-player rating updates
 // (2026-10-13 00:00 UTC, Ben's request) instead of one team-averaged swing.
 const PER_PLAYER_UPDATE_FROM = Date.parse("2026-10-13T00:00:00Z");
 
-const DEFAULT_PLAYER: WorkingPlayer = { rating: 1500, rd: 350, volatility: 0.06, games_played: 0 };
+const DEFAULT_PLAYER: WorkingPlayer = { rating: 1500, rd: 350, volatility: 0.06, games_played: 0, base_games: 0 };
+const provisionalGames = (p: WorkingPlayer) => p.games_played - p.base_games;
 
 type MatchRow = {
   id: string;
@@ -60,6 +66,7 @@ type MatchRow = {
 
 type Event =
   | { type: "reset"; at: string; playerId: string }
+  | { type: "ratingReset"; at: string; playerId: string }
   | { type: "match"; at: string; match: MatchRow };
 
 export async function recomputeAllRatings(
@@ -72,7 +79,7 @@ export async function recomputeAllRatings(
     { data: matches, error: matchesError },
   ] = await Promise.all([
     supabase.from("players").select("id"),
-    supabase.from("player_ratings").select("player_id, reset_at"),
+    supabase.from("player_ratings").select("player_id, reset_at, rating_reset_at"),
     supabase
       .from("matches")
       .select(
@@ -89,6 +96,8 @@ export async function recomputeAllRatings(
   const events: Event[] = [
     // deno-lint-ignore no-explicit-any
     ...ratingsRows.filter((r: any) => r.reset_at).map((r: any) => ({ type: "reset" as const, at: r.reset_at, playerId: r.player_id })),
+    // deno-lint-ignore no-explicit-any
+    ...ratingsRows.filter((r: any) => r.rating_reset_at).map((r: any) => ({ type: "ratingReset" as const, at: r.rating_reset_at, playerId: r.player_id })),
     ...(matches as MatchRow[]).map((m) => ({ type: "match" as const, at: m.created_at, match: m })),
   ];
   events.sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
@@ -112,6 +121,13 @@ export async function recomputeAllRatings(
   for (const event of events) {
     if (event.type === "reset") {
       working.set(event.playerId, { ...DEFAULT_PLAYER });
+      continue;
+    }
+    if (event.type === "ratingReset") {
+      // Rating-only reset: fresh rating/RD/volatility, but games_played (and
+      // all match history) is kept; provisional rules restart from here.
+      const cur = get(event.playerId);
+      working.set(event.playerId, { ...DEFAULT_PLAYER, games_played: cur.games_played, base_games: cur.games_played });
       continue;
     }
 
@@ -147,8 +163,8 @@ export async function recomputeAllRatings(
     // updateRating() call always uses confidence 1, so new players still
     // converge to their true rating at normal speed. Identical logic to
     // confirm-match/index.ts, applied here during full-history replay too.
-    const confidenceForTeamA = Math.min(1, Math.max(0, Math.min(rB1.games_played, rB2.games_played)) / 12);
-    const confidenceForTeamB = Math.min(1, Math.max(0, Math.min(rA1.games_played, rA2.games_played)) / 12);
+    const confidenceForTeamA = Math.min(1, Math.max(0, Math.min(provisionalGames(rB1), provisionalGames(rB2))) / 12);
+    const confidenceForTeamB = Math.min(1, Math.max(0, Math.min(provisionalGames(rA1), provisionalGames(rA2))) / 12);
 
     const newTeamA = updateRating(teamA, teamB, actualA, confidenceForTeamA);
     const newTeamB = updateRating(teamB, teamA, actualB, confidenceForTeamB);
@@ -174,7 +190,7 @@ export async function recomputeAllRatings(
       // 2026-10-19 (Ben's request): a player with fewer than 12 games can't
       // GAIN more than 25 points from one game. Losses unaffected. Must stay
       // identical to confirm-match/index.ts.
-      if (p.games_played < 12 && capped > 25) capped = 25;
+      if (provisionalGames(p) < 12 && capped > 25) capped = 25;
       return { delta: capped, rd: res.rd, volatility: res.volatility };
     };
     const uA1 = individual(rA1, teamA, teamB, actualA, confidenceForTeamA);
@@ -182,10 +198,10 @@ export async function recomputeAllRatings(
     const uB1 = individual(rB1, teamB, teamA, actualB, confidenceForTeamB);
     const uB2 = individual(rB2, teamB, teamA, actualB, confidenceForTeamB);
 
-    working.set(m.team_a_player_1_id, { rating: rA1.rating + uA1.delta, rd: uA1.rd, volatility: uA1.volatility, games_played: rA1.games_played + 1 });
-    working.set(m.team_a_player_2_id, { rating: rA2.rating + uA2.delta, rd: uA2.rd, volatility: uA2.volatility, games_played: rA2.games_played + 1 });
-    working.set(m.team_b_player_1_id, { rating: rB1.rating + uB1.delta, rd: uB1.rd, volatility: uB1.volatility, games_played: rB1.games_played + 1 });
-    working.set(m.team_b_player_2_id, { rating: rB2.rating + uB2.delta, rd: uB2.rd, volatility: uB2.volatility, games_played: rB2.games_played + 1 });
+    working.set(m.team_a_player_1_id, { rating: rA1.rating + uA1.delta, rd: uA1.rd, volatility: uA1.volatility, games_played: rA1.games_played + 1, base_games: rA1.base_games });
+    working.set(m.team_a_player_2_id, { rating: rA2.rating + uA2.delta, rd: uA2.rd, volatility: uA2.volatility, games_played: rA2.games_played + 1, base_games: rA2.base_games });
+    working.set(m.team_b_player_1_id, { rating: rB1.rating + uB1.delta, rd: uB1.rd, volatility: uB1.volatility, games_played: rB1.games_played + 1, base_games: rB1.base_games });
+    working.set(m.team_b_player_2_id, { rating: rB2.rating + uB2.delta, rd: uB2.rd, volatility: uB2.volatility, games_played: rB2.games_played + 1, base_games: rB2.base_games });
 
     participantRows.push(
       { match_id: m.id, player_id: m.team_a_player_1_id, team: "a", pre_rating: rA1.rating, pre_rd: rA1.rd, post_rating: rA1.rating + uA1.delta, post_rd: uA1.rd },
@@ -203,6 +219,7 @@ export async function recomputeAllRatings(
     rd: p.rd,
     volatility: p.volatility,
     games_played: p.games_played,
+    rating_reset_games: p.base_games,
   }));
 
   const matchUpdateRows = matchUpdates.map((u) => ({

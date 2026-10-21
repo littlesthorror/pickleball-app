@@ -159,6 +159,44 @@ export default function MemberList({
     onReload();
   }
 
+  // Rating-only reset: restarts the rating at 1500 but keeps the player's
+  // games, history and badges (see migration 0080 / reset-player rating_only).
+  async function resetRatingOnly(player: PlayerStatus) {
+    if (
+      !(await confirm(
+        `Restart ${player.display_name}'s rating at 1500 but keep their games, history and badges? Their games played count stays, and a Recompute will keep the reset. Other players' ratings aren't changed.`,
+        { danger: true }
+      ))
+    ) {
+      return;
+    }
+    setBusyId(player.id);
+    const { error } = await supabase.functions.invoke("reset-player", {
+      body: { player_id: player.id, rating_only: true },
+    });
+    setBusyId(null);
+    if (error) {
+      const { data: recheck } = await supabase
+        .from("player_ratings")
+        .select("rating_reset_at")
+        .eq("player_id", player.id)
+        .maybeSingle();
+      const justReset = !!recheck?.rating_reset_at && new Date(recheck.rating_reset_at).getTime() > Date.now() - 15000;
+      if (justReset) {
+        onReload();
+        return;
+      }
+      if (error instanceof FunctionsHttpError) {
+        const body = await error.context.json().catch(() => null);
+        toast.error(body?.error ?? "Couldn't reset this player's rating.");
+      } else {
+        toast.error("Couldn't reach the server to reset this player's rating — check your connection and try again.");
+      }
+      return;
+    }
+    onReload();
+  }
+
   async function resetHistory(player: PlayerStatus) {
     if (
       !(await confirm(
@@ -589,6 +627,13 @@ export default function MemberList({
               style={{ flex: "1 1 140px", marginTop: 0, padding: "8px", fontSize: "0.85rem", background: "transparent", color: "var(--navy-500)", border: "1px solid var(--border)" }}
             >
               {p.is_active ? "Deactivate" : "Reactivate"}
+            </button>
+            <button
+              disabled={busyId === p.id}
+              onClick={() => resetRatingOnly(p)}
+              style={{ flex: "1 1 140px", marginTop: 0, padding: "8px", fontSize: "0.85rem", background: "transparent", color: "var(--danger)", border: "1px solid var(--border)" }}
+            >
+              Reset rating only
             </button>
             <button
               disabled={busyId === p.id}
