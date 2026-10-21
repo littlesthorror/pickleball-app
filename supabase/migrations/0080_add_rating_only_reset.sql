@@ -30,7 +30,8 @@ begin
   from jsonb_array_elements(rating_rows) as r
   where pr.player_id = (r->>'player_id')::uuid;
 
-  delete from match_participant_ratings;
+  -- "where true" satisfies pg-safeupdate (see migration 0021).
+  delete from match_participant_ratings where true;
 
   insert into match_participant_ratings (match_id, player_id, team, pre_rating, pre_rd, post_rating, post_rd)
   select
