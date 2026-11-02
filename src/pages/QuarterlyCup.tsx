@@ -177,8 +177,8 @@ export default function QuarterlyCup({ isAdmin, currentUserId }: { isAdmin: bool
 
               <label>Scoring</label>
               <select value={newScoring} onChange={(e) => setNewScoring(e.target.value as ScoringSystem)}>
-                <option value="standard">Standard — 2 pts for a win</option>
-                <option value="social">Social — losers keep 1 pt if they scored 7+</option>
+                <option value="standard">Standard scoring: 2 points for a win</option>
+                <option value="social">Social scoring: 2 points for a win, +1 point for the losing team if they scored more than 6</option>
               </select>
 
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12 }}>

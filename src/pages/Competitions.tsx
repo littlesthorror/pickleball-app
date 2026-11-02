@@ -269,14 +269,14 @@ export default function Competitions({ isAdmin, currentUserId }: { isAdmin: bool
               <input type="date" value={newDate} onChange={(e) => setNewDate(e.target.value)} />
               <label>Scoring system</label>
               <select value={newScoring} onChange={(e) => setNewScoring(e.target.value as ScoringSystem)}>
-                <option value="standard">Standard — 2 points for a win</option>
-                <option value="social">Social — 2 for a win, +1 consolation point for a close loss (7+)</option>
+                <option value="standard">Standard scoring: 2 points for a win</option>
+                <option value="social">Social scoring: 2 points for a win, +1 point for the losing team if they scored more than 6</option>
               </select>
-              <p className="stat-meta" style={{ marginTop: 4 }}>
-                {newScoring === "social"
-                  ? "The losing team still picks up 1 point if they scored more than 6 in the game."
-                  : "Only the winning team scores group-stage points."}
-              </p>
+              {newScoring !== "social" && (
+                <p className="stat-meta" style={{ marginTop: 4 }}>
+                  Only the winning team scores group-stage points.
+                </p>
+              )}
               <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 16, cursor: "pointer" }}>
                 <input
                   type="checkbox"
@@ -381,8 +381,7 @@ export default function Competitions({ isAdmin, currentUserId }: { isAdmin: bool
         <div style={{ marginTop: selected ? 24 : 0 }}>
           <h2 style={{ marginBottom: 4 }}>Competition archive</h2>
           <p className="stat-meta" style={{ marginBottom: 12 }}>
-            Completed competitions, collapsed to keep this page manageable — tap one to see its full standings
-            and bracket.
+            Completed competitions, tap one to see past results.
           </p>
           {archivedCompetitions.map((c) => (
             <CompetitionArchiveRow
@@ -861,7 +860,7 @@ function CompetitionDetail({
         <div className="card" style={{ marginTop: 16 }}>
           <strong>⚙️ Teams going through</strong>
           <p className="stat-meta" style={{ marginTop: 4, marginBottom: 8 }}>
-            How many teams from each group qualify for the knockout stage. You can change this at any time.
+            How many teams from each group qualify for the knockout stage.
             {competition.status === "knockout" || competition.status === "completed"
               ? " Matches already in the bracket aren't changed — this only affects which teams are offered and highlighted."
               : ""}
@@ -1501,7 +1500,7 @@ function GroupStandingsSection({
       <h3 style={{ marginTop: 0 }}>Group standings</h3>
       {scoringSystem === "social" && (
         <p className="stat-meta" style={{ marginTop: -4 }}>
-          Social scoring: 2 points for a win, plus 1 point for the losing team if they scored more than 6.
+          Social scoring: 2 points for a win, +1 point for the losing team if they scored more than 6.
         </p>
       )}
       {groups.map((g) => {
