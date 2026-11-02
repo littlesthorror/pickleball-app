@@ -760,6 +760,116 @@ const EMPTY_DRAFT = {
   isPrivate: "",
 };
 
+// Club-wide calendar subscription (2026-11-02, Ben's request). The feed only
+// ever contains public events — private "save the date" events are excluded
+// server-side by the calendar-feed edge function. The link carries a secret
+// token (admins can rotate it) because calendar apps can't sign in.
+function CalendarSubscribeCard({ isAdmin }: { isAdmin: boolean }) {
+  const toast = useToast();
+  const confirm = useConfirm();
+  const [token, setToken] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    supabase.rpc("get_calendar_feed_token").then(({ data }) => {
+      if (!cancelled && typeof data === "string") setToken(data);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (!token) return null;
+
+  const base = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/calendar-feed?token=${token}`;
+  const webcalUrl = base.replace(/^https?:/, "webcal:");
+
+  async function copyLink() {
+    try {
+      await navigator.clipboard.writeText(base);
+      toast.success("Calendar link copied — paste it into your calendar app's \"subscribe from URL\".");
+    } catch {
+      toast.error("Couldn't copy automatically — long-press or select the link to copy it.");
+    }
+  }
+
+  async function rotate() {
+    if (
+      !(await confirm(
+        "Create a new calendar link? Anyone subscribed with the old link will stop receiving updates and will need to subscribe again with the new one.",
+        { danger: true }
+      ))
+    ) {
+      return;
+    }
+    setBusy(true);
+    const { data, error } = await supabase.rpc("rotate_calendar_feed_token");
+    setBusy(false);
+    if (error || typeof data !== "string") {
+      toast.error("Couldn't create a new link.");
+      return;
+    }
+    setToken(data);
+    toast.success("New calendar link created.");
+  }
+
+  const btn = { flex: "1 1 140px", marginTop: 0, padding: "8px", fontSize: "0.85rem" } as const;
+  const ghost = { ...btn, background: "transparent", color: "var(--navy-500)", border: "1px solid var(--border)" } as const;
+
+  return (
+    <div className="card" style={{ marginTop: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+        <h2 style={{ margin: 0 }}>Add to your calendar</h2>
+        <span
+          className="link-action"
+          role="button"
+          tabIndex={0}
+          onClick={() => setOpen((o) => !o)}
+          style={{ fontSize: "0.85rem" }}
+        >
+          {open ? "Hide" : "Show"}
+        </span>
+      </div>
+      {open && (
+        <>
+          <p className="stat-meta" style={{ marginTop: 8 }}>
+            Subscribe once and the club's events stay up to date in your own calendar automatically. Only public
+            events are included. Apple and Outlook refresh every few hours; Google Calendar can take up to a day.
+          </p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            <a href={webcalUrl} style={{ flex: "1 1 140px", textDecoration: "none" }}>
+              <button style={{ ...btn, width: "100%" }}>Subscribe</button>
+            </a>
+            <button onClick={copyLink} style={ghost}>
+              Copy link
+            </button>
+            <a href={`${base}&download=1`} style={{ flex: "1 1 140px", textDecoration: "none" }}>
+              <button style={{ ...ghost, width: "100%" }}>Download .ics</button>
+            </a>
+          </div>
+          <p className="stat-meta" style={{ marginTop: 8 }}>
+            On Google Calendar: Other calendars → From URL → paste the copied link. Downloading the file gives a
+            one-off copy that won't update.
+          </p>
+          {isAdmin && (
+            <span
+              className="link-action"
+              role="button"
+              tabIndex={0}
+              onClick={() => !busy && rotate()}
+              style={{ fontSize: "0.78rem" }}
+            >
+              Create a new link (admins)
+            </span>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function Events({ isAdmin, playerId }: { isAdmin: boolean; playerId: string }) {
   const confirm = useConfirm();
   const toast = useToast();
@@ -1483,6 +1593,8 @@ export default function Events({ isAdmin, playerId }: { isAdmin: boolean; player
             ))}
         </div>
       )}
+
+      <CalendarSubscribeCard isAdmin={isAdmin} />
 
       <div className="card" style={{ marginTop: 16 }}>
         <h2>Upcoming</h2>
