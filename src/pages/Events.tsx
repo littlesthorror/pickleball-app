@@ -1594,8 +1594,6 @@ export default function Events({ isAdmin, playerId }: { isAdmin: boolean; player
         </div>
       )}
 
-      <CalendarSubscribeCard isAdmin={isAdmin} />
-
       <div className="card" style={{ marginTop: 16 }}>
         <h2>Upcoming</h2>
         {upcoming.length === 0 && <p className="stat-meta">No upcoming events yet.</p>}
@@ -1617,6 +1615,8 @@ export default function Events({ isAdmin, playerId }: { isAdmin: boolean; player
           onShowLess={() => setVisibleUpcoming(PAGE_SIZE)}
         />
       </div>
+
+      <CalendarSubscribeCard isAdmin={isAdmin} />
 
       {past.length > 0 && (
         <div className="card">
