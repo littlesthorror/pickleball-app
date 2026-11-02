@@ -287,6 +287,19 @@ export default function Competitions({ isAdmin, currentUserId }: { isAdmin: bool
                 Teams play each other twice (double round robin)
               </label>
 
+              {/* Moved out of "Advanced settings" (2026-11-02, Ben's request)
+                  so it's visible when creating a competition. It can also be
+                  changed later from the competition's own Settings card. */}
+              <label style={{ marginTop: 16 }}>Teams going through to the knockout stage</label>
+              <select value={newAdvance} onChange={(e) => setNewAdvance(e.target.value)}>
+                <option value="2">Top 2 per group</option>
+                <option value="4">Top 4 per group</option>
+              </select>
+              <p className="stat-meta" style={{ marginTop: 4 }}>
+                Only these top finishers from each group show up as selectable teams when you move to the knockout
+                stage. You can change this later from the competition's settings.
+              </p>
+
               {/* Advanced settings (2026-09-07, Ben's request) — nested,
                   separately-collapsible sub-section so it has room to grow
                   without cluttering the common "just create a competition"
@@ -314,16 +327,6 @@ export default function Competitions({ isAdmin, currentUserId }: { isAdmin: bool
               </div>
               {showAdvanced && (
                 <>
-                  <label>Auto-qualify from groups</label>
-                  <select value={newAdvance} onChange={(e) => setNewAdvance(e.target.value)}>
-                    <option value="2">Top 2 per group</option>
-                    <option value="4">Top 4 per group</option>
-                  </select>
-                  <p className="stat-meta" style={{ marginTop: 4 }}>
-                    When you move to the knockout stage, only these top finishers from each group will show up as
-                    selectable teams — no more scrolling past teams that didn't qualify.
-                  </p>
-
                   <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 16, cursor: "pointer" }}>
                     <input
                       type="checkbox"
@@ -571,6 +574,27 @@ function CompetitionDetail({
       toast.error(`Couldn't turn off the public scoreboard: ${shareError.message}`);
       return;
     }
+    onCompetitionChanged();
+  }
+
+  // Change how many teams per group go through (2026-11-02, Ben's request) —
+  // editable any time after creation. Only affects who's offered in the
+  // knockout team pickers and the bolded rows in group tables; matches
+  // already created in the bracket aren't touched.
+  const [savingAdvance, setSavingAdvance] = useState(false);
+  async function saveAdvance(value: number) {
+    if (value === competition.advance_per_group) return;
+    setSavingAdvance(true);
+    const { error: advError } = await supabase
+      .from("competitions")
+      .update({ advance_per_group: value })
+      .eq("id", competition.id);
+    setSavingAdvance(false);
+    if (advError) {
+      toast.error(`Couldn't update: ${advError.message}`);
+      return;
+    }
+    toast.success(`Top ${value} from each group now go through.`);
     onCompetitionChanged();
   }
 
@@ -832,6 +856,26 @@ function CompetitionDetail({
           </button>
         )}
       </div>
+
+      {isAdmin && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <strong>⚙️ Teams going through</strong>
+          <p className="stat-meta" style={{ marginTop: 4, marginBottom: 8 }}>
+            How many teams from each group qualify for the knockout stage. You can change this at any time.
+            {competition.status === "knockout" || competition.status === "completed"
+              ? " Matches already in the bracket aren't changed — this only affects which teams are offered and highlighted."
+              : ""}
+          </p>
+          <select
+            value={String(competition.advance_per_group)}
+            disabled={savingAdvance}
+            onChange={(e) => saveAdvance(Number(e.target.value))}
+          >
+            <option value="2">Top 2 per group</option>
+            <option value="4">Top 4 per group</option>
+          </select>
+        </div>
+      )}
 
       {isAdmin && (
         <div className="card" style={{ marginTop: 16 }}>
