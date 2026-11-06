@@ -152,10 +152,62 @@ export default function PublicScoreboard({ token, tv = false }: { token: string;
     const groupRows = Math.ceil(cells / cols);
     // Knockout (when present) is a full-width band under the groups, so
     // quarter/semi/final results are never pushed off the bottom of the screen.
-    const rows = Math.max(1, groupRows + (hasKnockout ? 1.5 : 0));
     const maxTeams = Math.max(1, ...sortedGroups.map((g) => g.team_ids.length));
-    // Row font size in vh keyed to grid rows / teams per group so a full 4x4 stays legible.
-    const rowFs = `${Math.max(1.1, Math.min(2.6, 64 / (rows * (maxTeams + 3))))}vh`;
+    // 2026-11-06 — row heights are now weighted by how much content each band
+    // really needs (in "text rows"), instead of fixed 1fr / 1.5fr. With two
+    // groups of 8 plus a knockout band, the old split left the group tables
+    // clipped (only ~5-6 of 8 teams visible) while the bracket had spare room.
+    // A group card needs title + header + one line per team; the bracket needs
+    // a header plus ~3 lines per match in its busiest round.
+    const roundCounts = new Map<string, number>();
+    for (const m of knockoutMatches) {
+      roundCounts.set(m.knockout_round as string, (roundCounts.get(m.knockout_round as string) ?? 0) + 1);
+    }
+    const maxRoundMatches = Math.max(1, ...Array.from(roundCounts.values()));
+    const koCols = Math.max(1, roundCounts.size);
+    // Estimate how many lines a team name takes at a given font size (names wrap
+    // inside the group tables and bracket columns), using a typical-long name
+    // (85th percentile of label lengths) so one outlier doesn't shrink everything.
+    const labelLens = data.teams
+      .map((t) => (t.team_name || `${t.player1_name} & ${t.player2_name}`).length)
+      .sort((a, b) => a - b);
+    const nameLen = labelLens.length ? labelLens[Math.min(labelLens.length - 1, Math.floor(0.85 * (labelLens.length - 1)))] : 12;
+    const vhPx = (typeof window !== "undefined" ? window.innerHeight : 1080) / 100;
+    const vwPx = (typeof window !== "undefined" ? window.innerWidth : 1920) / 100;
+    const gridRowCount = groupRows + (hasKnockout ? 1 : 0);
+    const availH = vhPx * (100 - 2.8 - 10.4 - 1.4 * (gridRowCount - 1));
+    const cardW = (vwPx * (100 - 2.8) - vwPx * (cols - 1)) / cols;
+    const needAt = (fsVh: number) => {
+      const f = fsVh * vhPx;
+      const teamColPx = (cardW - 1.8 * vwPx) * 0.49 - 1.3 * vwPx;
+      const gLines = Math.max(1, Math.ceil(nameLen / Math.max(6, teamColPx / (f * 0.56))));
+      const gNeed = f * (maxTeams * (gLines * 1.1 + 0.35) + 3.6);
+      let kNeed = 0;
+      if (hasKnockout) {
+        const koColW = (vwPx * (100 - 2.8) - 1.8 * vwPx - 1.2 * vwPx * (koCols - 1)) / koCols;
+        const koTeamW = koColW - 2.6 * f - 8;
+        const kLines = Math.max(1, Math.ceil(nameLen / Math.max(5, koTeamW / (f * 0.56))));
+        const matchH = 2 * kLines * 1.1 + 0.6;
+        const finalCount = roundCounts.get("final") ?? 0;
+        // The Final column also holds the champion banner (~6 lines tall).
+        kNeed = f * (Math.max(maxRoundMatches * matchH, finalCount ? finalCount * matchH + 6.5 : 0) + 4);
+      }
+      return { gNeed, kNeed, total: groupRows * gNeed + kNeed };
+    };
+    // Largest font (vh) at which everything fits the screen height; capped lower
+    // with 4 columns so names don't wrap needlessly in narrow cards.
+    const fontCap = cols >= 4 ? 2.2 : 2.35;
+    let fitFs = 1.1;
+    for (let fs = fontCap; fs >= 1.1; fs -= 0.05) {
+      if (needAt(fs).total <= availH) {
+        fitFs = fs;
+        break;
+      }
+    }
+    const fitNeed = needAt(fitFs);
+    const groupUnits = fitNeed.gNeed;
+    const koUnits = fitNeed.kNeed;
+    const rowFs = `${fitFs}vh`;
     const cardStyle = {
       background: "linear-gradient(160deg, rgba(255,255,255,0.10), rgba(255,255,255,0.04))",
       border: "1px solid rgba(255,255,255,0.12)",
@@ -261,7 +313,12 @@ export default function PublicScoreboard({ token, tv = false }: { token: string;
               minHeight: 0,
               display: "grid",
               gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
-              gridTemplateRows: [groupRows > 0 ? `repeat(${groupRows}, minmax(0, 1fr))` : null, hasKnockout ? "minmax(0, 1.5fr)" : null].filter(Boolean).join(" "),
+              gridTemplateRows: [
+                groupRows > 0 ? `repeat(${groupRows}, minmax(0, ${groupUnits}fr))` : null,
+                hasKnockout ? `minmax(0, ${koUnits}fr)` : null,
+              ]
+                .filter(Boolean)
+                .join(" "),
               gap: "1.4vh 1vw",
             }}
           >
@@ -358,33 +415,65 @@ export default function PublicScoreboard({ token, tv = false }: { token: string;
                             <div
                               key={m.id}
                               style={{
-                                display: "flex",
-                                justifyContent: "space-between",
-                                alignItems: "center",
-                                gap: 6,
                                 lineHeight: 1.1,
-                                padding: "0.25vh 0",
+                                padding: "0.3vh 0",
                                 borderTop: "1px solid rgba(255,255,255,0.1)",
                               }}
                             >
-                              <span style={{ fontWeight: m.winner_team_id === m.team_a_id ? 800 : 400, minWidth: 0 }}>
-                                {teamLabel(m.team_a_id)}
-                              </span>
-                              <span style={{ opacity: 0.9, flexShrink: 0, fontWeight: 800 }}>
-                                {done ? `${m.team_a_score}–${m.team_b_score}` : "vs"}
-                              </span>
-                              <span
-                                style={{
-                                  fontWeight: m.winner_team_id === m.team_b_id ? 800 : 400,
-                                  textAlign: "right",
-                                  minWidth: 0,
-                                }}
-                              >
-                                {teamLabel(m.team_b_id)}
-                              </span>
+                              {([
+                                [m.team_a_id, m.team_a_score],
+                                [m.team_b_id, m.team_b_score],
+                              ] as const).map(([tid, sc], idx) => (
+                                <div key={idx} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
+                                  <span style={{ fontWeight: m.winner_team_id === tid ? 800 : 400, minWidth: 0, textAlign: "left" }}>
+                                    {teamLabel(tid)}
+                                  </span>
+                                  <span style={{ flexShrink: 0, fontWeight: 800, minWidth: "1.6em", textAlign: "right", opacity: done ? 1 : 0.4 }}>
+                                    {done ? sc : "–"}
+                                  </span>
+                                </div>
+                              ))}
                             </div>
                           );
                         })}
+                        {value === "final" && (() => {
+                          const fm = rm[0];
+                          const champId = fm?.winner_team_id ?? null;
+                          if (!champId) return null;
+                          return (
+                            <div
+                              style={{
+                                marginTop: "1.2vh",
+                                padding: "1.2vh 0.8vw",
+                                borderRadius: 12,
+                                textAlign: "center",
+                                background: "linear-gradient(135deg, rgba(255,215,106,0.30), rgba(255,170,40,0.16) 55%, rgba(255,215,106,0.28))",
+                                border: "1px solid rgba(255,215,106,0.75)",
+                                animation: "champGlow 2.8s ease-in-out infinite",
+                              }}
+                            >
+                              <style>{`@keyframes champGlow{0%,100%{box-shadow:0 0 14px rgba(255,200,70,0.35)}50%{box-shadow:0 0 34px rgba(255,200,70,0.85)}}`}</style>
+                              <div style={{ fontSize: "1.9em", lineHeight: 1 }}>🏆</div>
+                              <div style={{ fontSize: "0.7em", fontWeight: 800, letterSpacing: "0.28em", color: "#ffd76a", margin: "0.5vh 0 0.4vh" }}>
+                                ✦ CHAMPIONS ✦
+                              </div>
+                              <div
+                                style={{
+                                  fontSize: "1.15em",
+                                  fontWeight: 900,
+                                  lineHeight: 1.15,
+                                  background: "linear-gradient(90deg,#fff2c0,#ffd76a,#fff2c0)",
+                                  WebkitBackgroundClip: "text",
+                                  backgroundClip: "text",
+                                  WebkitTextFillColor: "transparent",
+                                  color: "#ffd76a",
+                                }}
+                              >
+                                {teamLabel(champId)}
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </div>
                     );
                   })}
