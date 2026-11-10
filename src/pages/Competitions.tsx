@@ -3,6 +3,7 @@ import { supabase } from "../supabaseClient";
 import { PlayerSelect, submitOneMatch } from "./MatchEntry";
 import { computeGroupStandings, generateGroupFixtures, scheduleFixturesByCourt } from "../lib/competitionStandings";
 import { buildFixturesDocxBlob, downloadBlob } from "../lib/fixturesDocx";
+import { openScoreSlipsPrint } from "../lib/scoreSlips";
 import { useConfirm } from "../components/ConfirmDialog";
 import { useToast } from "../components/Toast";
 import PageLoading from "../components/PageLoading";
@@ -2133,6 +2134,16 @@ function GroupFixturesSection({
             style={{ background: "transparent", color: "var(--navy-500)", border: "1px solid var(--border)" }}
           >
             Save fixtures as Word doc
+          </button>
+          <button
+            onClick={() => {
+              if (!openScoreSlipsPrint(groups, matches, teamLabel)) {
+                toast.error("Couldn't open the score slips — allow pop-ups for this site and try again.");
+              }
+            }}
+            style={{ background: "transparent", color: "var(--navy-500)", border: "1px solid var(--border)" }}
+          >
+            Print score slips
           </button>
         </div>
       )}
