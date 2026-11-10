@@ -1799,6 +1799,40 @@ function GroupFixturesSection({
     onChanged();
   }
 
+  // "Back to setup" (2026-11-10, Ben's request) — undoes "Start group stage":
+  // deletes the generated fixtures and returns the competition to Setup.
+  // Blocked once any group game has a recorded score, so real results can
+  // never be wiped by this (those would need deleting from Edit first).
+  const hasPlayedGames = matches.some((m) => m.match_id || m.matches);
+  const [backingUp, setBackingUp] = useState(false);
+  async function backToSetup() {
+    if (hasPlayedGames) {
+      toast.error("Some games already have scores, so you can't go back to setup.");
+      return;
+    }
+    if (
+      !(await confirm(
+        "Go back to setup? This deletes all generated fixtures (no scores have been entered). Teams and groups are kept, and you can start the group stage again afterwards."
+      ))
+    ) {
+      return;
+    }
+    setBackingUp(true);
+    const { error: delError } = await supabase.from("competition_matches").delete().eq("competition_id", competition.id);
+    if (delError) {
+      setBackingUp(false);
+      toast.error(`Couldn't clear fixtures: ${delError.message}`);
+      return;
+    }
+    const { error } = await supabase.from("competitions").update({ status: "setup" }).eq("id", competition.id);
+    setBackingUp(false);
+    if (error) {
+      toast.error(`Fixtures cleared, but couldn't return to setup: ${error.message}. Reload and try again.`);
+      return;
+    }
+    onChanged();
+  }
+
   return (
     <div className="card">
       <h3 style={{ marginTop: 0 }}>Group games</h3>
@@ -2145,6 +2179,16 @@ function GroupFixturesSection({
           >
             Print score slips
           </button>
+          {competition.status === "groups" && (
+            <button
+              disabled={backingUp || hasPlayedGames}
+              onClick={backToSetup}
+              title={hasPlayedGames ? "Not available once any game has a score" : undefined}
+              style={{ background: "transparent", color: "var(--danger)", border: "1px solid var(--border)" }}
+            >
+              {backingUp ? "Going back…" : "Back to setup"}
+            </button>
+          )}
         </div>
       )}
     </div>
