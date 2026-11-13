@@ -466,6 +466,22 @@ function EventTicketModal({
   const [allPlayers, setAllPlayers] = useState<{ id: string; display_name: string }[]>([]);
   const [addPlayerId, setAddPlayerId] = useState("");
   const [manageOpen, setManageOpen] = useState(false);
+  // Compact inline buttons for the attendee rows — the global button style is
+  // full-width/tall, which stretched these and wrapped the names.
+  const attendeeBtn: React.CSSProperties = {
+    width: "auto",
+    flexShrink: 0,
+    margin: 0,
+    minHeight: 0,
+    height: "auto",
+    padding: "4px 10px",
+    fontSize: "0.75rem",
+    lineHeight: 1.2,
+    whiteSpace: "nowrap",
+    background: "transparent",
+    border: "1px solid var(--border)",
+    borderRadius: 8,
+  };
   useEffect(() => {
     if (!isAdmin || !event.rsvp_enabled) return;
     supabase
@@ -722,8 +738,18 @@ function EventTicketModal({
                 .map((r) => {
                   const nm = r.players?.display_name ?? "Unknown";
                   return (
-                    <div key={r.player_id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 0", fontSize: "0.85rem" }}>
-                      <span style={{ flex: 1, minWidth: 0 }}>
+                    <div
+                      key={r.player_id}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        padding: "6px 0",
+                        fontSize: "0.85rem",
+                        borderBottom: "1px solid var(--border)",
+                      }}
+                    >
+                      <span style={{ flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                         {nm}
                         {r.plus_one ? " +1" : ""}
                         {r.status === "waitlist" ? " (waitlist)" : ""}
@@ -732,15 +758,15 @@ function EventTicketModal({
                         <button
                           disabled={rsvpSaving}
                           onClick={() => adminTogglePlusOne(r.player_id, r.plus_one)}
-                          style={{ background: "transparent", color: "var(--navy-500)", border: "1px solid var(--border)", padding: "2px 8px", fontSize: "0.75rem" }}
+                          style={{ ...attendeeBtn, color: "var(--navy-500)" }}
                         >
-                          {r.plus_one ? "Remove +1" : "Add +1"}
+                          {r.plus_one ? "− +1" : "+ 1"}
                         </button>
                       )}
                       <button
                         disabled={rsvpSaving}
                         onClick={() => adminRemove(r.player_id, nm)}
-                        style={{ background: "transparent", color: "var(--danger)", border: "1px solid var(--border)", padding: "2px 8px", fontSize: "0.75rem" }}
+                        style={{ ...attendeeBtn, color: "var(--danger)" }}
                       >
                         Remove
                       </button>
@@ -759,7 +785,7 @@ function EventTicketModal({
                       </option>
                     ))}
                 </select>
-                <button disabled={rsvpSaving || !addPlayerId} onClick={adminAdd} style={{ marginTop: 0 }}>
+                <button disabled={rsvpSaving || !addPlayerId} onClick={adminAdd} style={{ marginTop: 0, width: "auto", flexShrink: 0 }}>
                   Add
                 </button>
               </div>
