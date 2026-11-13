@@ -465,6 +465,7 @@ function EventTicketModal({
   const adminConfirm = useConfirm();
   const [allPlayers, setAllPlayers] = useState<{ id: string; display_name: string }[]>([]);
   const [addPlayerId, setAddPlayerId] = useState("");
+  const [manageOpen, setManageOpen] = useState(false);
   useEffect(() => {
     if (!isAdmin || !event.rsvp_enabled) return;
     supabase
@@ -689,10 +690,32 @@ function EventTicketModal({
           )}
 
           {isAdmin && event.rsvp_enabled && !rsvpLoading && (
-            <div style={{ marginTop: 12, padding: "10px 12px", border: "1px dashed var(--border)", borderRadius: 10 }}>
-              <div className="stat-meta" style={{ fontWeight: 700, marginBottom: 6 }}>
-                Manage attendees (admin)
-              </div>
+            <div style={{ marginTop: 12, border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" }}>
+              <button
+                type="button"
+                onClick={() => setManageOpen((o) => !o)}
+                style={{
+                  width: "100%",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  background: "transparent",
+                  color: "var(--navy-700)",
+                  border: "none",
+                  borderRadius: 0,
+                  padding: "10px 12px",
+                  margin: 0,
+                  fontWeight: 700,
+                  fontSize: "0.88rem",
+                  cursor: "pointer",
+                }}
+              >
+                <span>Manage attendees ({(rsvpRows ?? []).length})</span>
+                <span aria-hidden="true">{manageOpen ? "▲" : "▼"}</span>
+              </button>
+              {manageOpen && (
+            <div style={{ padding: "0 12px 10px", borderTop: "1px solid var(--border)" }}>
+              <div style={{ maxHeight: "32vh", overflowY: "auto", margin: "6px 0", paddingRight: 4 }}>
               {(rsvpRows ?? []).length === 0 && <p className="stat-meta" style={{ margin: "0 0 6px" }}>No one has RSVP'd yet.</p>}
               {[...(rsvpRows ?? [])]
                 .sort((a, b) => (a.players?.display_name ?? "").localeCompare(b.players?.display_name ?? ""))
@@ -724,6 +747,7 @@ function EventTicketModal({
                     </div>
                   );
                 })}
+              </div>
               <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
                 <select value={addPlayerId} onChange={(e) => setAddPlayerId(e.target.value)} style={{ flex: 1, minWidth: 0, marginTop: 0 }}>
                   <option value="">Add a player…</option>
@@ -739,6 +763,8 @@ function EventTicketModal({
                   Add
                 </button>
               </div>
+            </div>
+              )}
             </div>
           )}
 
