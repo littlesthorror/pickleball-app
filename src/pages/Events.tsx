@@ -459,6 +459,63 @@ function EventTicketModal({
     setRsvpSaving(false);
   }
 
+  // Admin attendee management (2026-11-13, Ben's request) — remove or add
+  // anyone without them having to cancel/RSVP themselves. Removal reuses the
+  // normal delete path, so the waitlist auto-promotion trigger still fires.
+  const adminConfirm = useConfirm();
+  const [allPlayers, setAllPlayers] = useState<{ id: string; display_name: string }[]>([]);
+  const [addPlayerId, setAddPlayerId] = useState("");
+  useEffect(() => {
+    if (!isAdmin || !event.rsvp_enabled) return;
+    supabase
+      .from("players")
+      .select("id, display_name")
+      .order("display_name")
+      .then(({ data }) => setAllPlayers((data as { id: string; display_name: string }[]) ?? []));
+  }, [isAdmin, event.rsvp_enabled]);
+
+  async function adminRemove(pid: string, name: string) {
+    if (!(await adminConfirm(`Remove ${name} from this event?`))) return;
+    setRsvpSaving(true);
+    setRsvpError(null);
+    const { error } = await supabase.from("event_rsvps").delete().eq("event_id", event.id).eq("player_id", pid);
+    if (error) setRsvpError(error.message);
+    else await fetchRsvps();
+    setRsvpSaving(false);
+  }
+
+  async function adminAdd() {
+    if (!addPlayerId) return;
+    setRsvpSaving(true);
+    setRsvpError(null);
+    const wouldWaitlist = event.capacity != null && occupiedSpots + 1 > event.capacity;
+    const { error } = await supabase.from("event_rsvps").insert({
+      event_id: event.id,
+      player_id: addPlayerId,
+      status: wouldWaitlist ? "waitlist" : "going",
+      plus_one: false,
+    });
+    if (error) setRsvpError(error.message);
+    else {
+      setAddPlayerId("");
+      await fetchRsvps();
+    }
+    setRsvpSaving(false);
+  }
+
+  async function adminTogglePlusOne(pid: string, current: boolean) {
+    setRsvpSaving(true);
+    setRsvpError(null);
+    const { error } = await supabase
+      .from("event_rsvps")
+      .update({ plus_one: !current })
+      .eq("event_id", event.id)
+      .eq("player_id", pid);
+    if (error) setRsvpError(error.message);
+    else await fetchRsvps();
+    setRsvpSaving(false);
+  }
+
   async function handleCancelRsvp() {
     setRsvpSaving(true);
     setRsvpError(null);
@@ -628,6 +685,60 @@ function EventTicketModal({
                   {waitlistNames.join(", ")}
                 </p>
               )}
+            </div>
+          )}
+
+          {isAdmin && event.rsvp_enabled && !rsvpLoading && (
+            <div style={{ marginTop: 12, padding: "10px 12px", border: "1px dashed var(--border)", borderRadius: 10 }}>
+              <div className="stat-meta" style={{ fontWeight: 700, marginBottom: 6 }}>
+                Manage attendees (admin)
+              </div>
+              {(rsvpRows ?? []).length === 0 && <p className="stat-meta" style={{ margin: "0 0 6px" }}>No one has RSVP'd yet.</p>}
+              {[...(rsvpRows ?? [])]
+                .sort((a, b) => (a.players?.display_name ?? "").localeCompare(b.players?.display_name ?? ""))
+                .map((r) => {
+                  const nm = r.players?.display_name ?? "Unknown";
+                  return (
+                    <div key={r.player_id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 0", fontSize: "0.85rem" }}>
+                      <span style={{ flex: 1, minWidth: 0 }}>
+                        {nm}
+                        {r.plus_one ? " +1" : ""}
+                        {r.status === "waitlist" ? " (waitlist)" : ""}
+                      </span>
+                      {event.allow_plus_one && (
+                        <button
+                          disabled={rsvpSaving}
+                          onClick={() => adminTogglePlusOne(r.player_id, r.plus_one)}
+                          style={{ background: "transparent", color: "var(--navy-500)", border: "1px solid var(--border)", padding: "2px 8px", fontSize: "0.75rem" }}
+                        >
+                          {r.plus_one ? "Remove +1" : "Add +1"}
+                        </button>
+                      )}
+                      <button
+                        disabled={rsvpSaving}
+                        onClick={() => adminRemove(r.player_id, nm)}
+                        style={{ background: "transparent", color: "var(--danger)", border: "1px solid var(--border)", padding: "2px 8px", fontSize: "0.75rem" }}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  );
+                })}
+              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                <select value={addPlayerId} onChange={(e) => setAddPlayerId(e.target.value)} style={{ flex: 1, minWidth: 0, marginTop: 0 }}>
+                  <option value="">Add a player…</option>
+                  {allPlayers
+                    .filter((p) => !(rsvpRows ?? []).some((r) => r.player_id === p.id))
+                    .map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.display_name}
+                      </option>
+                    ))}
+                </select>
+                <button disabled={rsvpSaving || !addPlayerId} onClick={adminAdd} style={{ marginTop: 0 }}>
+                  Add
+                </button>
+              </div>
             </div>
           )}
 
