@@ -91,6 +91,9 @@ export default function App() {
   useEffect(() => {
     window.history.replaceState(null, "", `#${tab}`);
   }, [tab]);
+  // Event to open straight into its details popup when jumping to the Events
+  // tab from the Home "Next club event" card (2026-11-26).
+  const [pendingEventId, setPendingEventId] = useState<string | null>(null);
   // backLabel (2026-08-28) — PlayerDetail's back button now reads "Back to
   // leaderboard" or "Back to Manage admins" depending on where the click
   // actually came from, rather than always saying leaderboard even when an
@@ -509,7 +512,14 @@ export default function App() {
               ) : (
                 <>
                   {tab === "dashboard" && (
-                    <Dashboard playerId={player.id} isOwnProfile onViewEvents={() => changeTab("events")} />
+                    <Dashboard
+                      playerId={player.id}
+                      isOwnProfile
+                      onViewEvents={(eventId) => {
+                        setPendingEventId(eventId ?? null);
+                        changeTab("events");
+                      }}
+                    />
                   )}
                   {tab === "leaderboard" && (
                     <Leaderboard
@@ -522,7 +532,14 @@ export default function App() {
                     />
                   )}
                   {tab === "club-stats" && <ClubStats />}
-                  {tab === "events" && <Events isAdmin={effectiveIsAdmin} playerId={player.id} />}
+                  {tab === "events" && (
+                    <Events
+                      isAdmin={effectiveIsAdmin}
+                      playerId={player.id}
+                      openEventId={pendingEventId}
+                      onOpenEventHandled={() => setPendingEventId(null)}
+                    />
+                  )}
                   {tab === "notices" && <Notices isAdmin={effectiveIsAdmin} playerId={player.id} />}
                   {tab === "faq" && <FAQ isAdmin={effectiveIsAdmin} />}
                   {tab === "competitions" && (showCompetitionsTab || effectiveIsAdmin) && (

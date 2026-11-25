@@ -1033,7 +1033,19 @@ function CalendarSubscribeCard({ isAdmin }: { isAdmin: boolean }) {
   );
 }
 
-export default function Events({ isAdmin, playerId }: { isAdmin: boolean; playerId: string }) {
+export default function Events({
+  isAdmin,
+  playerId,
+  openEventId = null,
+  onOpenEventHandled,
+}: {
+  isAdmin: boolean;
+  playerId: string;
+  // When set (from the Home "Next club event" card), the matching event's
+  // details popup opens as soon as the list has loaded.
+  openEventId?: string | null;
+  onOpenEventHandled?: () => void;
+}) {
   const confirm = useConfirm();
   const toast = useToast();
   const [events, setEvents] = useState<EventRow[]>([]);
@@ -1124,6 +1136,14 @@ export default function Events({ isAdmin, playerId }: { isAdmin: boolean; player
   }
 
   useEffect(load, []);
+
+  useEffect(() => {
+    if (!openEventId || loading) return;
+    const ev = events.find((e) => e.id === openEventId);
+    if (ev) setTicketEvent(ev);
+    onOpenEventHandled?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openEventId, loading, events]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {

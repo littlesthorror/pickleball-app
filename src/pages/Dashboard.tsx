@@ -164,7 +164,9 @@ export default function Dashboard({
   viewerId?: string;
   // Lets the "next event" block jump to the Events tab — only wired up on
   // your own dashboard, same as above.
-  onViewEvents?: () => void;
+  // Optionally takes an event id so the Events tab can open that event's
+  // details popup directly (2026-11-26).
+  onViewEvents?: (eventId?: string) => void;
 }) {
   const isDarkTheme = useIsDarkTheme();
   const toast = useToast();
@@ -1025,14 +1027,11 @@ export default function Dashboard({
         </p>
       </div>
 
+      {isOwnProfile && <TodayWeatherCard />}
+
       {isOwnProfile && nextEvent && (
         <NextEventHero event={nextEvent} playerId={playerId} onViewEvents={onViewEvents} />
       )}
-
-      {/* The event card carries its own event-day weather chip, so the
-          standalone "Weather today" card only shows when there's no upcoming
-          event to fold it into. */}
-      {isOwnProfile && !nextEvent && <TodayWeatherCard />}
 
       {/* Partner-finder widget ("Looking for a game?") temporarily switched
           off, 2026-08-28, at Ben's request — code/DB tables left in place

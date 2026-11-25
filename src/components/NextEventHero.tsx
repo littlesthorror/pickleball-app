@@ -15,7 +15,7 @@ import type { EventRow } from "../types";
 interface Props {
   event: EventRow;
   playerId: string;
-  onViewEvents?: () => void;
+  onViewEvents?: (eventId?: string) => void;
 }
 
 interface RsvpLite {
@@ -114,7 +114,7 @@ export default function NextEventHero({ event, playerId, onViewEvents }: Props) 
   return (
     <div
       className="card"
-      onClick={onViewEvents}
+      onClick={() => onViewEvents?.(event.id)}
       style={{
         background: "var(--navy-active)",
         color: "#fff",
@@ -124,7 +124,9 @@ export default function NextEventHero({ event, playerId, onViewEvents }: Props) 
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
         <span style={{ color: "var(--orange-500)", fontWeight: 700, fontSize: "0.85rem" }}>Next club event</span>
-        {forecast && (
+        {/* Hidden when the event is today — the separate "Weather today"
+            card right below already says the same thing. */}
+        {forecast && event.event_date !== new Date().toISOString().slice(0, 10) && (
           <span
             style={{
               fontSize: "0.78rem",
@@ -145,6 +147,32 @@ export default function NextEventHero({ event, playerId, onViewEvents }: Props) 
         {timeLabel}
         {event.location ? ` · ${event.location}` : ""}
       </div>
+      {onViewEvents && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onViewEvents(event.id);
+          }}
+          style={{
+            display: "inline-block",
+            width: "auto",
+            minHeight: 0,
+            height: "auto",
+            margin: "8px 0 0",
+            padding: "4px 0",
+            background: "transparent",
+            border: "none",
+            borderBottom: "1px solid rgba(255,255,255,0.45)",
+            borderRadius: 0,
+            color: "rgba(255,255,255,0.9)",
+            fontSize: "0.82rem",
+            fontWeight: 600,
+          }}
+        >
+          Event details →
+        </button>
+      )}
 
       {event.rsvp_enabled && capacity != null && (
         <div style={{ marginTop: 14 }}>
