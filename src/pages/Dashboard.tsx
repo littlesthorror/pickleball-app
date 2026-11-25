@@ -23,6 +23,7 @@ import type { SeasonWrappedStats } from "../lib/seasonWrappedImage";
 import { isBirthdayToday } from "../lib/birthday";
 import { getTier, getNextTier } from "../lib/tiers";
 import { getCurrentSeason, getTrackedSeasons, getSeasonEndInfo } from "../lib/seasons";
+import NextEventHero from "../components/NextEventHero";
 import { getEventForecast } from "../lib/weather";
 import type { EventForecast } from "../lib/weather";
 import type { Season } from "../lib/seasons";
@@ -902,7 +903,45 @@ export default function Dashboard({
 
   return (
     <div>
-      <div className="card">
+      <div className="card" style={{ position: "relative" }}>
+        {/* "Share" moved from a full-width bar to a small corner button
+            (2026-11-26, Ben's request — "very prominent, I don't believe
+            people use it"). Still opens the same share card. */}
+        {isOwnProfile && (
+          <button
+            type="button"
+            onClick={() => setShowShareCard(true)}
+            aria-label="Share my stats"
+            title="Share my stats"
+            style={{
+              position: "absolute",
+              top: 12,
+              right: 12,
+              width: "auto",
+              minHeight: 0,
+              height: "auto",
+              margin: 0,
+              padding: "6px 10px",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              fontSize: "0.78rem",
+              fontWeight: 600,
+              lineHeight: 1,
+              background: "transparent",
+              color: "var(--navy-500)",
+              border: "1px solid var(--border)",
+              borderRadius: 999,
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M12 3v12" />
+              <path d="M8 7l4-4 4 4" />
+              <path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7" />
+            </svg>
+            Share
+          </button>
+        )}
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           {/* 55 -> 60 (2026-09-15, Ben's request to experiment with ~9%
               bigger) — was already bumped 15% once before (2026-08-xx). */}
@@ -966,39 +1005,16 @@ export default function Dashboard({
           {player.games_played} game{player.games_played === 1 ? "" : "s"} played
           {nextTier && ` · ${nextTier.gamesToGo} more to become a ${nextTier.tier.label}`}
         </p>
-        {isOwnProfile && (
-          <button
-            onClick={() => setShowShareCard(true)}
-            style={{ background: "var(--navy-active)" }}
-          >
-            Share my card
-          </button>
-        )}
       </div>
 
       {isOwnProfile && nextEvent && (
-        <div className="card next-event-card" onClick={onViewEvents} style={{ cursor: onViewEvents ? "pointer" : "default" }}>
-          <p className="stat-meta" style={{ marginTop: 0, marginBottom: 4, color: "var(--orange-600)", fontWeight: 700 }}>
-            Next club event
-          </p>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div>
-              <div className="opponent">{nextEvent.title}</div>
-              <div className="meta">
-                {new Date(
-                  Number(nextEvent.event_date.slice(0, 4)),
-                  Number(nextEvent.event_date.slice(5, 7)) - 1,
-                  Number(nextEvent.event_date.slice(8, 10))
-                ).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
-                {nextEvent.location ? ` · ${nextEvent.location}` : ""}
-              </div>
-            </div>
-            <span style={{ color: "var(--navy-500)", fontWeight: 700, fontSize: "1.1rem" }}>→</span>
-          </div>
-        </div>
+        <NextEventHero event={nextEvent} playerId={playerId} onViewEvents={onViewEvents} />
       )}
 
-      {isOwnProfile && <TodayWeatherCard />}
+      {/* The event card carries its own event-day weather chip, so the
+          standalone "Weather today" card only shows when there's no upcoming
+          event to fold it into. */}
+      {isOwnProfile && !nextEvent && <TodayWeatherCard />}
 
       {/* Partner-finder widget ("Looking for a game?") temporarily switched
           off, 2026-08-28, at Ben's request — code/DB tables left in place
