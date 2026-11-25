@@ -193,6 +193,12 @@ body {
 .show-more-btn {
   width: auto;
   margin-top: 0;
+  /* ~10% smaller (2026-11-26, Ben's request): text 1rem -> 0.9rem and
+     tighter side padding, but the 12px top/bottom padding is kept so the
+     tap target stays ~41px tall (WCAG 2.2 AA minimum is 24px; ~44px is the
+     comfortable thumb-size guideline). */
+  font-size: 0.9rem;
+  padding: 12px 16px;
   background: transparent;
   color: var(--navy-500);
   border: 1px solid var(--border);
