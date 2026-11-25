@@ -110,13 +110,24 @@ export default function NextEventHero({ event, playerId, onViewEvents }: Props) 
   const timeLabel = event.event_time ? ` · ${event.event_time.slice(0, 5)}` : "";
 
   const muted = "rgba(255,255,255,0.72)";
+  const posterUrl = event.poster_path
+    ? supabase.storage.from("notices").getPublicUrl(event.poster_path).data.publicUrl
+    : null;
 
   return (
     <div
       className="card"
       onClick={() => onViewEvents?.(event.id)}
       style={{
-        background: "var(--navy-active)",
+        // Event poster as a faint texture under a translucent navy wash
+        // (2026-11-26, Ben's request) — same idea as the player card's
+        // background photo. No poster = plain navy, as before.
+        backgroundColor: "var(--navy-active)",
+        backgroundImage: posterUrl
+          ? `linear-gradient(rgba(0,29,81,0.82), rgba(0,29,81,0.82)), url("${posterUrl}")`
+          : undefined,
+        backgroundSize: "cover",
+        backgroundPosition: "center",
         color: "#fff",
         cursor: onViewEvents ? "pointer" : "default",
         border: "none",
