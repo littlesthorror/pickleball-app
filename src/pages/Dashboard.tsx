@@ -903,7 +903,25 @@ export default function Dashboard({
 
   return (
     <div>
-      <div className="card" style={{ position: "relative" }}>
+      <div className="card" style={{ position: "relative", isolation: "isolate", overflow: "hidden" }}>
+        {/* Very faint club photo behind the player card (2026-11-26, Ben's
+            request) — same blurred court photo as the share card, at ~10%
+            so text stays fully readable. z-index -1 inside an isolated
+            stacking context puts it above the card's own background but
+            under all the content. */}
+        <div
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            inset: 0,
+            zIndex: -1,
+            backgroundImage: "url(/player-card-bg.jpg)",
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+            opacity: 0.1,
+            pointerEvents: "none",
+          }}
+        />
         {/* "Share" moved from a full-width bar to a small corner button
             (2026-11-26, Ben's request — "very prominent, I don't believe
             people use it"). Still opens the same share card. */}
