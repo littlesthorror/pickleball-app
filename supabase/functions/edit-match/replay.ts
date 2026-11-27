@@ -69,6 +69,38 @@ type Event =
   | { type: "ratingReset"; at: string; playerId: string }
   | { type: "match"; at: string; match: MatchRow };
 
+// Reads EVERY confirmed match, page by page. A single select is silently capped
+// at 1000 rows by the API (2026-11-27 bug: the club passed 1000 confirmed
+// games on 14 Nov, so every recompute/edit/delete since then dropped the
+// newest games from the replay and left them unrated). Ordered by created_at
+// then id so pages never overlap or skip (no created_at ties exist today, so
+// the replay order is unchanged).
+async function fetchAllConfirmedMatches(
+  // deno-lint-ignore no-explicit-any
+  supabase: any
+  // deno-lint-ignore no-explicit-any
+): Promise<{ data: any[] | null; error: { message: string } | null }> {
+  // deno-lint-ignore no-explicit-any
+  const all: any[] = [];
+  const PAGE = 1000;
+  for (let page = 0; page < 200; page++) {
+    const { data, error } = await supabase
+      .from("matches")
+      .select(
+        "id, created_at, team_a_player_1_id, team_a_player_2_id, team_b_player_1_id, team_b_player_2_id, team_a_score, team_b_score"
+      )
+      .eq("status", "confirmed")
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true })
+      .range(page * PAGE, page * PAGE + PAGE - 1);
+    if (error) return { data: null, error };
+    if (!data || data.length === 0) break;
+    all.push(...data);
+    if (data.length < PAGE) break;
+  }
+  return { data: all, error: null };
+}
+
 export async function recomputeAllRatings(
   // deno-lint-ignore no-explicit-any
   supabase: any
@@ -80,13 +112,7 @@ export async function recomputeAllRatings(
   ] = await Promise.all([
     supabase.from("players").select("id"),
     supabase.from("player_ratings").select("player_id, reset_at, rating_reset_at"),
-    supabase
-      .from("matches")
-      .select(
-        "id, created_at, team_a_player_1_id, team_a_player_2_id, team_b_player_1_id, team_b_player_2_id, team_a_score, team_b_score"
-      )
-      .eq("status", "confirmed")
-      .order("created_at", { ascending: true }),
+    fetchAllConfirmedMatches(supabase),
   ]);
 
   if (playersError || !players) return { ok: false, error: playersError?.message ?? "couldn't load players" };
